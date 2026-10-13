@@ -19,6 +19,7 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
         Value::Bytea(vec![0, 0]),
         Value::Bytea(vec![0x12, 0x34]),
         Value::Bytea((0..=255).collect()),
+        Value::Bytea((0..9000).map(|n| (n % 256) as u8).collect()),
     ];
     values.extend(
         [
@@ -29,6 +30,12 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
             "false",
             "yes",
             "off",
+            "Y",
+            "N",
+            "TRUE",
+            "Null",
+            "simple text",
+            "simple text ",
             "2024-02-29",
             "1e3",
             "---",
@@ -39,6 +46,7 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
             "first line\n---\n...\nlast line\n\n",
             "  leading spaces\n trailing space ",
             "a\0b\t\\\"\r\n",
+            "a\u{85}b\u{2028}c\u{2029}d\u{feff}e",
         ]
         .into_iter()
         .map(|s| Value::Text(s.into())),
@@ -73,6 +81,18 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     assert_eq!(restored.execute(query).unwrap(), before);
     assert_eq!(restored.execute("SELECT * FROM keys").unwrap(), keys);
     assert_eq!(restored.export(Format::Readable).unwrap(), bytes);
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("cells.yaml");
+    let mut file = Database::restore(&path, &bytes).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let update = "UPDATE cells SET n='edited\nblock\n' WHERE id=1";
+    file.execute(update).unwrap();
+    db.execute(update).unwrap();
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        db.export(Format::Readable).unwrap()
+    );
+    assert_eq!(file.execute(query).unwrap(), db.execute(query).unwrap());
 }
 
 const MANUAL: &str = r#"# Documents and row fields may be edited by hand.
@@ -152,6 +172,8 @@ fn invalid_yaml_cannot_publish_a_database() {
     let invalid = [
         MANUAL.replace("version: 2", "version: 1"),
         MANUAL.replace("version: 2", "version: 2\nversion: 2"),
+        MANUAL.replace("version: 2", "version: 2\nvalues: null"),
+        MANUAL.replace("  id: 7", "  id: 7\nversion: 2"),
         MANUAL.replace("  id: 7", "  id: 7\n  id: 8"),
         MANUAL.replace("  id: 7", "  wrong: 7"),
         MANUAL.replace("  id: 7\n", ""),
@@ -172,4 +194,82 @@ fn invalid_yaml_cannot_publish_a_database() {
         assert!(Database::restore(&path, yaml.as_bytes()).is_err(), "{yaml}");
         assert!(!path.exists());
     }
+}
+
+#[test]
+fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("cached.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    let mut reference = Database::memory();
+    for sql in [
+        "CREATE TABLE parent(id INTEGER PRIMARY KEY,label TEXT UNIQUE); CREATE TABLE child(id INTEGER PRIMARY KEY,p INTEGER REFERENCES parent(id) ON DELETE CASCADE); CREATE TABLE auxiliary(pk TEXT PRIMARY KEY,body TEXT) WITHOUT ROWID; CREATE TABLE shadow(_rowid_ TEXT,rowid TEXT,oid TEXT)",
+        "BEGIN; INSERT INTO parent VALUES(1,'a'),(2,'b'); INSERT INTO child VALUES(1,1); INSERT INTO auxiliary VALUES('x','start'); INSERT INTO shadow VALUES('a','b','c'); COMMIT",
+        "INSERT OR REPLACE INTO parent VALUES(3,'a')",
+        "UPDATE parent SET id=20 WHERE id=2",
+        "CREATE TABLE audit(label TEXT); CREATE TRIGGER log AFTER UPDATE ON parent BEGIN INSERT INTO audit VALUES(NEW.label); UPDATE auxiliary SET body=NEW.label; END",
+        "UPDATE parent SET label='changed' WHERE id=20",
+        "UPDATE auxiliary SET pk='z'; UPDATE shadow SET oid='new'",
+        "BEGIN; UPDATE parent SET id=40 WHERE id=20; SAVEPOINT s; DELETE FROM parent; ROLLBACK TO s; ROLLBACK",
+        "SAVEPOINT s; INSERT INTO parent VALUES(50,'pending'); ROLLBACK TO s; RELEASE s",
+        "CREATE TABLE typed(d DATE); INSERT INTO typed VALUES('2024-01-01')",
+        "BEGIN; ALTER TABLE typed ADD COLUMN tags TEXT[]; ROLLBACK",
+        "ALTER TABLE typed RENAME COLUMN d TO day; ALTER TABLE typed RENAME TO dates",
+        "CREATE TABLE seq(id INTEGER PRIMARY KEY AUTOINCREMENT); INSERT INTO seq VALUES(40); DELETE FROM seq",
+        "INSERT INTO seq DEFAULT VALUES",
+        "PRAGMA user_version=17; PRAGMA application_id=123",
+        "VACUUM",
+        "DELETE FROM parent; DELETE FROM shadow; DELETE FROM auxiliary",
+        "BEGIN; COMMIT",
+    ] {
+        db.execute(sql).unwrap();
+        reference.execute(sql).unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            reference.export(Format::Readable).unwrap(),
+            "{sql}"
+        );
+        assert_eq!(
+            db.export(Format::Readable).unwrap(),
+            reference.export(Format::Readable).unwrap(),
+            "{sql}"
+        );
+    }
+    let invalid = "INSERT INTO dates VALUES('2024-02-29'),('invalid')";
+    assert!(db.execute(invalid).is_err());
+    assert!(reference.execute(invalid).is_err());
+    assert_eq!(
+        db.export(Format::Readable).unwrap(),
+        reference.export(Format::Readable).unwrap()
+    );
+    db.execute("UPDATE dates SET day='2024-03-01'").unwrap();
+    reference
+        .execute("UPDATE dates SET day='2024-03-01'")
+        .unwrap();
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        reference.export(Format::Readable).unwrap()
+    );
+}
+
+#[test]
+fn cached_yaml_handles_complex_names_and_main_tables_shadowed_by_temp() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("names.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    db.execute("CREATE TABLE t(\"line\nbreak\" TEXT,\" ORDER BY \" TEXT,\"<<\" TEXT); INSERT INTO t VALUES('first','second','third')").unwrap();
+    db.execute("CREATE TEMP TABLE t(ignored TEXT); INSERT INTO temp.t VALUES('temporary'); UPDATE main.t SET \"<<\"='updated'").unwrap();
+    let mut imported = Database::from_snapshot(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        imported.execute("SELECT * FROM t").unwrap()[0].rows,
+        vec![vec![
+            Value::Text("first".into()),
+            Value::Text("second".into()),
+            Value::Text("updated".into())
+        ]]
+    );
+    assert_eq!(
+        db.export(Format::Readable).unwrap(),
+        imported.export(Format::Readable).unwrap()
+    );
 }

@@ -99,6 +99,19 @@ private. A readable file holds a separate `.lock` sidecar until closed. On a
 publication error, reopen the connection before continuing. Readable snapshots
 do not support virtual tables or non-finite floating-point values.
 
+Row documents are cached in memory. SQLite change notifications select the rows
+to serialize again, including trigger writes, REPLACE deletions and foreign-key
+cascades; rollback is reconciled against the current database state. Schema
+changes rebuild the cache. Tables without an accessible rowid are reserialized
+as a whole when changed. Cached documents add memory proportional to the YAML
+snapshot, alongside the in-memory SQLite database.
+
+Publication still writes the complete stream, synchronizes the temporary file,
+replaces the destination and synchronizes its directory. Its I/O cost grows with
+file size even for a single changed row. Group related writes in BEGIN/COMMIT to
+pay for one publication; reading an already open database uses SQLite in memory
+without parsing YAML again. Opening a file must parse and restore the stream.
+
 `Database::export` requires no active transaction. Binary export uses SQLite's
 backup API to produce a self-contained file with committed WAL pages included.
 `Database::read_snapshot` opens a separate SQLite reader to capture committed

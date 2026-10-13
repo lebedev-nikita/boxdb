@@ -11,6 +11,8 @@ use serde::{
     ser::SerializeMap,
 };
 use std::{collections::BTreeMap, fmt};
+mod cache;
+pub(crate) use cache::SnapshotCache;
 
 /// Native SQLite cells have natural YAML scalars. BLOBs use an explicit hex
 /// mapping so text, byte arrays and numbers remain distinguishable on import.
@@ -83,7 +85,7 @@ impl<'de> Deserialize<'de> for Cell {
         deserializer.deserialize_any(CellVisitor)
     }
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Record {
     Database {
@@ -108,9 +110,104 @@ enum Record {
         value: i64,
     },
 }
+// Decode fields directly instead of Serde's internally tagged enum buffer,
+// which otherwise allocates an intermediate tree for every row document.
+impl<'de> Deserialize<'de> for Record {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Kind {
+            Database,
+            Schema,
+            Row,
+            Sequence,
+        }
+        fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+            d: D,
+        ) -> std::result::Result<Option<T>, D::Error> {
+            T::deserialize(d).map(Some)
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            kind: Kind,
+            #[serde(default, deserialize_with = "present")]
+            version: Option<u32>,
+            #[serde(default, deserialize_with = "present")]
+            application_id: Option<i64>,
+            #[serde(default, deserialize_with = "present")]
+            user_version: Option<i64>,
+            #[serde(default, deserialize_with = "present")]
+            object_type: Option<String>,
+            #[serde(default, deserialize_with = "present")]
+            name: Option<String>,
+            #[serde(default, deserialize_with = "present")]
+            table: Option<String>,
+            #[serde(default, deserialize_with = "present")]
+            sql: Option<String>,
+            #[serde(default, deserialize_with = "present")]
+            rowid: Option<Option<i64>>,
+            #[serde(default, deserialize_with = "present")]
+            values: Option<BTreeMap<String, Cell>>,
+            #[serde(default, deserialize_with = "present")]
+            value: Option<i64>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let allowed: &[&str] = match fields.kind {
+            Kind::Database => &["version", "application_id", "user_version"],
+            Kind::Schema => &["object_type", "name", "table", "sql"],
+            Kind::Row => &["table", "rowid", "values"],
+            Kind::Sequence => &["table", "value"],
+        };
+        for (name, exists) in [
+            ("version", fields.version.is_some()),
+            ("application_id", fields.application_id.is_some()),
+            ("user_version", fields.user_version.is_some()),
+            ("object_type", fields.object_type.is_some()),
+            ("name", fields.name.is_some()),
+            ("table", fields.table.is_some()),
+            ("sql", fields.sql.is_some()),
+            ("rowid", fields.rowid.is_some()),
+            ("values", fields.values.is_some()),
+            ("value", fields.value.is_some()),
+        ] {
+            if exists && !allowed.contains(&name) {
+                return Err(de::Error::unknown_field(name, allowed));
+            }
+        }
+        fn required<T, E: de::Error>(
+            field: Option<T>,
+            name: &'static str,
+        ) -> std::result::Result<T, E> {
+            field.ok_or_else(|| E::missing_field(name))
+        }
+        Ok(match fields.kind {
+            Kind::Database => Self::Database {
+                version: required(fields.version, "version")?,
+                application_id: required(fields.application_id, "application_id")?,
+                user_version: required(fields.user_version, "user_version")?,
+            },
+            Kind::Schema => Self::Schema {
+                object_type: required(fields.object_type, "object_type")?,
+                name: required(fields.name, "name")?,
+                table: required(fields.table, "table")?,
+                sql: required(fields.sql, "sql")?,
+            },
+            Kind::Row => Self::Row {
+                table: required(fields.table, "table")?,
+                rowid: fields.rowid.flatten(),
+                values: required(fields.values, "values")?,
+            },
+            Kind::Sequence => Self::Sequence {
+                table: required(fields.table, "table")?,
+                value: required(fields.value, "value")?,
+            },
+        })
+    }
+}
 fn columns(db: &Connection, table: &str) -> Result<Vec<String>> {
     Ok(db
-        .prepare("SELECT name FROM pragma_table_xinfo(?1) WHERE hidden=0 ORDER BY cid")?
+        .prepare("SELECT name FROM pragma_table_xinfo(?1,'main') WHERE hidden=0 ORDER BY cid")?
         .query_map([table], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?)
 }
@@ -125,89 +222,234 @@ fn rowid(db: &Connection, table: &str) -> Result<Option<&'static str>> {
     }
     // Generated columns also shadow SQLite's implicit rowid aliases.
     let columns: Vec<String> = db
-        .prepare("SELECT name FROM pragma_table_xinfo(?1)")?
+        .prepare("SELECT name FROM pragma_table_xinfo(?1,'main')")?
         .query_map([table], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?;
     Ok(["_rowid_", "rowid", "oid"]
         .into_iter()
         .find(|name| !columns.iter().any(|c| c.eq_ignore_ascii_case(name))))
 }
-pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
+/// Cached table layout; scalar quoting for column names is done once per schema.
+struct TablePlan {
+    rowid: Option<&'static str>,
+    select: String,
+    lookup: Option<String>,
+    prefix: Vec<u8>,
+    keys: Vec<(usize, Vec<u8>)>,
+}
+impl TablePlan {
+    fn new(db: &Connection, name: &str) -> Result<Self> {
+        let columns = columns(db, name)?;
+        let rowid = rowid(db, name)?;
+        let selected = columns
+            .iter()
+            .map(|n| quote(n))
+            .collect::<Vec<_>>()
+            .join(",");
+        let prefix = rowid.map(|r| format!("{},", quote(r))).unwrap_or_default();
+        let ordering = rowid.map(quote).unwrap_or_else(|| selected.clone());
+        let source = format!("SELECT {prefix}{selected} FROM main.{}", quote(name));
+        let select = format!("{source} ORDER BY {ordering}");
+        let lookup = rowid.map(|alias| format!("{source} WHERE {}=?1", quote(alias)));
+        #[derive(Serialize)]
+        struct Head<'a> {
+            kind: &'static str,
+            table: &'a str,
+        }
+        let mut prefix = b"---\n".to_vec();
+        serde_saphyr::to_io_writer(
+            &mut prefix,
+            &Head {
+                kind: "row",
+                table: name,
+            },
+        )?;
+        let mut ordered: Vec<usize> = (0..columns.len()).collect();
+        ordered.sort_by(|a, b| columns[*a].cmp(&columns[*b]));
+        let mut keys = vec![];
+        for index in ordered {
+            let yaml = serde_saphyr::to_string(&BTreeMap::from([(&columns[index], None::<()>)]))?;
+            let key = yaml
+                .strip_suffix(" null\n")
+                .ok_or_else(|| Error("invalid YAML key serialization".into()))?;
+            let mut indented = vec![];
+            for line in key.split_inclusive('\n') {
+                indented.extend_from_slice(b"  ");
+                indented.extend_from_slice(line.as_bytes());
+            }
+            keys.push((index, indented));
+        }
+        Ok(Self {
+            rowid,
+            select,
+            lookup,
+            prefix,
+            keys,
+        })
+    }
+    fn write_row(&self, row: &rusqlite::Row<'_>, writer: &mut impl std::io::Write) -> Result<()> {
+        use rusqlite::types::ValueRef;
+        writer.write_all(&self.prefix)?;
+        if self.rowid.is_some() {
+            writeln!(writer, "rowid: {}", row.get::<_, i64>(0)?)?;
+        }
+        writer.write_all(b"values:\n")?;
+        let offset = usize::from(self.rowid.is_some());
+        for (index, key) in &self.keys {
+            writer.write_all(key)?;
+            match row.get_ref(index + offset)? {
+                ValueRef::Null => writer.write_all(b" null\n")?,
+                ValueRef::Integer(n) => writeln!(writer, " {n}")?,
+                ValueRef::Real(n) if n.is_finite() => {
+                    write_scalar(writer, &serde_saphyr::to_string(&n)?)?
+                }
+                ValueRef::Real(_) => {
+                    return Err(Error(
+                        "readable storage cannot represent non-finite SQLite values".into(),
+                    ));
+                }
+                ValueRef::Text(bytes) => {
+                    let text = std::str::from_utf8(bytes).map_err(|e| Error(e.to_string()))?;
+                    if plain_text(text) {
+                        writer.write_all(b" ")?;
+                        writer.write_all(bytes)?;
+                        writer.write_all(b"\n")?;
+                    } else {
+                        write_scalar(writer, &serde_saphyr::to_string(&text)?)?;
+                    }
+                }
+                ValueRef::Blob(bytes) => {
+                    writer.write_all(b"\n    blob: '")?;
+                    let mut hex = [0u8; 8192];
+                    for chunk in bytes.chunks(4096) {
+                        let output = &mut hex[..chunk.len() * 2];
+                        hex::encode_to_slice(chunk, output)
+                            .expect("hex buffer has twice the input length");
+                        writer.write_all(output)?;
+                    }
+                    writer.write_all(b"'\n")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+// The common ASCII case is unambiguous in YAML 1.1 and 1.2. Everything else
+// (including Unicode, dates, numeric text and blocks) uses the YAML serializer.
+fn plain_text(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes
+        .first()
+        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+        && bytes.len() <= 80
+        && !bytes.ends_with(b" ")
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b' '))
+        && !["null", "true", "false", "yes", "no", "on", "off", "y", "n"]
+            .iter()
+            .any(|s| text.eq_ignore_ascii_case(s))
+}
+fn write_scalar(writer: &mut impl std::io::Write, yaml: &str) -> Result<()> {
+    writer.write_all(b" ")?;
+    for (i, line) in yaml.split_inclusive('\n').enumerate() {
+        if i > 0 {
+            writer.write_all(b"  ")?;
+        }
+        writer.write_all(line.as_bytes())?;
+    }
+    Ok(())
+}
+fn write_document(writer: &mut impl std::io::Write, record: &Record) -> Result<()> {
+    writer.write_all(b"---\n")?;
+    serde_saphyr::to_io_writer(writer, record)?;
+    Ok(())
+}
+fn schema_records(db: &Connection) -> Result<Vec<Record>> {
     let mut records = vec![Record::Database {
         version: 2,
         application_id: db.query_row("PRAGMA application_id", [], |r| r.get(0))?,
         user_version: db.query_row("PRAGMA user_version", [], |r| r.get(0))?,
     }];
-    let objects:Vec<(String,String,String,String)>=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END,name")?.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
-    for (object_type, name, table, sql) in &objects {
+    let objects = db.prepare("SELECT type,name,tbl_name,sql FROM main.sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END,name")?
+        .query_map([], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (object_type, name, table, sql) in objects {
         if sql.to_ascii_uppercase().starts_with("CREATE VIRTUAL TABLE") {
             return Err(Error(
                 "readable export of virtual tables is unsupported".into(),
             ));
         }
         records.push(Record::Schema {
-            object_type: object_type.clone(),
-            name: name.clone(),
-            table: table.clone(),
-            sql: sql.clone(),
+            object_type,
+            name,
+            table,
+            sql,
         });
     }
-    for (kind, table, _, _) in &objects {
-        if kind != "table" {
-            continue;
-        }
-        let columns = columns(db, table)?;
-        let rowid = rowid(db, table)?;
-        let selected = columns
-            .iter()
-            .map(|s| quote(s))
-            .collect::<Vec<_>>()
-            .join(",");
-        let prefix = rowid.map(|r| format!("{},", quote(r))).unwrap_or_default();
-        let ordering = rowid.map(quote).unwrap_or_else(|| selected.clone());
-        let mut statement = db.prepare(&format!(
-            "SELECT {prefix}{selected} FROM {} ORDER BY {ordering}",
-            quote(table)
-        ))?;
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
-            let offset = usize::from(rowid.is_some());
-            let values = columns
-                .iter()
-                .enumerate()
-                .map(|(i, name)| row.get(i + offset).map(|value| (name.clone(), Cell(value))))
-                .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
-            records.push(Record::Row {
-                table: table.clone(),
-                rowid: if rowid.is_some() {
-                    Some(row.get(0)?)
-                } else {
-                    None
-                },
-                values,
-            });
-        }
-    }
+    Ok(records)
+}
+fn sequence_records(db: &Connection) -> Result<Vec<Record>> {
+    let mut records = vec![];
     if db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='sqlite_sequence')",
+        "SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE name='sqlite_sequence')",
         [],
         |r| r.get::<_, bool>(0),
     )? {
         for row in db
-            .prepare("SELECT name,seq FROM sqlite_sequence ORDER BY name")?
+            .prepare("SELECT name,seq FROM main.sqlite_sequence ORDER BY name")?
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
         {
             let (table, value) = row?;
             records.push(Record::Sequence { table, value });
         }
     }
-    let mut bytes = vec![];
-    for record in records {
-        bytes.extend_from_slice(b"---\n");
-        serde_saphyr::to_io_writer(&mut bytes, &record)?;
-        if bytes.len() > MAX_SNAPSHOT {
-            return Err(Error("snapshot exceeds 256 MiB limit".into()));
+    Ok(records)
+}
+/// Limit both exports and streamed publication before the destination is replaced.
+struct LimitedWriter<W> {
+    inner: W,
+    bytes: usize,
+}
+impl<W: std::io::Write> std::io::Write for LimitedWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > MAX_SNAPSHOT.saturating_sub(self.bytes) {
+            return Err(std::io::Error::other("snapshot exceeds 256 MiB limit"));
         }
+        let count = self.inner.write(bytes)?;
+        self.bytes += count;
+        Ok(count)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
+    let mut bytes = vec![];
+    let mut writer = LimitedWriter {
+        inner: &mut bytes,
+        bytes: 0,
+    };
+    let records = schema_records(db)?;
+    for record in &records {
+        write_document(&mut writer, record)?;
+    }
+    for record in &records {
+        if let Record::Schema {
+            object_type, name, ..
+        } = record
+            && object_type == "table"
+        {
+            let table = TablePlan::new(db, name)?;
+            let mut statement = db.prepare(&table.select)?;
+            let mut cursor = statement.query([])?;
+            while let Some(row) = cursor.next()? {
+                table.write_row(row, &mut writer)?;
+            }
+        }
+    }
+    for record in sequence_records(db)? {
+        write_document(&mut writer, &record)?;
     }
     Ok(bytes)
 }
@@ -215,6 +457,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
     let records: Vec<Record> = serde_saphyr::from_slice_multiple_with_options(
         bytes,
         serde_saphyr::options! {
+            emit_comments: false,
             strict_booleans: true,
             reject_unsupported_tags: true,
             // A database stream has one document per row, unlike a typical
@@ -272,6 +515,12 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
             }
         }
     }
+    struct InsertPlan {
+        columns: Vec<String>,
+        rowid: Option<&'static str>,
+        sql: String,
+    }
+    let mut inserts = BTreeMap::<&str, InsertPlan>::new();
     for record in &records {
         if let Record::Row {
             table,
@@ -279,34 +528,46 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
             values,
         } = record
         {
-            let mut columns = columns(&db, table)?;
-            if columns.len() != values.len()
-                || columns.iter().any(|name| !values.contains_key(name))
+            if !inserts.contains_key(table.as_str()) {
+                let columns = columns(&db, table)?;
+                let alias = rowid(&db, table)?;
+                let names = alias
+                    .into_iter()
+                    .chain(columns.iter().map(String::as_str))
+                    .map(quote)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let placeholders =
+                    vec!["?"; columns.len() + usize::from(alias.is_some())].join(",");
+                inserts.insert(
+                    table,
+                    InsertPlan {
+                        columns,
+                        rowid: alias,
+                        sql: format!(
+                            "INSERT INTO {}({names}) VALUES({placeholders})",
+                            quote(table)
+                        ),
+                    },
+                );
+            }
+            let plan = &inserts[table.as_str()];
+            if plan.columns.len() != values.len()
+                || plan.columns.iter().any(|name| !values.contains_key(name))
             {
                 return Err(Error(format!("row columns do not match table: {table}")));
             }
-            let mut values = columns
-                .iter()
-                .map(|name| values[name].0.clone())
-                .collect::<Vec<_>>();
-            if let Some(id) = id {
-                let alias = rowid(&db, table)?.ok_or_else(|| Error("unexpected rowid".into()))?;
-                columns.insert(0, alias.into());
-                values.insert(0, SqlValue::Integer(*id));
+            if id.is_some() && plan.rowid.is_none() {
+                return Err(Error("unexpected rowid".into()));
             }
-            let names = columns
-                .iter()
-                .map(|s| quote(s))
-                .collect::<Vec<_>>()
-                .join(",");
-            let placeholders = vec!["?"; values.len()].join(",");
-            db.execute(
-                &format!(
-                    "INSERT INTO {}({names}) VALUES({placeholders})",
-                    quote(table)
-                ),
-                rusqlite::params_from_iter(values),
-            )?;
+            let rowid = id.map(SqlValue::Integer).unwrap_or(SqlValue::Null);
+            let parameters = plan
+                .rowid
+                .map(|_| &rowid)
+                .into_iter()
+                .chain(plan.columns.iter().map(|name| &values[name].0));
+            db.prepare_cached(&plan.sql)?
+                .execute(rusqlite::params_from_iter(parameters))?;
         }
     }
     for record in &records {

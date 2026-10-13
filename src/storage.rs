@@ -8,7 +8,7 @@ use rusqlite::{
 };
 use std::{
     fs::{self, File, OpenOptions},
-    io::Write,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
 };
 pub(crate) const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
@@ -16,6 +16,7 @@ pub(crate) const MAX_SNAPSHOT: usize = 256 * 1024 * 1024;
 pub(crate) struct ReadableFile {
     pub path: PathBuf,
     _lock: File,
+    cache: readable::SnapshotCache,
 }
 impl ReadableFile {
     pub fn open(path: &Path) -> Result<Self> {
@@ -41,17 +42,32 @@ impl ReadableFile {
             .open(PathBuf::from(lock))?;
         lock.try_lock_exclusive()
             .map_err(|_| Error("readable database is locked".into()))?;
-        Ok(Self { path, _lock: lock })
+        Ok(Self {
+            path,
+            _lock: lock,
+            cache: readable::SnapshotCache::default(),
+        })
+    }
+    pub fn watch(&self, db: &Connection) -> Result<()> {
+        self.cache.watch(db)
+    }
+    pub fn export(&self, db: &Connection) -> Result<Vec<u8>> {
+        self.cache.export(db)
     }
     pub fn publish(&self, db: &Connection) -> Result<()> {
-        let bytes = readable::encode(db)?;
-        let parent = self.path.parent().unwrap();
-        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-        temp.write_all(&bytes)?;
-        temp.as_file().sync_all()?;
-        temp.persist(&self.path).map_err(|e| Error(e.to_string()))?;
-        File::open(parent)?.sync_all()?;
-        Ok(())
+        self.cache.publish(db, |snapshot| {
+            let parent = self.path.parent().unwrap();
+            let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+            {
+                let mut writer = BufWriter::with_capacity(64 * 1024, temp.as_file_mut());
+                snapshot.write(&mut writer)?;
+                writer.flush()?;
+            }
+            temp.as_file().sync_all()?;
+            temp.persist(&self.path).map_err(|e| Error(e.to_string()))?;
+            File::open(parent)?.sync_all()?;
+            Ok(())
+        })
     }
 }
 pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<()> {

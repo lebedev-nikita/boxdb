@@ -19,7 +19,7 @@ hex = "0.4"
 fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
-rusqlite = { version = "0.40.2", features = ["bundled", "functions", "backup", "column_metadata", "hooks"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "functions", "backup", "column_metadata", "hooks", "preupdate_hook"] }
 
 [dev-dependencies]
 sha2 = "0.10"

@@ -66,7 +66,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes musl-tools
+          sudo apt-get install --yes musl-tools libclang-dev
       - name: Build CLI
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -131,6 +131,8 @@ jobs:
           toolchain: stable
       - name: Test database and verify source package
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes libclang-dev
           cargo test --locked
           cargo package --locked
       - name: Upload source archive

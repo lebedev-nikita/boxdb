@@ -181,6 +181,7 @@ impl Database {
                     Connection::open_in_memory()?
                 };
                 let mut db = Self::new(connection, false)?;
+                file.watch(&db.connection)?;
                 if !path.exists() || path.metadata()?.len() == 0 {
                     file.publish(&db.connection)?;
                 }
@@ -213,7 +214,10 @@ impl Database {
                 // Hold one SQLite read snapshot across the codec's schema and
                 // table scans, even when another connection commits meanwhile.
                 let transaction = self.connection.unchecked_transaction()?;
-                readable::encode(&transaction)
+                match &self.readable {
+                    Some(file) => file.export(&transaction),
+                    None => readable::encode(&transaction),
+                }
             }
         }
     }

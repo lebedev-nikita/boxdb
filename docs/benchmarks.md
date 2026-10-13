@@ -1,8 +1,9 @@
-# SQLite vs BoxDB client
+# SQLite vs BoxDB storage
 
-Both clients now use bundled SQLite and ordinary SQLite files. This benchmark
-measures BoxDB's public API and type-validation overhead relative to direct
-rusqlite, including result allocation and durable commits.
+Both clients use bundled SQLite. By default, both store ordinary SQLite files;
+`--boxdb-format yaml` instead measures BoxDB's readable YAML storage against
+file-backed rusqlite. Timings include BoxDB's public API, result allocation,
+type validation and durable publication.
 
 ```sh
 cargo bench --locked --bench sqlite_vs_boxdb
@@ -12,6 +13,9 @@ cargo bench --locked --bench sqlite_vs_boxdb -- \
   --json /tmp/boxdb-benchmark.json
 cargo bench --locked --bench sqlite_vs_boxdb -- \
   --rows 1000 --samples 7 --read-repetitions 20 --typed --json /tmp/boxdb-typed-benchmark.json
+cargo bench --locked --bench sqlite_vs_boxdb -- \
+  --boxdb-format yaml --rows 10000 --samples 5 --read-repetitions 20 \
+  --json /tmp/boxdb-yaml-benchmark.json
 ```
 
 No SQLite CLI installation is needed. Every sample creates a fresh temporary
@@ -56,7 +60,7 @@ specific to that dataset.
 
 ## Comparable settings
 
-Defaults match both clients: WAL, FULL synchronization, `fullfsync=ON`, normal
+Binary-mode defaults match both clients: WAL, FULL synchronization, `fullfsync=ON`, normal
 locking, foreign keys enabled, a five-second busy timeout, and a prepared
 statement cache of 512 entries. See SQLite's
 [synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous),
@@ -64,6 +68,12 @@ statement cache of 512 entries. See SQLite's
 [locking](https://www.sqlite.org/pragma.html#pragma_locking_mode) references.
 The `--sqlite-*` switches change only the reference client; non-default reports
 must be interpreted using their saved configuration.
+
+YAML mode executes SQL in memory and atomically replaces a complete YAML file
+on each commit, synchronizing the temporary file and its parent directory. Its
+reads do not include file access after opening. These are different storage
+architectures, so YAML ratios compare end-to-end behavior rather than client
+overhead alone. The SQLite reference settings are unchanged in YAML runs.
 
 Both clients materialize owned Rust rows. BoxDB additionally returns column
 names, supports SQL batches, monitors external changes and decodes extended
@@ -80,9 +90,9 @@ Reopening includes a full scan because SQLite opens files lazily. The OS cache
 is not flushed, so results represent a warm cache. Run on an idle machine and
 compare multiple dataset and batch sizes on the same filesystem. Local timings
 are not universal performance claims or CI pass/fail thresholds. CI separately
-checks correctness on a small dataset in both ordinary and typed modes.
+checks correctness on a small dataset in binary and typed YAML modes.
 
-## Current reports
+## Binary reports
 
 All three runs use seven measured samples, 100 read queries repeated 20 times
 per workload, INSERT batches of 100, and 20 writes on macOS ARM64 with matching
@@ -112,6 +122,55 @@ flushes and background load.
 After insertion, ordinary schemas use 144,208 bytes at 1,000 rows and 1,108,288
 bytes at 10,000 rows for either client (main file plus WAL). The typed run uses
 152,448 bytes for BoxDB versus 144,208 for SQLite, including BoxDB's metadata.
+
+## YAML reports
+
+The before/after runs use five measured samples, 100 queries repeated 20 times,
+INSERT batches of 100, and 20 writes on the same macOS ARM64 filesystem with
+the same SQLite reference settings. The before implementation is the YAML
+codec from `380942b`, with the YAML benchmark option added.
+
+- 1,000 rows: [before](../benchmarks/results/yaml-before.json),
+  [after](../benchmarks/results/yaml-after.json).
+- 10,000 rows: [before](../benchmarks/results/yaml-before-10000.json),
+  [after](../benchmarks/results/yaml-after-10000.json).
+
+The 10,000-row measurements below include all eight database workloads.
+Latency is microseconds per row, query or database as listed above. Speedup
+divides the old YAML latency by the new YAML latency; the last two columns
+divide each run's YAML latency by its own SQLite reference latency.
+
+| Workload | YAML before µs | YAML after µs | YAML speedup | Before / SQLite | After / SQLite |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `insert_transaction` | 5.426 | 3.199 | 1.70x | 3.37x | 2.00x |
+| `point_lookup` | 0.832 | 0.931 | 0.89x | 0.56x | 0.62x |
+| `range_scan` | 8.972 | 9.794 | 0.92x | 0.92x | 1.04x |
+| `aggregate` | 1,293.989 | 1,302.257 | 0.99x | 1.00x | 1.00x |
+| `update_transaction` | 2,182.960 | 617.600 | 3.53x | 6.49x | 2.11x |
+| `update_autocommit` | 41,259.506 | 11,349.894 | 3.64x | 9.08x | 2.52x |
+| `delete_transaction` | 2,016.517 | 568.642 | 3.55x | 8.48x | 2.89x |
+| `reopen_scan` | 205,016.333 | 87,242.042 | 2.35x | 78.98x | 38.65x |
+
+At 1,000 rows, opening and scanning falls from 21.489 ms to 8.337 ms (2.58x),
+and an autocommit update from 14.050 ms to 10.044 ms (1.40x). The corresponding
+YAML/SQLite ratios fall from 32.40x to 12.11x and from 2.58x to 2.17x.
+Read workloads already execute in memory; these measurements show no read
+speedup. In the 10,000-row run, point and range queries are slightly slower,
+by 0.099 µs and 0.822 µs respectively. Opening remains much slower than SQLite,
+which loads pages on demand instead of parsing a complete text database.
+
+Import reuses table layouts and prepared INSERTs. Export streams borrowed
+SQLite cells; publication retains encoded rows and regenerates only changed
+rows before writing the complete file. Both synchronization calls and atomic
+replacement are preserved. Single-row commits remain limited by full-file
+writes and filesystem synchronization; explicit transactions amortize these
+costs. See [readable storage](storage.md#independent-readable-yaml-stream) for
+cache memory costs and tables that require complete reserialization.
+
+The YAML files remain 177,060 bytes at 1,000 rows and 1,787,072 bytes at 10,000
+rows after insertion. The SQLite reference uses 144,208 and 1,108,288 bytes
+respectively, including WAL. This workload measures integer/text rows, not
+large BLOBs or expensive logical type validators.
 
 ## Previous storage implementations
 

@@ -9,7 +9,8 @@ in version 0 and does not preserve old BoxDB file or API compatibility.
 
 ## Get started
 
-Install from this checkout with a current Rust toolchain and native build tools:
+Install from this checkout with a current Rust toolchain, native build tools and
+libclang (Xcode Command Line Tools on macOS; `libclang-dev` on Debian/Ubuntu):
 
 ```sh
 cargo install --path . --locked
@@ -101,6 +102,7 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 cargo test --locked --test litestream -- --ignored
 cargo bench --locked --bench sqlite_vs_boxdb
+cargo bench --locked --bench sqlite_vs_boxdb -- --boxdb-format yaml
 ```
 
 The Litestream integration test requires the original `litestream` executable.

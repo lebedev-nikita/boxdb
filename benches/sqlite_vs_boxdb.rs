@@ -13,7 +13,7 @@ const SCHEMA: &str = "CREATE TABLE records (
 const ALL_ROWS: &str = "SELECT id,category,score,payload FROM records ORDER BY id";
 
 #[derive(Parser, Serialize)]
-#[command(about = "Compare file-backed SQLite and binary BoxDB (release profile)")]
+#[command(about = "Compare file-backed SQLite and BoxDB binary or YAML storage (release profile)")]
 struct Config {
     /// Number of deterministic rows.
     #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
@@ -45,6 +45,9 @@ struct Config {
     /// Validate payload as VARCHAR(100); SQLite uses its equivalent CHECK.
     #[arg(long)]
     typed: bool,
+    /// BoxDB storage to compare with the direct SQLite client.
+    #[arg(long, default_value = "binary", value_parser = ["binary", "yaml"])]
+    boxdb_format: String,
     /// Existing parent directory for temporary databases (selects the filesystem).
     #[arg(long)]
     directory: Option<PathBuf>,
@@ -61,6 +64,7 @@ struct Config {
 enum Engine {
     Sqlite,
     Boxdb,
+    Yaml,
 }
 
 impl Engine {
@@ -68,12 +72,13 @@ impl Engine {
         match self {
             Self::Sqlite => "SQLite",
             Self::Boxdb => "BoxDB binary",
+            Self::Yaml => "BoxDB YAML",
         }
     }
 }
 
 enum Backend {
-    Sqlite(Connection, bool),
+    Sqlite(Box<Connection>, bool),
     Boxdb(Box<Database>),
 }
 
@@ -97,9 +102,16 @@ impl Backend {
                     },
                 )?;
                 db.set_prepared_statement_cache_capacity(512);
-                Self::Sqlite(db, config.sqlite_cached)
+                Self::Sqlite(Box::new(db), config.sqlite_cached)
             }
-            Engine::Boxdb => Self::Boxdb(Box::new(Database::open(path, Format::Binary)?)),
+            Engine::Boxdb | Engine::Yaml => Self::Boxdb(Box::new(Database::open(
+                path,
+                if matches!(engine, Engine::Yaml) {
+                    Format::Readable
+                } else {
+                    Format::Binary
+                },
+            )?)),
         })
     }
 
@@ -297,11 +309,15 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
         Some(parent) => tempfile::tempdir_in(parent)?,
         None => tempfile::tempdir()?,
     };
-    let path = temp.path().join("data.db");
+    let path = temp.path().join(if matches!(engine, Engine::Yaml) {
+        "data.yaml"
+    } else {
+        "data.db"
+    });
     let mut db = Backend::open(engine, &path, config)?;
     if config.typed {
         let schema = match engine {
-            Engine::Boxdb => {
+            Engine::Boxdb | Engine::Yaml => {
                 SCHEMA.replace("payload TEXT NOT NULL", "payload VARCHAR(100) NOT NULL")
             }
             Engine::Sqlite => SCHEMA.replace(
@@ -445,8 +461,9 @@ fn main() -> Result<()> {
     let config = Config::parse();
     let workload = Workload::new(&config);
     println!(
-        "BoxDB {} (binary) vs SQLite {} | {}/{}",
+        "BoxDB {} ({}) vs SQLite {} | {}/{}",
         env!("CARGO_PKG_VERSION"),
+        config.boxdb_format,
         rusqlite::version(),
         std::env::consts::OS,
         std::env::consts::ARCH
@@ -465,6 +482,11 @@ fn main() -> Result<()> {
         config.typed
     );
     let mut samples = Vec::new();
+    let boxdb = if config.boxdb_format == "yaml" {
+        Engine::Yaml
+    } else {
+        Engine::Boxdb
+    };
     for iteration in 0..=config.samples {
         eprintln!(
             "{} {iteration}/{}",
@@ -473,9 +495,9 @@ fn main() -> Result<()> {
         );
         // Alternate order to reduce systematic filesystem/cache/thermal bias.
         let engines = if iteration % 2 == 0 {
-            [Engine::Sqlite, Engine::Boxdb]
+            [Engine::Sqlite, boxdb]
         } else {
-            [Engine::Boxdb, Engine::Sqlite]
+            [boxdb, Engine::Sqlite]
         };
         for engine in engines {
             let result = sample(engine, &config, &workload)?;
@@ -492,7 +514,7 @@ fn main() -> Result<()> {
     let mut comparisons = Vec::new();
     for (index, timing) in samples[0].timings.iter().enumerate() {
         let mut per_unit = Vec::new();
-        for engine in [Engine::Sqlite, Engine::Boxdb] {
+        for engine in [Engine::Sqlite, boxdb] {
             let elapsed = samples
                 .iter()
                 .filter(|s| s.engine == engine.name())
@@ -522,7 +544,7 @@ fn main() -> Result<()> {
         );
         comparisons.push(comparison);
     }
-    for engine in [Engine::Sqlite, Engine::Boxdb] {
+    for engine in [Engine::Sqlite, boxdb] {
         let bytes = median(
             samples
                 .iter()
