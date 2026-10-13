@@ -29,7 +29,16 @@ fn cli_prints_standalone_values_with_column_names() {
 fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("data.jsonl");
-    let first = Command::new(BIN).arg(&path).args(["--format","readable","-e","CREATE TABLE t(n INTEGER,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t"]).output().unwrap();
+    let first = Command::new(BIN)
+        .arg(&path)
+        .args([
+            "--format",
+            "readable",
+            "-e",
+            "CREATE TABLE t(n INT4,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t",
+        ])
+        .output()
+        .unwrap();
     assert!(
         first.status.success(),
         "{}",
@@ -46,11 +55,11 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     assert_eq!(result["rows"][0][0]["Integer"], 1);
     let bad = Command::new(BIN)
         .arg(&path)
-        .args(["-e", "INSERT INTO t VALUES('1','wrong')"])
+        .args(["-e", "INSERT INTO t VALUES(2147483648,'wrong')"])
         .output()
         .unwrap();
     assert!(!bad.status.success());
-    assert!(String::from_utf8_lossy(&bad.stderr).contains("type mismatch"));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("CHECK"));
     assert!(
         std::fs::read_to_string(&path)
             .unwrap()
@@ -99,4 +108,22 @@ fn cli_reads_sql_from_stdin_and_converts_without_overwriting_destination() {
         .output()
         .unwrap();
     assert!(!again.status.success());
+}
+
+#[test]
+fn cli_accepts_multiline_sqlite_trigger_bodies() {
+    let mut child = Command::new(BIN)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"CREATE TABLE t(n INTEGER);\nCREATE TABLE log(n INTEGER);\nCREATE TRIGGER track AFTER INSERT ON t BEGIN\n INSERT INTO log VALUES(NEW.n);\n INSERT INTO log VALUES(NEW.n+1);\nEND;\nINSERT INTO t VALUES(5);\nSELECT n FROM log ORDER BY n;\n").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "n\n5\n6");
 }

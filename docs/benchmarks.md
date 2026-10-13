@@ -1,28 +1,29 @@
-# SQLite vs binary BoxDB
+# SQLite vs BoxDB client
 
-Run the embedded Rust APIs in Cargo's optimized benchmark profile:
+Both clients now use bundled SQLite and ordinary SQLite files. This benchmark
+measures BoxDB's public API and type-validation overhead relative to direct
+rusqlite, including result allocation and durable commits.
 
 ```sh
 cargo bench --locked --bench sqlite_vs_boxdb
 cargo bench --locked --bench sqlite_vs_boxdb -- --help
 cargo bench --locked --bench sqlite_vs_boxdb -- \
-  --rows 1000 --samples 5 --reads 100 --batch-size 100 --writes 20 \
+  --rows 1000 --samples 7 --reads 100 --read-repetitions 20 --batch-size 100 --writes 20 \
   --json /tmp/boxdb-benchmark.json
+cargo bench --locked --bench sqlite_vs_boxdb -- \
+  --rows 1000 --samples 7 --read-repetitions 20 --typed --json /tmp/boxdb-typed-benchmark.json
 ```
 
-SQLite is bundled through the development-only `rusqlite` dependency; no SQLite
-CLI installation is needed. Both engines create fresh temporary files for every
-sample. Use `--directory /existing/path` to choose the filesystem. Temporary
-databases are removed automatically; the JSON report is kept at the requested path.
+No SQLite CLI installation is needed. Every sample creates a fresh temporary
+database; `--directory /existing/path` selects its filesystem. Temporary
+databases are removed automatically; requested JSON reports are retained.
 
-## What is measured
+## Measurement
 
 [The harness](../benches/sqlite_vs_boxdb.rs) generates identical deterministic
-integer/text rows, SQL and expected results before timing. Both databases have
-the same primary key and explicit ID index. Every workload is checked against
-expected rows outside its timer, including persisted data after reopening.
-Text payloads contain an ID prefix and a deterministic SHA-256 hex digest;
-file-size results depend on this dataset.
+integer/text rows, SQL and expected results outside timers. Both clients have
+an INTEGER primary key and an additional explicit ID index. Every workload is
+verified, including committed data after reopening.
 
 | Workload | Timed work | Latency unit |
 | --- | --- | --- |
@@ -35,83 +36,101 @@ file-size results depend on this dataset.
 | `delete_transaction` | Point DELETEs inside one BEGIN/COMMIT | Deleted row |
 | `reopen_scan` | Open the committed file and read all remaining rows | Database |
 
-Updates run twice on the same selected rows, then deletion removes those rows.
-`--writes` is capped at the dataset size. Read workloads run before mutations;
-each query is verified and warmed before measurement. Writes include transaction
-and commit costs. Schema creation, SQL generation and correctness checks are
-excluded. The file size is measured after insertion, excluding sidecars.
+Updates run twice on selected rows, then deletion removes them. `--writes` is
+capped at the dataset size. Read workloads run before mutations; every query is
+verified and warmed before timing. The warmed set is repeated according to
+`--read-repetitions`; latency is divided by the total executed queries. Schema
+creation and correctness checks are excluded. Writes include transaction and commit costs, and the initial
+preparation of previously unseen SQL.
 
-One complete sample per engine warms the process and is discarded. Subsequent
-samples alternate engine order. The table reports median microseconds per unit;
-`BoxDB/SQLite` is BoxDB's median latency divided by SQLite's median latency for
-the same workload and unit. Above 1 means BoxDB took longer; below 1 means it was
-faster. JSON includes configuration, engine versions, OS/architecture, raw sample
-durations, medians, and a `comparisons` array with `boxdb_over_sqlite`.
+One full warmup sample per client is discarded. Measured samples alternate
+client order. Reports contain raw durations, medians, configuration, SQLite
+version and OS/architecture. `BoxDB/SQLite` divides BoxDB's median microseconds
+per unit by SQLite's median for the same workload. Above 1 means BoxDB takes
+longer. The console and JSON `comparisons[].boxdb_over_sqlite` always show it.
 
-## How to interpret results
+Storage sizes are sampled after insertion: `database_bytes`, `wal_bytes` and
+`total_storage_bytes` include the main file and WAL, excluding shared-memory
+and lock files. Text payloads include deterministic SHA-256 digests; sizes are
+specific to that dataset.
 
-BoxDB explicitly uses `Format::Binary`. SQLite uses `journal_mode=DELETE` and
-`synchronous=EXTRA`, with these defaults:
+## Comparable settings
 
-- `--sqlite-fullfsync true` enables SQLite's hardware flush on macOS, matching
-  Rust's `File::sync_all` behavior there. It has no effect on other platforms.
-- `--sqlite-cached true` reuses prepared statements for reads and writes. BoxDB
-  caches parsed SQL and bound read plans internally.
-- `--sqlite-exclusive true` holds SQLite's file locks for the connection
-  lifetime, matching BoxDB's exclusive connection policy.
-
-See SQLite's [synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous),
+Defaults match both clients: WAL, FULL synchronization, `fullfsync=ON`, normal
+locking, foreign keys enabled, a five-second busy timeout, and a prepared
+statement cache of 512 entries. See SQLite's
+[synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous),
 [fullfsync](https://www.sqlite.org/pragma.html#pragma_fullfsync), and
-[locking-mode](https://www.sqlite.org/pragma.html#pragma_locking_mode) documentation.
-These settings do not make failure guarantees or storage architectures identical.
-BoxDB holds typed rows in memory and synchronizes native changed-cell log records;
-SQLite updates pages through its rollback journal. Both include durable commit
-costs. Automatic BoxDB checkpoints are included if triggered by the workload.
+[locking](https://www.sqlite.org/pragma.html#pragma_locking_mode) references.
+The `--sqlite-*` switches change only the reference client; non-default reports
+must be interpreted using their saved configuration.
 
-Both engines materialize results into owned Rust values. The harness measures
-public API execution, result allocation and persistence, rather than an isolated
-file codec. Prepared reads are warmed before timing; writes include the first
-preparation of previously unseen statements.
+Both clients materialize owned Rust rows. BoxDB additionally returns column
+names, supports SQL batches, monitors external changes and decodes extended
+types. Ordinary SQLite SQL bypasses the BoxDB DDL parser. Prepared SQL and
+column-type information are cached; external changes invalidate type caches.
 
-The original reports used uncached SQLite statements, normal locking and
-`fullfsync=OFF`. To rerun that configuration against the current BoxDB:
+With `--typed`, BoxDB declares the payload as VARCHAR(100), adding metadata and
+connection-local validation triggers. The reference uses TEXT with an equivalent
+length CHECK. Both enforce the length bound, while BoxDB also preserves its
+logical schema and validates values on reads. This measures one inexpensive
+type check, not UUID, JSON, decimal, date or array parsing costs.
 
-```sh
-cargo bench --locked --bench sqlite_vs_boxdb -- \
-  --sqlite-fullfsync false --sqlite-cached false --sqlite-exclusive false \
-  --json /tmp/boxdb-historical-sqlite.json
-```
+Reopening includes a full scan because SQLite opens files lazily. The OS cache
+is not flushed, so results represent a warm cache. Run on an idle machine and
+compare multiple dataset and batch sizes on the same filesystem. Local timings
+are not universal performance claims or CI pass/fail thresholds. CI separately
+checks correctness on a small dataset in both ordinary and typed modes.
 
-On macOS the old configuration performs a stronger flush for BoxDB than for
-SQLite. Retaining it allows historical comparison; the default mode makes that
-flush setting explicit and also gives SQLite prepared-statement and locking
-optimizations.
+## Current reports
 
-Reopening includes a full scan because SQLite opens files lazily. The operating
-system cache is not flushed, so this is a warm-cache comparison, not a cold-disk
-test. Run on an idle machine and compare several dataset and batch sizes on the
-same filesystem. Results are local measurements, not universal performance
-claims; timings are not CI pass/fail thresholds.
+All three runs use seven measured samples, 100 read queries repeated 20 times
+per workload, INSERT batches of 100, and 20 writes on macOS ARM64 with matching
+default settings:
 
-CI runs the harness on a small dataset with `cargo test --bench sqlite_vs_boxdb`
-to catch SQL or persistence regressions. That smoke test uses the unoptimized
-test profile; use `cargo bench` for performance measurements.
+- [1,000 rows](../benchmarks/results/sqlite-client.json).
+- [10,000 rows](../benchmarks/results/sqlite-client-10000.json).
+- [1,000 rows with VARCHAR validation](../benchmarks/results/sqlite-client-typed.json).
 
-## Saved comparison
+| Workload | 1,000 rows | 10,000 rows | 1,000 rows, VARCHAR |
+| --- | ---: | ---: | ---: |
+| `insert_transaction` | 1.00x | 1.05x | 1.03x |
+| `point_lookup` | 1.23x | 1.25x | 1.22x |
+| `range_scan` | 1.10x | 1.11x | 1.11x |
+| `aggregate` | 1.00x | 1.00x | 1.02x |
+| `update_transaction` | 1.05x | 1.18x | 1.26x |
+| `update_autocommit` | 0.98x | 1.01x | 1.01x |
+| `delete_transaction` | 1.00x | 0.96x | 1.02x |
+| `reopen_scan` | 1.15x | 1.12x | 1.24x |
 
-All reports retain raw samples and `BoxDB/SQLite` ratios. The 1,000-row runs use
-five measured samples, 100 reads, batches of 100, and 20 writes on macOS ARM64:
+These are BoxDB/SQLite ratios. In the 1,000-row ordinary-schema run, point
+lookups take 1.784 µs versus 1.452 µs, an added 0.332 µs.
+The largest measured ratio across these runs is 1.26x; richer type parsing can
+cost more than the VARCHAR case. Durable write timings also vary with filesystem
+flushes and background load.
 
-- [Before](../benchmarks/results/before.json): v1 compressed JSONL at commit
-  `e2b2cf4`, with the original SQLite configuration.
+After insertion, ordinary schemas use 144,208 bytes at 1,000 rows and 1,108,288
+bytes at 10,000 rows for either client (main file plus WAL). The typed run uses
+152,448 bytes for BoxDB versus 144,208 for SQLite, including BoxDB's metadata.
+
+## Previous storage implementations
+
+Earlier reports are retained unchanged for comparison. Their SQLite reference
+used a DELETE rollback journal and EXTRA synchronization, whereas the current
+clients both use SQLite WAL/FULL. Their ratios describe their own experiments;
+changes in the reference settings prevent treating them as a single controlled
+before/after speedup measurement.
+
+- [Before](../benchmarks/results/before.json): v1 compressed JSONL, original
+  SQLite settings (uncached, normal locking, fullfsync off).
 - [First optimization](../benchmarks/results/after.json): v2 native snapshots,
-  with the original SQLite configuration. This intermediate result is retained.
-- [Optimized, historical SQLite](../benchmarks/results/optimized-historical-sqlite.json):
-  v3 commit log and optimized executor, with the original SQLite configuration.
-- [Optimized, matched settings](../benchmarks/results/optimized.json): v3, with
-  the current default flush, cache and locking settings.
-- [10,000 rows](../benchmarks/results/optimized-10000.json): the same current
-  defaults and five samples, at a larger dataset size.
+  original SQLite settings.
+- [Optimized with historical SQLite settings](../benchmarks/results/optimized-historical-sqlite.json):
+  v3 native commit log and executor, original SQLite settings.
+- [Optimized with matched native-engine settings](../benchmarks/results/optimized.json):
+  v3, SQLite prepared statements, exclusive locking and fullfsync on.
+- [10,000 native-engine rows](../benchmarks/results/optimized-10000.json):
+  v3 with those matched settings.
 
 | Workload | v1 / historical SQLite | v3 / historical SQLite | v3 / matched SQLite |
 | --- | ---: | ---: | ---: |
@@ -124,20 +143,8 @@ five measured samples, 100 reads, batches of 100, and 20 writes on macOS ARM64:
 | `delete_transaction` | 138.97x | 13.91x | 0.27x |
 | `reopen_scan` | 18.76x | 3.59x | 2.35x |
 
-Compare the first two numeric columns to evaluate the historical ratio change.
-The third uses a different SQLite denominator and must not be treated as the
-same experiment. At matched settings, BoxDB is faster in seven workloads here;
-reopening and scanning remains slower. At 10,000 rows, matched ratios range from
-0.21x to 0.76x except reopening at 2.90x.
-
-Reports record the compiler, Git base revision, collection time, binary version,
-and source SHA-256. New reports identify uncommitted source changes; their Git
-base alone does not describe the measured implementation. The fingerprint hashes
+Saved reports also record compiler, Git base revision, collection time, storage
+format and source SHA-256. When source changes were uncommitted, the Git base
+alone does not identify the measured implementation. The fingerprint hashes
 sorted `src/**/*.rs`, `benches/**/*.rs`, `Cargo.toml` and `Cargo.lock`, concatenating
-each relative path, a NUL separator and its contents. Historical timing samples
-are unchanged; their comparison fields were derived from their saved medians.
-
-File sizes are not directly comparable compression ratios: v1 compressed the
-snapshot, while v2 and v3 store native cells without compression. V3 files also
-include appended commit frames until a checkpoint. Compare latency and storage
-size separately.
+each relative path, a NUL separator and its contents.

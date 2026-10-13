@@ -15,7 +15,7 @@ const ALL_ROWS: &str = "SELECT id,category,score,payload FROM records ORDER BY i
 #[derive(Parser, Serialize)]
 #[command(about = "Compare file-backed SQLite and binary BoxDB (release profile)")]
 struct Config {
-    /// Number of deterministic rows (BoxDB INTEGER is 32-bit).
+    /// Number of deterministic rows.
     #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
     rows: u32,
     /// Measured samples per engine, after one discarded warmup sample.
@@ -24,21 +24,27 @@ struct Config {
     /// Queries per read workload.
     #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
     reads: u32,
+    /// Repeat the warmed query set to reduce noise in short query timings.
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..))]
+    read_repetitions: u32,
     /// Rows per multi-value INSERT; all INSERTs share one transaction.
     #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
     batch_size: u32,
     /// Point updates/deletes per workload, capped at --rows.
     #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..))]
     writes: u32,
-    /// Match BoxDB's hardware flush on macOS (false reproduces older reports).
+    /// Match BoxDB's hardware flush on macOS (off uses SQLite's weaker flush).
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     sqlite_fullfsync: bool,
-    /// Reuse SQLite prepared statements; BoxDB caches parsed SQL and bound plans.
+    /// Reuse SQLite prepared statements (BoxDB also uses prepare_cached).
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     sqlite_cached: bool,
-    /// Hold SQLite's lock for the connection lifetime, as BoxDB does.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    /// Hold SQLite's lock for the connection lifetime (off matches BoxDB).
+    #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     sqlite_exclusive: bool,
+    /// Validate payload as VARCHAR(100); SQLite uses its equivalent CHECK.
+    #[arg(long)]
+    typed: bool,
     /// Existing parent directory for temporary databases (selects the filesystem).
     #[arg(long)]
     directory: Option<PathBuf>,
@@ -76,10 +82,11 @@ impl Backend {
         Ok(match engine {
             Engine::Sqlite => {
                 let db = Connection::open(path)?;
-                // DELETE avoids deferred WAL checkpoints; EXTRA syncs the directory
-                // after journal deletion. Neither engine disables durable writes.
-                db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA")?;
+                // Both clients use SQLite WAL, FULL synchronization and normal locks.
+                db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL")?;
                 db.pragma_update(None, "fullfsync", config.sqlite_fullfsync)?;
+                db.pragma_update(None, "foreign_keys", true)?;
+                db.busy_timeout(std::time::Duration::from_secs(5))?;
                 db.pragma_update(
                     None,
                     "locking_mode",
@@ -280,6 +287,8 @@ fn verify(db: &mut Backend, sql: &str, expected: &Rows) -> Result<()> {
 struct Sample {
     engine: &'static str,
     database_bytes: u64,
+    wal_bytes: u64,
+    total_storage_bytes: u64,
     timings: Vec<Timing>,
 }
 
@@ -290,8 +299,21 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
     };
     let path = temp.path().join("data.db");
     let mut db = Backend::open(engine, &path, config)?;
-    db.execute(SCHEMA)?;
-    // An explicit index makes BoxDB's equality lookup use its index too.
+    if config.typed {
+        let schema = match engine {
+            Engine::Boxdb => {
+                SCHEMA.replace("payload TEXT NOT NULL", "payload VARCHAR(100) NOT NULL")
+            }
+            Engine::Sqlite => SCHEMA.replace(
+                "payload TEXT NOT NULL",
+                "payload TEXT NOT NULL CHECK(length(payload)<=100)",
+            ),
+        };
+        db.execute(&schema)?;
+    } else {
+        db.execute(SCHEMA)?;
+    }
+    // Both clients have identical schemas, including the explicit ID index.
     db.execute("CREATE INDEX records_id ON records(id)")?;
     let mut timings = Vec::new();
     measure(
@@ -303,17 +325,28 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
     )?;
     verify(&mut db, ALL_ROWS, &workload.rows)?;
     let database_bytes = std::fs::metadata(&path)?.len();
+    let wal_bytes = std::fs::metadata(path.with_file_name("data.db-wal"))
+        .map(|m| m.len())
+        .unwrap_or(0);
     for read in &workload.reads {
         // Verify and warm each query before timing; both engines materialize rows.
         for (sql, expected) in &read.queries {
             verify(&mut db, sql, expected)?;
         }
-        measure(&mut timings, read.name, "query", read.queries.len(), || {
-            for (sql, _) in &read.queries {
-                black_box(db.query(sql)?);
-            }
-            Ok(())
-        })?;
+        measure(
+            &mut timings,
+            read.name,
+            "query",
+            read.queries.len() * config.read_repetitions as usize,
+            || {
+                for _ in 0..config.read_repetitions {
+                    for (sql, _) in &read.queries {
+                        black_box(db.query(sql)?);
+                    }
+                }
+                Ok(())
+            },
+        )?;
     }
     let mut expected = workload.rows.clone();
     for (name, in_transaction) in [("update_transaction", true), ("update_autocommit", false)] {
@@ -356,11 +389,13 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
     if persisted.as_ref() != Some(&expected) {
         return Err("reopened database differs from committed rows".into());
     }
-    // Release BoxDB's file lock before deleting the temporary directory.
+    // Close both clients before deleting the temporary directory.
     drop(reopened);
     Ok(Sample {
         engine: engine.name(),
         database_bytes,
+        wal_bytes,
+        total_storage_bytes: database_bytes + wal_bytes,
         timings,
     })
 }
@@ -417,15 +452,17 @@ fn main() -> Result<()> {
         std::env::consts::ARCH
     );
     println!(
-        "rows={} samples={} reads={} batch_size={} writes={} | SQLite DELETE/EXTRA fullfsync={} cached={} exclusive={}",
+        "rows={} samples={} reads={} read_repetitions={} batch_size={} writes={} | SQLite WAL/FULL fullfsync={} cached={} exclusive={} typed={}",
         config.rows,
         config.samples,
         config.reads,
+        config.read_repetitions,
         config.batch_size,
         workload.updates.len(),
         config.sqlite_fullfsync,
         config.sqlite_cached,
-        config.sqlite_exclusive
+        config.sqlite_exclusive,
+        config.typed
     );
     let mut samples = Vec::new();
     for iteration in 0..=config.samples {
@@ -490,11 +527,11 @@ fn main() -> Result<()> {
             samples
                 .iter()
                 .filter(|s| s.engine == engine.name())
-                .map(|s| s.database_bytes as f64)
+                .map(|s| s.total_storage_bytes as f64)
                 .collect(),
         );
         println!(
-            "{} file after insert: {bytes:.0} bytes (sidecars excluded)",
+            "{} storage after insert: {bytes:.0} bytes (main + WAL, SHM excluded)",
             engine.name()
         );
     }
@@ -505,7 +542,7 @@ fn main() -> Result<()> {
             os: std::env::consts::OS,
             arch: std::env::consts::ARCH,
             sqlite_settings: format!(
-                "journal_mode=DELETE; synchronous=EXTRA; fullfsync={}; locking_mode={}",
+                "journal_mode=WAL; synchronous=FULL; foreign_keys=ON; busy_timeout=5000; fullfsync={}; locking_mode={}",
                 if config.sqlite_fullfsync { "ON" } else { "OFF" },
                 if config.sqlite_exclusive {
                     "EXCLUSIVE"

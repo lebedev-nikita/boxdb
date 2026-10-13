@@ -1,77 +1,46 @@
-# S3 setup and recovery
+# Replication with Litestream
 
-Use this guide to back up an existing BoxDB file and restore a stored
-snapshot. Both storage formats are supported. The replication process can run
-while a database writer remains open.
-The CLI uses `Database::read_snapshot` to acquire the publication lock and read
-only committed bytes. Binary log appends and checkpoints cannot overlap this
-read; uploads begin after the lock is released. Keep both `.lock` and
-`.snapshot.lock` sidecars beside the database.
-
-## Configure access
-
-Use a dedicated bucket prefix for each database and one active publisher per
-prefix. Grant GetObject and PutObject access on the prefix and ListBucket access
-on the bucket: [S3 returns 403 instead of 404 for missing keys without
-ListBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
-
-Configure a static access-key profile in the [shared AWS credentials
-file](https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html), then select
-it and the bucket's region:
-
-```sh
-export AWS_PROFILE=backup
-export AWS_REGION=eu-central-1
-```
-
-Environment keys (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally
-`AWS_SESSION_TOKEN`) take precedence over profiles; partial credentials are an
-error. Use `AWS_SHARED_CREDENTIALS_FILE` to select another credentials file.
-SSO, role assumption, and metadata credential providers are not implemented.
+BoxDB binary files are ordinary SQLite databases in WAL mode. Use the original
+[Litestream](https://litestream.io/) to replicate their data and BoxDB's type
+metadata. BoxDB has no built-in replication, S3 credentials, or remote restore
+commands. Readable JSONL files are not Litestream databases; convert them to
+binary storage when continuous replication is needed.
 
 ## Replicate and restore
 
-Replace `my-backups` with your bucket. To stream committed snapshots, run:
+Install Litestream using its [installation guide](https://litestream.io/install/).
+For a local replica:
 
 ```sh
-boxdb replicate data.jsonl --bucket my-backups --prefix accounts
+litestream replicate data.db file:///absolute/path/to/replica
+litestream restore -o restored.db file:///absolute/path/to/replica
+boxdb restored.db -e 'SELECT * FROM accounts'
 ```
 
-The process retries failed uploads until stopped. Add `--once` for one
-synchronization; failure then exits with an error. For a local S3-compatible
-service, specify its endpoint and region:
+Keep the replication process running alongside your application. To sync once,
+use `litestream replicate -once data.db file:///absolute/path/to/replica`.
+Restore into a new destination. For S3 and other remote storage, configure
+credentials and replicas directly in Litestream; see its
+[configuration reference](https://litestream.io/reference/config/).
+
+Litestream requires WAL and opens its own SQLite connections. Keep normal
+locking; an exclusive connection prevents it from accessing the database.
+BoxDB's default busy timeout allows its writes to wait for short checkpoint
+locks. Checkpoint tuning belongs to Litestream configuration; see
+[tips and caveats](https://litestream.io/tips/).
+
+Replication is asynchronous. Local COMMIT success does not mean the replica has
+received that commit, and independent writers on separate replicas do not get
+conflict merging. Restore-point granularity depends on available replication
+files and retention. See [how Litestream works](https://litestream.io/how-it-works/).
+
+## Verify locally
 
 ```sh
-boxdb replicate data.jsonl --bucket backups --prefix accounts --once \
-  --endpoint http://localhost:9000 --region us-east-1
+cargo test --locked --test litestream -- --ignored --nocapture
 ```
 
-Restore into a new destination; the snapshot retains its original storage format:
-
-```sh
-boxdb restore restored.boxdb --bucket my-backups --prefix accounts
-```
-
-To recover an older snapshot, set `REVISION` to its revision hash from replication
-output and add `--revision "$REVISION"`. Use the same endpoint and region when
-restoring from an S3-compatible service. See `boxdb replicate --help` and
-`boxdb restore --help` for options.
-
-## Recovery limits
-
-Restore without `--revision` uses the last successfully published snapshot.
-An explicit revision can be restored if its manifest and blocks are complete,
-even if updating the latest pointer failed. Multiple commits between polls can
-coalesce, so changes after the last observed snapshot can be absent. Restore
-verifies snapshot integrity before creating the destination. BoxDB does not
-manage retention or remote garbage collection. Block reuse depends on the
-storage format and where edits occur within the snapshot.
-
-The client uses signed requests and path-style endpoints. Configure the correct
-region and endpoint; HTTP redirects and S3 Express directory buckets are not
-supported. BoxDB backups are incompatible with Litestream backups.
-
-The [replication implementation](../src/replication.rs) defines the object layout
-and publication protocol. [Local server tests](../tests/replication.rs) verify
-signatures, incremental uploads, retries, conflicts, corruption detection, and
-restore. Live AWS operation remains unverified.
+The test uses the installed original Litestream, a temporary file replica, and
+a live BoxDB writer. It replicates two batches, restores a new SQLite file, and
+checks typed results and validation after recovery. Local file replication was
+verified with Litestream 0.5.17; live cloud storage is not tested by this suite.

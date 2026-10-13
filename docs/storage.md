@@ -1,60 +1,75 @@
-# Storage formats
+# Storage and extended types
 
-BoxDB has two independent codecs over its typed state. Conversion decodes that
-state and encodes it in the destination format. Neither codec uses the other as
-an intermediate representation.
+## Binary SQLite
 
-Readable storage is deterministic UTF-8 JSONL for inspection and Git diffs.
-SQL declarations define column types, row IDs remain stable across edits, and
-cells are strings or nulls. Each commit atomically publishes a synchronized
-complete snapshot. See [the readable codec](../src/storage/readable.rs).
+`Format::Binary` is SQLite's standard file format. SQLite manages pages, indexes,
+transactions, locks, recovery, and the `-wal` and `-shm` sidecars. BoxDB opens
+binary databases in WAL mode with FULL synchronization, `fullfsync=ON` on macOS,
+foreign keys enabled, a five-second busy timeout, and normal locking. Other
+SQLite connections may use the file concurrently. Files containing BoxDB type
+metadata require SQLite 3.37 or later because that metadata table is STRICT.
 
-Binary v3 stores native cells and appends checksummed commits. It has no JSONL,
-numeric string casts for scalar integers/floats, hex blobs, or compression.
-Versions 1 and 2 are rejected without modifying the file. See
-[the binary codec](../src/storage/binary.rs).
+Do not copy only a live `.db` file while ignoring its WAL. Use SQLite's backup
+API, BoxDB export, or [Litestream](replication.md). Binary databases are not
+limited to the size of RAM; BoxDB materializes query results. Snapshot APIs
+currently limit imported/exported snapshots to 256 MiB.
 
-| Binary field | Representation |
+## Extended schema
+
+The ordinary `__boxdb_columns` table records logical types, their version and
+physical table declarations. SQLite clients can inspect it without extensions.
+BoxDB validates its metadata against the current schema, registers validators
+on its connection, and installs TEMP triggers for INSERT and UPDATE. Those
+triggers also validate writes caused by SQL expressions, INSERT SELECT and user
+triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
+
+Standard SQLite types keep SQLite behavior. BoxDB's extended type declarations
+are translated into physical types and, where applicable, portable CHECKs:
+
+| Logical type | SQLite representation |
 | --- | --- |
-| File header | `BOXDB\0\x03` |
-| Commit frame | Kind byte, payload length and its complement, SHA-256 of kind and payload, payload, `COMMIT\0\0` marker |
-| Counts and byte lengths | Little-endian unsigned 32-bit integers |
-| Row IDs and next row ID | Little-endian unsigned 64-bit integers |
-| SQL schemas and names | Length-prefixed UTF-8 |
-| Cells | Null/present marker followed by a schema-typed value |
-| Integers | Little-endian 16-, 32-, or 64-bit scalars |
-| REAL and DOUBLE | Little-endian IEEE 754 32- and 64-bit scalars |
-| Boolean | One byte, 0 or 1 |
-| BYTEA and UUID | Raw bytes; UUIDs occupy 16 bytes |
-| Exact decimals and temporal values | Length-prefixed canonical text |
-| Arrays | Element count and recursively typed cells |
-| JSON | Binary tags for null, booleans, numbers, strings, arrays and objects |
+| SMALLINT, INT4 | INTEGER with a range CHECK |
+| BOOLEAN | INTEGER with a 0/1 CHECK |
+| VARCHAR(n) | TEXT with a length CHECK |
+| FLOAT4 | REAL with BoxDB's float32 validation |
+| BYTEA | BLOB with a storage-class CHECK |
+| NUMERIC, DECIMAL | Exact decimal text |
+| UUID and temporal types | Text |
+| JSON and typed arrays | JSON text; decimal array elements use strings |
 
-The first frame is a complete snapshot. Later frames contain inserts, deletions,
-and changed column values for stable row IDs. A commit synchronizes the appended
-frame before acknowledging success. No-op updates avoid a disk write. Schema
-changes and row compaction publish a new snapshot atomically.
+Typed parameter values are normalized before binding. Prefer `Value::Numeric`
+for exact decimals and typed UUID/temporal values for canonical representations.
+SQLite's ordinary SQL arithmetic and sorting still operate on physical storage
+classes. Extended CAST syntax from the former BoxDB executor is not supported.
+Computed columns return SQLite values; direct column projections, including
+aliases and views, use their original column's logical type.
 
-Automatic checkpoints bound replay and file growth. A checkpoint replaces the
-file when the next append would exceed twice the base snapshot size (with a
-1 MiB minimum), 1,024 appended commits, or the 256 MiB file limit. Exports always
-produce one compact snapshot; transaction and savepoint changes stay private
-until committed.
+TEMP validators are specific to the BoxDB connection. An external SQLite writer
+gets portable SQLite constraints but can bypass the additional Rust validators.
+BoxDB checks extended values when reading them and validates them on snapshot
+import. Foreign-key enforcement must be enabled on each external connection.
+This is a validation contract, not protection against deliberate metadata edits.
 
-Opening a file verifies checksums, rebuilds indexes, and validates the final
-typed state and constraints. It discards and synchronizes truncation of an
-incomplete final frame after a valid committed prefix. Complete corrupt frames
-are errors; they are never silently discarded. Import and restore require
-complete input and reject incomplete tails.
+Use BoxDB for typed CREATE/ALTER/DROP operations: it updates schema and metadata
+within one SQLite savepoint. Typed declarations apply to main database tables.
+External schema edits can leave stale metadata, which BoxDB rejects rather than
+silently guessing a new logical schema.
 
-A connection holds the `.lock` sidecar exclusively until dropped. Writers also
-hold `.snapshot.lock` exclusively during publication or recovery.
-`Database::read_snapshot(path)` holds that second lock shared while reading and
-validating the committed prefix, so replication can run alongside an open
-writer. It does not modify incomplete tails. Keep both sidecars in place.
+## Independent readable JSONL
 
-In memory, rows use pages with copy-on-write and stable slots. Automatic primary
-and unique indexes use persistent B+ trees, so transactions share unchanged
-nodes. Mutations validate changed rows and update affected index keys. Foreign
-keys and schema changes use full validation; parent-key indexes accelerate
-foreign-key matching where the column types permit it.
+[The readable codec](../src/readable.rs) stores a versioned header, SQL schema
+objects, rows with explicit typed native cells, and AUTOINCREMENT sequences.
+Rows retain their accessible SQLite row IDs; generated columns are recomputed.
+It does not embed a SQLite file or use binary bytes as intermediate records.
+
+Readable connections execute SQL in memory and publish a synchronized complete
+snapshot by atomic file replacement after committing. Pending transactions stay
+private. A readable file holds a separate `.lock` sidecar until closed. On a
+publication error, reopen the connection before continuing. Readable snapshots
+do not support virtual tables or non-finite floating-point values.
+
+`Database::export` requires no active transaction. Binary export uses SQLite's
+backup API to produce a self-contained file with committed WAL pages included.
+`Database::read_snapshot` opens a separate SQLite reader to capture committed
+binary data while a writer is active. Restore and conversion require a new
+path. Previous native BoxDB binary files and previous JSONL layouts are unsupported.

@@ -74,10 +74,10 @@ impl Type {
         };
         let result = match base {
             "SMALLINT" | "INT2" => Self::SmallInt,
-            "INT" | "INTEGER" | "INT4" => Self::Integer,
-            "BIGINT" | "INT8" => Self::BigInt,
-            "REAL" | "FLOAT4" => Self::Real,
-            "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
+            "INT4" => Self::Integer,
+            "INT" | "INTEGER" | "BIGINT" | "INT8" => Self::BigInt,
+            "FLOAT4" => Self::Real,
+            "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
             "NUMERIC" | "DECIMAL" => {
                 if args.is_empty() {
                     Self::Numeric(None)
@@ -111,67 +111,6 @@ impl Type {
             return Err(Error("type does not accept parameters".into()));
         }
         Ok(result)
-    }
-    pub(crate) fn normalize(&self, value: Value) -> Result<Value> {
-        self.validate(&Value::Null)?;
-        if let Self::Array(inner) = self
-            && let Value::Array(values) = value
-        {
-            return Ok(Value::Array(
-                values
-                    .into_iter()
-                    .map(|v| inner.normalize(v))
-                    .collect::<Result<_>>()?,
-            ));
-        }
-        if let (Self::Real | Self::Double, Value::Real(n)) = (self, &value) {
-            let n = if matches!(self, Self::Real) {
-                (*n as f32) as f64
-            } else {
-                *n
-            };
-            if !n.is_finite() {
-                return Err(Error("non-finite floating point value".into()));
-            }
-            return Ok(Value::Real(n));
-        }
-        match (self, &value) {
-            (_, Value::Null)
-            | (Self::Text | Self::Varchar(_), Value::Text(_))
-            | (Self::SmallInt | Self::Integer | Self::BigInt, Value::Integer(_))
-            | (Self::Boolean, Value::Boolean(_))
-            | (Self::Bytea, Value::Bytea(_))
-            | (Self::Json, Value::Json(_)) => {
-                self.check(&value)?;
-                Ok(value)
-            }
-            _ => self.validate(&value),
-        }
-    }
-    pub(crate) fn check(&self, value: &Value) -> Result<()> {
-        match (self, value) {
-            (_, Value::Null)
-            | (Self::BigInt, Value::Integer(_))
-            | (Self::Text, Value::Text(_))
-            | (Self::Bytea, Value::Bytea(_))
-            | (Self::Boolean, Value::Boolean(_))
-            | (Self::Json, Value::Json(_)) => Ok(()),
-            (Self::SmallInt, Value::Integer(n)) if i16::try_from(*n).is_ok() => Ok(()),
-            (Self::Integer, Value::Integer(n)) if i32::try_from(*n).is_ok() => Ok(()),
-            (Self::Real | Self::Double, Value::Real(n)) if n.is_finite() => Ok(()),
-            (Self::Array(inner), Value::Array(values)) => {
-                for value in values {
-                    inner.check(value)?;
-                }
-                Ok(())
-            }
-            (Self::Varchar(limit), Value::Text(s))
-                if limit.is_none_or(|n| s.chars().count() <= n) =>
-            {
-                Ok(())
-            }
-            _ => self.validate(value).map(|_| ()),
-        }
     }
     pub fn validate(&self, value: &Value) -> Result<Value> {
         if matches!(self,Self::Numeric(Some((p,s))) if *p==0 || *p>1000 || s>p)

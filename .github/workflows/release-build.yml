@@ -237,7 +237,7 @@ jobs:
           gh release create "v$BOXDB_RELEASE_VERSION" release-assets/* \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "BoxDB $BOXDB_RELEASE_VERSION" \
-            --notes 'Strict typed SQL database with binary and Git-friendly storage, and S3 snapshot replication. Experimental; SQL compatibility is partial.'
+            --notes 'Extended SQLite client with typed columns, ordinary SQLite binary files, and Git-friendly JSONL storage. Use original Litestream for replication. Experimental.'
       - name: Publish only the complete verified draft
         run: |
           python3 <<'PY'

@@ -1,4 +1,7 @@
 use boxdb::{Database, Value};
+use rusqlite::Connection;
+mod common;
+use common::sqlite_execute;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -21,57 +24,67 @@ fn suite(group: &str) {
         let mut db = Database::memory();
         db.execute(&case.setup)
             .unwrap_or_else(|e| panic!("{label} setup: {e}"));
-        let results = db.execute(&case.sql);
-        if let Some(expected) = &case.error {
-            assert!(
-                results.unwrap_err().to_string().contains(expected),
-                "{label}: expected {expected}"
-            );
-            continue;
-        }
-        let results = results.unwrap_or_else(|e| panic!("{label}: {e}"));
-        if let Some(expected) = case.affected {
-            assert_eq!(
-                results.iter().map(|r| r.affected).sum::<usize>(),
-                expected,
-                "{label}"
-            );
-            continue;
-        }
-        let values = results
-            .into_iter()
-            .flat_map(|r| r.rows)
-            .flatten()
-            .collect::<Vec<_>>();
-        assert_eq!(values.len(), case.expected.len(), "{label}: {values:?}");
-        for (value, expected) in values.iter().zip(&case.expected) {
-            let actual = match value {
-                Value::Null => String::new(),
-                Value::Boolean(b) => if *b { "1" } else { "0" }.into(),
-                _ => value.to_string(),
-            };
-            if &actual == expected {
-                continue;
-            }
-            if let Value::Real(n) = value
-                && let Ok(expected) = expected.parse::<f64>()
-            {
+        let reference = Connection::open_in_memory().unwrap();
+        reference.pragma_update(None, "foreign_keys", true).unwrap();
+        sqlite_execute(&reference, &case.setup)
+            .unwrap_or_else(|e| panic!("{label} SQLite setup: {e}"));
+        for (client, results) in [
+            ("BoxDB", db.execute(&case.sql)),
+            ("SQLite", sqlite_execute(&reference, &case.sql)),
+        ] {
+            let label = format!("{client} {label}");
+
+            if let Some(expected) = &case.error {
                 assert!(
-                    (n - expected).abs() <= 1e-12 * expected.abs().max(1.0),
-                    "{label}: {actual} != {expected}"
+                    results.unwrap_err().to_string().contains(expected),
+                    "{label}: expected {expected}"
                 );
                 continue;
             }
-            if matches!(value, Value::Integer(_) | Value::Numeric(_))
-                && let (Ok(a), Ok(b)) = (
-                    actual.parse::<bigdecimal::BigDecimal>(),
-                    expected.parse::<bigdecimal::BigDecimal>(),
-                )
-            {
-                assert_eq!(a, b, "{label}");
+            let results = results.unwrap_or_else(|e| panic!("{label}: {e}"));
+            if let Some(expected) = case.affected {
+                assert_eq!(
+                    results.iter().map(|r| r.affected).sum::<usize>(),
+                    expected,
+                    "{label}"
+                );
                 continue;
             }
-            assert_eq!(&actual, expected, "{label}");
+            let values = results
+                .into_iter()
+                .flat_map(|r| r.rows)
+                .flatten()
+                .collect::<Vec<_>>();
+            assert_eq!(values.len(), case.expected.len(), "{label}: {values:?}");
+            for (value, expected) in values.iter().zip(&case.expected) {
+                let actual = match value {
+                    Value::Null => String::new(),
+                    Value::Boolean(b) => if *b { "1" } else { "0" }.into(),
+                    _ => value.to_string(),
+                };
+                if &actual == expected {
+                    continue;
+                }
+                if let Value::Real(n) = value
+                    && let Ok(expected) = expected.parse::<f64>()
+                {
+                    assert!(
+                        (n - expected).abs() <= 1e-12 * expected.abs().max(1.0),
+                        "{label}: {actual} != {expected}"
+                    );
+                    continue;
+                }
+                if matches!(value, Value::Integer(_) | Value::Numeric(_))
+                    && let (Ok(a), Ok(b)) = (
+                        actual.parse::<bigdecimal::BigDecimal>(),
+                        expected.parse::<bigdecimal::BigDecimal>(),
+                    )
+                {
+                    assert_eq!(a, b, "{label}");
+                    continue;
+                }
+                assert_eq!(&actual, expected, "{label}");
+            }
         }
     }
 }
