@@ -106,6 +106,16 @@ stable releases hourly.
 Tests cover the public Rust API, CLI, reopening both formats, and S3 upload and
 restore through a local HTTP server.
 
+Compare file-backed SQLite with binary BoxDB:
+
+```sh
+cargo bench --locked --bench sqlite_vs_boxdb
+```
+
+The benchmark checks results and reports median latency and file size. See
+[benchmark methodology and options](docs/benchmarks.md) for workloads, JSON output,
+and comparison limits.
+
 Only selected original SQLite cases have been adapted; the full SQLite test
 suite has not been ported or run against BoxDB. [Fixture provenance](tests/sqlite/provenance.json)
 records source revisions, checksums, and case counts.

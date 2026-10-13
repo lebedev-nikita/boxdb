@@ -15,3 +15,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - name: Benchmark correctness smoke test
+        run: >-
+          cargo test --locked --bench sqlite_vs_boxdb --
+          --rows 30 --samples 1 --reads 3 --batch-size 7 --writes 4

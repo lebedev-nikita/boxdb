@@ -1,0 +1,465 @@
+use boxdb::{Database, Format, Value};
+use clap::Parser;
+use rusqlite::{Connection, types::ValueRef};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::{hint::black_box, path::PathBuf, time::Instant};
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+type Rows = Vec<Vec<Value>>;
+const SCHEMA: &str = "CREATE TABLE records (
+    id INTEGER PRIMARY KEY, category INTEGER NOT NULL,
+    score INTEGER NOT NULL, payload TEXT NOT NULL)";
+const ALL_ROWS: &str = "SELECT id,category,score,payload FROM records ORDER BY id";
+
+#[derive(Parser, Serialize)]
+#[command(about = "Compare file-backed SQLite and binary BoxDB (release profile)")]
+struct Config {
+    /// Number of deterministic rows (BoxDB INTEGER is 32-bit).
+    #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    rows: u32,
+    /// Measured samples per engine, after one discarded warmup sample.
+    #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u32).range(1..))]
+    samples: u32,
+    /// Queries per read workload.
+    #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
+    reads: u32,
+    /// Rows per multi-value INSERT; all INSERTs share one transaction.
+    #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
+    batch_size: u32,
+    /// Point updates/deletes per workload, capped at --rows.
+    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..))]
+    writes: u32,
+    /// Existing parent directory for temporary databases (selects the filesystem).
+    #[arg(long)]
+    directory: Option<PathBuf>,
+    /// Write configuration, versions, raw samples and medians as JSON.
+    #[arg(long)]
+    json: Option<PathBuf>,
+    // Cargo passes this to custom benchmark harnesses.
+    #[arg(long, hide = true)]
+    #[serde(skip)]
+    bench: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Engine {
+    Sqlite,
+    Boxdb,
+}
+
+impl Engine {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Sqlite => "SQLite",
+            Self::Boxdb => "BoxDB binary",
+        }
+    }
+}
+
+enum Backend {
+    Sqlite(Connection),
+    Boxdb(Box<Database>),
+}
+
+impl Backend {
+    fn open(engine: Engine, path: &std::path::Path) -> Result<Self> {
+        Ok(match engine {
+            Engine::Sqlite => {
+                let db = Connection::open(path)?;
+                // DELETE avoids deferred WAL checkpoints; EXTRA syncs the directory
+                // after journal deletion. Neither engine disables durable writes.
+                db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA")?;
+                Self::Sqlite(db)
+            }
+            Engine::Boxdb => Self::Boxdb(Box::new(Database::open(path, Format::Binary)?)),
+        })
+    }
+
+    fn execute(&mut self, sql: &str) -> Result<()> {
+        match self {
+            Self::Sqlite(db) => db.execute_batch(sql)?,
+            Self::Boxdb(db) => {
+                black_box(db.execute(sql)?);
+            }
+        }
+        Ok(())
+    }
+
+    fn query(&mut self, sql: &str) -> Result<Rows> {
+        match self {
+            Self::Boxdb(db) => Ok(db.execute(sql)?.remove(0).rows),
+            Self::Sqlite(db) => {
+                // Prepare each query: BoxDB has no prepared-statement API.
+                let mut statement = db.prepare(sql)?;
+                let columns = statement.column_count();
+                let mut cursor = statement.query([])?;
+                let mut rows = Vec::new();
+                while let Some(row) = cursor.next()? {
+                    let mut values = Vec::with_capacity(columns);
+                    for column in 0..columns {
+                        values.push(match row.get_ref(column)? {
+                            ValueRef::Integer(n) => Value::Integer(n),
+                            ValueRef::Text(s) => Value::Text(std::str::from_utf8(s)?.into()),
+                            other => {
+                                return Err(format!("unexpected SQLite value: {other:?}").into());
+                            }
+                        });
+                    }
+                    rows.push(values);
+                }
+                Ok(rows)
+            }
+        }
+    }
+}
+
+struct ReadWorkload {
+    name: &'static str,
+    queries: Vec<(String, Rows)>,
+}
+
+struct Workload {
+    rows: Rows,
+    inserts: Vec<String>,
+    reads: Vec<ReadWorkload>,
+    updates: Vec<String>,
+    deletes: Vec<String>,
+}
+
+impl Workload {
+    fn new(config: &Config) -> Self {
+        // SQL, payloads and expected results are generated outside all timers.
+        let rows: Rows = (1..=config.rows)
+            .map(|id| {
+                vec![
+                    Value::Integer(id.into()),
+                    Value::Integer((id % 10).into()),
+                    Value::Integer((id % 1000).into()),
+                    Value::Text(format!(
+                        "record-{id:08}-{}",
+                        hex::encode(Sha256::digest(id.to_le_bytes()))
+                    )),
+                ]
+            })
+            .collect();
+        let inserts = rows
+            .chunks(config.batch_size as usize)
+            .map(|chunk| {
+                let values = chunk
+                    .iter()
+                    .map(|row| format!("({},{},{},'{}')", row[0], row[1], row[2], row[3]))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("INSERT INTO records VALUES {values}")
+            })
+            .collect();
+        let mut points = Vec::new();
+        let mut ranges = Vec::new();
+        for i in 0..config.reads {
+            let index = ((u64::from(i) * 7919 + 17) % u64::from(config.rows)) as usize;
+            let id = index + 1;
+            points.push((
+                format!("SELECT id,category,score,payload FROM records WHERE id={id}"),
+                vec![rows[index].clone()],
+            ));
+            let end = (index + 50).min(rows.len());
+            ranges.push((
+                format!("SELECT id,category,score,payload FROM records WHERE id>={id} AND id<={} ORDER BY id", end),
+                rows[index..end].to_vec(),
+            ));
+        }
+        let aggregate: Rows = (0..10)
+            .filter_map(|category| {
+                let scores: Vec<i64> = (1..=config.rows)
+                    .filter(|id| id % 10 == category)
+                    .map(|id| i64::from(id % 1000))
+                    .collect();
+                (!scores.is_empty()).then(|| {
+                    vec![
+                        Value::Integer(category.into()),
+                        Value::Integer(scores.len() as i64),
+                        Value::Integer(scores.iter().sum()),
+                    ]
+                })
+            })
+            .collect();
+        let writes = config.writes.min(config.rows);
+        Self {
+            rows,
+            inserts,
+            reads: vec![
+                ReadWorkload { name: "point_lookup", queries: points },
+                ReadWorkload { name: "range_scan", queries: ranges },
+                ReadWorkload {
+                    name: "aggregate",
+                    queries: vec![("SELECT category,COUNT(*),SUM(score) FROM records GROUP BY category ORDER BY category".into(), aggregate); config.reads as usize],
+                },
+            ],
+            updates: (1..=writes).map(|id| format!("UPDATE records SET score=score+1 WHERE id={id}")).collect(),
+            deletes: (1..=writes).map(|id| format!("DELETE FROM records WHERE id={id}")).collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct Timing {
+    workload: &'static str,
+    unit: &'static str,
+    units: usize,
+    elapsed_ms: f64,
+}
+
+fn measure(
+    timings: &mut Vec<Timing>,
+    workload: &'static str,
+    unit: &'static str,
+    units: usize,
+    run: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let start = Instant::now();
+    run()?;
+    timings.push(Timing {
+        workload,
+        unit,
+        units,
+        elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+    });
+    Ok(())
+}
+
+fn transaction(db: &mut Backend, statements: &[String]) -> Result<()> {
+    db.execute("BEGIN")?;
+    for sql in statements {
+        db.execute(sql)?;
+    }
+    db.execute("COMMIT")
+}
+
+fn verify(db: &mut Backend, sql: &str, expected: &Rows) -> Result<()> {
+    if db.query(sql)? != *expected {
+        return Err(format!("result mismatch for {sql}").into());
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct Sample {
+    engine: &'static str,
+    database_bytes: u64,
+    timings: Vec<Timing>,
+}
+
+fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample> {
+    let temp = match &config.directory {
+        Some(parent) => tempfile::tempdir_in(parent)?,
+        None => tempfile::tempdir()?,
+    };
+    let path = temp.path().join("data.db");
+    let mut db = Backend::open(engine, &path)?;
+    db.execute(SCHEMA)?;
+    // An explicit index makes BoxDB's equality lookup use its index too.
+    db.execute("CREATE INDEX records_id ON records(id)")?;
+    let mut timings = Vec::new();
+    measure(
+        &mut timings,
+        "insert_transaction",
+        "row",
+        workload.rows.len(),
+        || transaction(&mut db, &workload.inserts),
+    )?;
+    verify(&mut db, ALL_ROWS, &workload.rows)?;
+    let database_bytes = std::fs::metadata(&path)?.len();
+    for read in &workload.reads {
+        // Verify and warm each query before timing; both engines materialize rows.
+        for (sql, expected) in &read.queries {
+            verify(&mut db, sql, expected)?;
+        }
+        measure(&mut timings, read.name, "query", read.queries.len(), || {
+            for (sql, _) in &read.queries {
+                black_box(db.query(sql)?);
+            }
+            Ok(())
+        })?;
+    }
+    let mut expected = workload.rows.clone();
+    for (name, in_transaction) in [("update_transaction", true), ("update_autocommit", false)] {
+        measure(&mut timings, name, "row", workload.updates.len(), || {
+            if in_transaction {
+                transaction(&mut db, &workload.updates)
+            } else {
+                for sql in &workload.updates {
+                    db.execute(sql)?;
+                }
+                Ok(())
+            }
+        })?;
+        for row in expected.iter_mut().take(workload.updates.len()) {
+            if let Value::Integer(score) = &mut row[2] {
+                *score += 1;
+            }
+        }
+        verify(&mut db, ALL_ROWS, &expected)?;
+    }
+    measure(
+        &mut timings,
+        "delete_transaction",
+        "row",
+        workload.deletes.len(),
+        || transaction(&mut db, &workload.deletes),
+    )?;
+    expected.drain(..workload.deletes.len());
+    verify(&mut db, ALL_ROWS, &expected)?;
+    drop(db);
+    // SQLite opens lazily: include a full scan to actually load persisted data.
+    let mut reopened = None;
+    let mut persisted = None;
+    measure(&mut timings, "reopen_scan", "database", 1, || {
+        let mut db = Backend::open(engine, &path)?;
+        persisted = Some(black_box(db.query(ALL_ROWS)?));
+        reopened = Some(db);
+        Ok(())
+    })?;
+    if persisted.as_ref() != Some(&expected) {
+        return Err("reopened database differs from committed rows".into());
+    }
+    // Release BoxDB's file lock before deleting the temporary directory.
+    drop(reopened);
+    Ok(Sample {
+        engine: engine.name(),
+        database_bytes,
+        timings,
+    })
+}
+
+fn median(mut values: Vec<f64>) -> f64 {
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len().is_multiple_of(2) {
+        (values[middle - 1] + values[middle]) / 2.0
+    } else {
+        values[middle]
+    }
+}
+
+#[derive(Serialize)]
+struct Summary {
+    engine: &'static str,
+    workload: &'static str,
+    unit: &'static str,
+    median_ms: f64,
+    median_us_per_unit: f64,
+}
+
+#[derive(Serialize)]
+struct Report {
+    boxdb_version: &'static str,
+    sqlite_version: &'static str,
+    os: &'static str,
+    arch: &'static str,
+    sqlite_settings: &'static str,
+    config: Config,
+    samples: Vec<Sample>,
+    summaries: Vec<Summary>,
+}
+
+fn main() -> Result<()> {
+    let config = Config::parse();
+    let workload = Workload::new(&config);
+    println!(
+        "BoxDB {} (binary) vs SQLite {} | {}/{}",
+        env!("CARGO_PKG_VERSION"),
+        rusqlite::version(),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    println!(
+        "rows={} samples={} reads={} batch_size={} writes={} | SQLite DELETE/EXTRA",
+        config.rows,
+        config.samples,
+        config.reads,
+        config.batch_size,
+        workload.updates.len()
+    );
+    let mut samples = Vec::new();
+    for iteration in 0..=config.samples {
+        eprintln!(
+            "{} {iteration}/{}",
+            if iteration == 0 { "Warmup" } else { "Sample" },
+            config.samples
+        );
+        // Alternate order to reduce systematic filesystem/cache/thermal bias.
+        let engines = if iteration % 2 == 0 {
+            [Engine::Sqlite, Engine::Boxdb]
+        } else {
+            [Engine::Boxdb, Engine::Sqlite]
+        };
+        for engine in engines {
+            let result = sample(engine, &config, &workload)?;
+            if iteration != 0 {
+                samples.push(result);
+            }
+        }
+    }
+    println!(
+        "\n{:<23} {:>13} {:>13} {:>12}  unit",
+        "workload", "SQLite us/unit", "BoxDB us/unit", "BoxDB/SQLite"
+    );
+    let mut summaries = Vec::new();
+    for (index, timing) in samples[0].timings.iter().enumerate() {
+        let mut per_unit = Vec::new();
+        for engine in [Engine::Sqlite, Engine::Boxdb] {
+            let elapsed = samples
+                .iter()
+                .filter(|s| s.engine == engine.name())
+                .map(|s| s.timings[index].elapsed_ms)
+                .collect();
+            let median_ms = median(elapsed);
+            let median_us_per_unit = median_ms * 1000.0 / timing.units as f64;
+            per_unit.push(median_us_per_unit);
+            summaries.push(Summary {
+                engine: engine.name(),
+                workload: timing.workload,
+                unit: timing.unit,
+                median_ms,
+                median_us_per_unit,
+            });
+        }
+        println!(
+            "{:<23} {:>13.3} {:>13.3} {:>11.2}x  {}",
+            timing.workload,
+            per_unit[0],
+            per_unit[1],
+            per_unit[1] / per_unit[0],
+            timing.unit
+        );
+    }
+    for engine in [Engine::Sqlite, Engine::Boxdb] {
+        let bytes = median(
+            samples
+                .iter()
+                .filter(|s| s.engine == engine.name())
+                .map(|s| s.database_bytes as f64)
+                .collect(),
+        );
+        println!(
+            "{} file after insert: {bytes:.0} bytes (sidecars excluded)",
+            engine.name()
+        );
+    }
+    if let Some(path) = config.json.clone() {
+        let report = Report {
+            boxdb_version: env!("CARGO_PKG_VERSION"),
+            sqlite_version: rusqlite::version(),
+            os: std::env::consts::OS,
+            arch: std::env::consts::ARCH,
+            sqlite_settings: "journal_mode=DELETE; synchronous=EXTRA",
+            config,
+            samples,
+            summaries,
+        };
+        std::fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+        println!("JSON report: {}", path.display());
+    }
+    Ok(())
+}
