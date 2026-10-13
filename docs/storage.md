@@ -84,7 +84,8 @@ year must be between 0000 and 9999. See [timestamp usage](temporal.md).
 
 SQL writes through BoxDB normalize timestamp columns and typed timestamp arrays
 using TEMP triggers. Defaults added to existing rows are normalized within the
-schema savepoint. Generated timestamp expressions must already produce canonical
+schema savepoint. Readable imports normalize rows before restoring user triggers.
+Generated timestamp expressions must already produce canonical
 UTC text. Other SQLite connections do not run these triggers and should write
 canonical UTC values themselves. SQL comparisons with plain text literals still
 use SQLite text semantics; typed `Value::Timestamp` parameters are normalized

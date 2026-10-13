@@ -325,3 +325,53 @@ fn generated_timestamps_must_already_use_canonical_utc() {
     );
     assert_eq!(raw(&mut db, "t"), vec![vec![Value::Text(UTC.into())]]);
 }
+
+#[test]
+fn a_temp_table_cannot_redirect_main_timestamp_normalization() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts TIMESTAMP); CREATE TEMP TABLE events(id INT64 PRIMARY KEY,ts TEXT); INSERT INTO temp.events VALUES(1,'temporary')").unwrap();
+    db.execute(&format!("INSERT INTO main.events VALUES(1,'{OFFSET}')"))
+        .unwrap();
+    assert_eq!(
+        raw(&mut db, "main.events"),
+        vec![vec![Value::Text(UTC.into())]]
+    );
+    assert_eq!(
+        raw(&mut db, "temp.events"),
+        vec![vec![Value::Text("temporary".into())]]
+    );
+}
+
+#[test]
+fn readable_import_normalizes_offsets_without_replaying_user_triggers() {
+    let mut db = Database::memory();
+    db.execute(&format!("CREATE TABLE events(ts TIMESTAMP); INSERT INTO events VALUES('{UTC}'); CREATE TABLE audit(message TEXT); CREATE TRIGGER log AFTER UPDATE ON events BEGIN INSERT INTO audit VALUES('updated'); END")).unwrap();
+    let yaml = String::from_utf8(db.export(Format::Readable).unwrap())
+        .unwrap()
+        .replace(UTC, OFFSET);
+    let mut imported = Database::from_snapshot(yaml.as_bytes()).unwrap();
+    assert_eq!(
+        raw(&mut imported, "events"),
+        vec![vec![Value::Text(UTC.into())]]
+    );
+    assert_eq!(
+        imported.execute("SELECT COUNT(*) FROM audit").unwrap()[0].rows,
+        vec![vec![Value::Integer(0)]]
+    );
+}
+
+#[test]
+fn readable_import_rejects_noncanonical_generated_timestamps() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE events(input TEXT,ts TIMESTAMP GENERATED ALWAYS AS(input) STORED)")
+        .unwrap();
+    db.execute_params(
+        "INSERT INTO events(input) VALUES(?)",
+        &[Value::Text(UTC.into())],
+    )
+    .unwrap();
+    let yaml = String::from_utf8(db.export(Format::Readable).unwrap())
+        .unwrap()
+        .replace(UTC, OFFSET);
+    assert!(Database::from_snapshot(yaml.as_bytes()).is_err());
+}
