@@ -8,7 +8,7 @@ fn cli_reports_boxdb_name_and_release_version() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
-        "boxdb 0.1.0"
+        concat!("boxdb ", env!("CARGO_PKG_VERSION"))
     );
 }
 
