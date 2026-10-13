@@ -9,12 +9,25 @@ SQLite replacement.
 
 ## Get started
 
-Download the CLI from [GitHub Releases](https://github.com/lebedev-nikita/boxdb/releases),
-or build from this checkout with a current Rust toolchain supporting edition 2024
-and native C/C++ build tools:
+Install with Homebrew:
 
 ```sh
-cargo install --path . --locked
+brew install lebedev-nikita/tap/boxdb
+```
+
+The [tap](https://github.com/lebedev-nikita/homebrew-tap#boxdb) checks stable
+GitHub releases hourly. Update with `brew update && brew upgrade boxdb`.
+Apple Silicon macOS and x86-64 Linux use prebuilt binaries; other supported
+architectures build from source.
+
+You can also download the CLI from
+[GitHub Releases](https://github.com/lebedev-nikita/boxdb/releases), or run
+`cargo install --path . --locked` from this checkout with a current Rust toolchain
+supporting edition 2024 and native C/C++ build tools.
+
+Create a readable database:
+
+```sh
 boxdb data.jsonl --format readable -e "
   CREATE TABLE accounts (
     id INTEGER PRIMARY KEY,
@@ -79,6 +92,13 @@ cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 ```
+
+Stable release tags must match the version in `Cargo.toml` (`vX.Y.Z`). Pushing a
+tag runs [Release build](.github/workflows/release-build.yml): it tests and builds
+both CLI archives and the source package, then publishes them with `SHA256SUMS`.
+Existing releases are never overwritten. A manual run builds downloadable
+Actions artifacts without publishing a release. The Homebrew tap checks new
+stable releases hourly.
 
 Tests cover the public Rust API, CLI, reopening both formats, and S3 upload and
 restore through a local HTTP server.

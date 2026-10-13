@@ -1,51 +1,262 @@
 name: Release build
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  linux-x86_64:
+  version:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate release version and tag
+        id: version
+        run: |
+          python3 <<'PY'
+          import os
+          import re
+          import subprocess
+          import tomllib
+
+          with open("Cargo.toml", "rb") as manifest:
+              version = tomllib.load(manifest)["package"]["version"]
+          if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
+              raise SystemExit("Release builds require a stable X.Y.Z package version")
+          if os.environ["GITHUB_EVENT_NAME"] == "push" and os.environ["GITHUB_REF"] != "refs/tags/v" + version:
+              raise SystemExit("Release tag must equal v plus the Cargo.toml version")
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\ncommit={commit}\n")
+          PY
+
+  binaries:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      BOXDB_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      BOXDB_RELEASE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
-          targets: x86_64-unknown-linux-musl
+          toolchain: stable
+          targets: ${{ matrix.target }}
       - name: Install musl build tools
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes musl-tools
       - name: Build CLI
-        run: cargo build --release --locked --target x86_64-unknown-linux-musl
-      - name: Smoke test CLI
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: cargo build --release --locked --target "$BOXDB_RELEASE_TARGET"
+      - name: Smoke test installed CLI behavior
+        env:
+          BOXDB_BINARY: target/${{ matrix.target }}/release/boxdb
         run: |
-          target/x86_64-unknown-linux-musl/release/boxdb --version
-          file target/x86_64-unknown-linux-musl/release/boxdb
-          target/x86_64-unknown-linux-musl/release/boxdb ':memory:' --json -e "
-            CREATE TABLE smoke(id INTEGER PRIMARY KEY, label TEXT NOT NULL);
-            INSERT INTO smoke VALUES(1,'BoxDB');
-            SELECT id, label FROM smoke;
-          " | python3 -c 'import json,sys; result=json.load(sys.stdin); assert result["columns"] == ["id","label"]; assert result["rows"] == [[{"Integer":1},{"Text":"BoxDB"}]]'
+          file "$BOXDB_BINARY"
+          python3 <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+
+          binary = str(Path(os.environ["BOXDB_BINARY"]).resolve())
+          def run(*args):
+              return subprocess.check_output([binary, *map(str, args)], text=True)
+          assert run("--version").strip() == "boxdb " + os.environ["BOXDB_RELEASE_VERSION"]
+          sql = "CREATE TABLE smoke(id INTEGER PRIMARY KEY, label TEXT NOT NULL); INSERT INTO smoke VALUES(1,'BoxDB'); SELECT id,label FROM smoke"
+          expected = [[{"Integer": 1}, {"Text": "BoxDB"}]]
+          memory = json.loads(run(":memory:", "--json", "-e", sql))
+          assert memory["columns"] == ["id", "label"] and memory["rows"] == expected
+          with tempfile.TemporaryDirectory() as directory:
+              readable = Path(directory) / "readable.jsonl"
+              compact = Path(directory) / "binary.boxdb"
+              restored = Path(directory) / "restored.jsonl"
+              assert json.loads(run(readable, "--format", "readable", "--json", "-e", sql))["rows"] == expected
+              rejected = subprocess.run([binary, str(readable), "-e", "INSERT INTO smoke VALUES('2','bad')"], capture_output=True, text=True)
+              assert rejected.returncode != 0 and "type mismatch" in rejected.stderr
+              run("convert", readable, compact, "--format", "binary")
+              assert json.loads(run(compact, "--json", "-e", "SELECT id,label FROM smoke"))["rows"] == expected
+              run("convert", compact, restored, "--format", "readable")
+              assert readable.read_bytes() == restored.read_bytes()
+          PY
       - name: Package CLI
-        id: package
         run: |
-          boxdb_release_version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
-          boxdb_release_target="x86_64-unknown-linux-musl"
-          boxdb_release_archive="boxdb-${boxdb_release_version}-${boxdb_release_target}.tar.gz"
+          boxdb_release_archive="boxdb-${BOXDB_RELEASE_VERSION}-${BOXDB_RELEASE_TARGET}.tar.gz"
           boxdb_release_stage="target/release-assets/staging"
           mkdir -p "$boxdb_release_stage/docs" "$boxdb_release_stage/assets"
-          cp "target/${boxdb_release_target}/release/boxdb" README.md LICENSE "$boxdb_release_stage/"
+          cp "target/${BOXDB_RELEASE_TARGET}/release/boxdb" README.md LICENSE "$boxdb_release_stage/"
           cp docs/replication.md "$boxdb_release_stage/docs/"
           cp assets/icon.svg "$boxdb_release_stage/assets/"
           tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
             boxdb README.md LICENSE docs/replication.md assets/icon.svg
-          printf 'archive=%s\n' "$boxdb_release_archive" >> "$GITHUB_OUTPUT"
       - name: Upload CLI archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ steps.package.outputs.archive }}
-          path: target/release-assets/${{ steps.package.outputs.archive }}
+          name: boxdb-binary-${{ matrix.target }}
+          path: target/release-assets/boxdb-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
           if-no-files-found: error
+
+  source:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: Test database and verify source package
+        run: |
+          cargo test --locked
+          cargo package --locked
+      - name: Upload source archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: boxdb-source
+          path: target/package/boxdb-${{ needs.version.outputs.version }}.crate
+          if-no-files-found: error
+
+  assemble:
+    needs: [version, binaries, source]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BOXDB_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: boxdb-*
+          path: release-assets
+          merge-multiple: true
+      - name: Validate complete archives and generate SHA256SUMS
+        run: |
+          python3 <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import tarfile
+          import tomllib
+
+          version = os.environ["BOXDB_RELEASE_VERSION"]
+          directory = Path("release-assets")
+          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", f"boxdb-{version}.crate"]
+          if {path.name for path in directory.iterdir()} != set(names):
+              raise SystemExit("Expected exactly both CLI archives and the source package")
+          for name in names[:2]:
+              with tarfile.open(directory / name, "r:gz") as archive:
+                  members = archive.getmembers()
+                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg"}:
+                      raise SystemExit("Incomplete CLI archive: " + name)
+                  if not all(member.isfile() and member.size > 0 for member in members):
+                      raise SystemExit("Invalid CLI archive member: " + name)
+                  if not archive.getmember("boxdb").mode & 0o111:
+                      raise SystemExit("CLI archive does not preserve executable permissions")
+          with tarfile.open(directory / names[2], "r:gz") as archive:
+              prefix = f"boxdb-{version}/"
+              for name in ("Cargo.lock", "Cargo.toml", "src/main.rs", "src/lib.rs"):
+                  if not archive.getmember(prefix + name).isfile():
+                      raise SystemExit("Invalid source package member: " + name)
+              manifest = tomllib.loads(archive.extractfile(prefix + "Cargo.toml").read().decode())
+              if manifest["package"]["version"] != version:
+                  raise SystemExit("Source package version differs from the release")
+          with (directory / "SHA256SUMS").open("w") as checksums:
+              for name in names:
+                  digest = hashlib.sha256((directory / name).read_bytes()).hexdigest()
+                  checksums.write(f"{digest}  {name}\n")
+          PY
+          cd release-assets
+          sha256sum --check SHA256SUMS
+      - name: Upload complete release bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: boxdb-${{ needs.version.outputs.version }}-release
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.repository == 'lebedev-nikita/boxdb'
+    needs: [version, assemble]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BOXDB_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      BOXDB_RELEASE_COMMIT: ${{ needs.version.outputs.commit }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: boxdb-${{ needs.version.outputs.version }}-release
+          path: release-assets
+      - name: Refuse existing releases and verify tag target
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          tag = "v" + os.environ["BOXDB_RELEASE_VERSION"]
+          def api(path, *args):
+              return json.loads(subprocess.check_output(["gh", "api", *args, path], text=True))
+          pages = api(f"repos/{repository}/releases?per_page=100", "--paginate", "--slurp")
+          if any(release["tag_name"] == tag for page in pages for release in page):
+              raise SystemExit("Release already exists; published assets and drafts are never overwritten")
+          if api(f"repos/{repository}/commits/{tag}")["sha"] != os.environ["BOXDB_RELEASE_COMMIT"]:
+              raise SystemExit("Tag changed after the release build started")
+          PY
+          cd release-assets
+          sha256sum --check SHA256SUMS
+      - name: Upload a draft release
+        run: |
+          gh release create "v$BOXDB_RELEASE_VERSION" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "BoxDB $BOXDB_RELEASE_VERSION" \
+            --notes 'Strict typed SQL database with binary and Git-friendly storage, and S3 snapshot replication. Experimental; SQL compatibility is partial.'
+      - name: Publish only the complete verified draft
+        run: |
+          python3 <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          tag = "v" + os.environ["BOXDB_RELEASE_VERSION"]
+          release = json.loads(subprocess.check_output(["gh", "api", f"repos/{repository}/releases/tags/{tag}"], text=True))
+          expected = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in Path("release-assets").iterdir()}
+          if not release["draft"] or len(release["assets"]) != len(expected):
+              raise SystemExit("Release is not a complete draft")
+          for asset in release["assets"]:
+              if asset["name"] not in expected or asset["state"] != "uploaded":
+                  raise SystemExit("Draft release has missing or unexpected assets")
+              if asset.get("digest") and asset["digest"] != "sha256:" + expected[asset["name"]]:
+                  raise SystemExit("Draft release asset differs from its verified build artifact")
+          PY
+          gh release edit "v$BOXDB_RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
