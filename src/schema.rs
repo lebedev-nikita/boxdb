@@ -67,8 +67,8 @@ fn extension(input: &str) -> Result<Option<Type>> {
     }
 }
 mod create;
-mod timestamp;
-pub(crate) use timestamp::normalize as normalize_timestamps;
+mod instant;
+pub(crate) use instant::normalize as normalize_instants;
 pub(crate) struct Declaration {
     pub schema: String,
     pub select: bool,
@@ -375,7 +375,7 @@ pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
             db.execute_batch(&format!("CREATE TEMP TRIGGER {} AFTER {action} ON main.{} BEGIN SELECT {function}(NEW.{}); END",quote(&format!("__boxdb_validate_{i}_{action}")),quote(table),quote(column)))?;
         }
     }
-    timestamp::install(db, types)?;
+    instant::install(db, types)?;
     Ok(())
 }
 pub(crate) fn native(value: SqlValue) -> Value {
@@ -391,7 +391,7 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     let rich = match value {
         Value::Numeric(_) => Some(Type::Numeric(None)),
         Value::Uuid(_) => Some(Type::Uuid),
-        Value::Timestamp(_) => Some(Type::Timestamp),
+        Value::Instant(_) => Some(Type::Instant),
         _ => None,
     };
     if let Some(ty) = rich {
@@ -495,7 +495,7 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
             }
             Ok(Value::Text(text))
         }
-        (Type::Uuid | Type::Timestamp | Type::Json, SqlValue::Text(s)) => ty.cast(Value::Text(s)),
+        (Type::Uuid | Type::Instant | Type::Json, SqlValue::Text(s)) => ty.cast(Value::Text(s)),
         (_, value) => ty.validate(&native(value)),
     }
 }

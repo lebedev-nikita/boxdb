@@ -212,7 +212,7 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
         "UPDATE auxiliary SET pk='z'; UPDATE shadow SET oid='new'",
         "BEGIN; UPDATE parent SET id=40 WHERE id=20; SAVEPOINT s; DELETE FROM parent; ROLLBACK TO s; ROLLBACK",
         "SAVEPOINT s; INSERT INTO parent VALUES(50,'pending'); ROLLBACK TO s; RELEASE s",
-        "CREATE TABLE typed(d TIMESTAMP); INSERT INTO typed VALUES('2024-01-01T00:00:00.000000000Z')",
+        "CREATE TABLE typed(d INSTANT); INSERT INTO typed VALUES('2024-01-01T00:00:00.000000000Z')",
         "BEGIN; ALTER TABLE typed ADD COLUMN tags TEXT[]; ROLLBACK",
         "ALTER TABLE typed RENAME COLUMN d TO day; ALTER TABLE typed RENAME TO dates",
         "CREATE TABLE seq(id INT64 PRIMARY KEY AUTOINCREMENT); INSERT INTO seq VALUES(40); DELETE FROM seq",

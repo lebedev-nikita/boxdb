@@ -84,10 +84,10 @@ fn authorizer(db: &Connection, internal: Arc<AtomicBool>) -> Result<()> {
             return Z::Allow;
         }
         if let A::Function { function_name } = context.action
-            && function_name.starts_with("__boxdb_timestamp_write_")
+            && function_name.starts_with("__boxdb_instant_write_")
             && !context
                 .accessor
-                .is_some_and(|name| name.starts_with("__boxdb_validate_timestamp_"))
+                .is_some_and(|name| name.starts_with("__boxdb_validate_instant_"))
         {
             return Z::Deny;
         }
@@ -456,7 +456,7 @@ impl Database {
                 schema::cleanup(&self.connection)?;
                 self.refresh(true)?;
                 if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
-                    schema::normalize_timestamps(&self.connection, &self.types.borrow())?;
+                    schema::normalize_instants(&self.connection, &self.types.borrow())?;
                 }
             }
             if guarded {

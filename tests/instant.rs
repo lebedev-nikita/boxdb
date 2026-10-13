@@ -4,6 +4,23 @@ use rusqlite::Connection;
 const UTC: &str = "2026-10-13T12:00:00.123456789Z";
 const OFFSET: &str = "2026-10-13T16:00:00.123456789+04:00";
 
+#[test]
+fn instant_is_the_sql_type_and_serialized_value_name() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE events(at INSTANT)").unwrap();
+    db.execute_params(
+        "INSERT INTO events VALUES(?)",
+        &[Value::Text(OFFSET.into())],
+    )
+    .unwrap();
+    let result = db.execute("SELECT at FROM events").unwrap();
+    assert_eq!(
+        serde_json::to_value(&result[0].rows).unwrap(),
+        serde_json::json!([[{"Instant": "2026-10-13T12:00:00.123456789Z"}]])
+    );
+    assert!(db.execute("CREATE TABLE old(at TIMESTAMP)").is_err());
+}
+
 fn raw(db: &mut Database, table: &str) -> Vec<Vec<Value>> {
     db.execute(&format!("SELECT CAST(ts AS TEXT) FROM {table} ORDER BY ts"))
         .unwrap()[0]
@@ -12,13 +29,17 @@ fn raw(db: &mut Database, table: &str) -> Vec<Vec<Value>> {
 }
 
 #[test]
-fn timestamp_is_the_only_temporal_type() {
-    assert_eq!(Type::parse("timestamp").unwrap(), Type::Timestamp);
+fn instant_is_the_only_temporal_type() {
+    assert_eq!(Type::parse("instant").unwrap(), Type::Instant);
     let mut db = Database::memory();
     for ty in [
         "DATE",
         "TIME",
         "TIMESTAMPTZ",
+        "TIMESTAMP",
+        "timestamp",
+        "TIMESTAMP[]",
+        "ARRAY<TIMESTAMP>",
         "TIME WITHOUT TIME ZONE",
         "TIME WITH TIME ZONE",
         "TIMESTAMP WITHOUT TIME ZONE",
@@ -36,6 +57,7 @@ fn timestamp_is_the_only_temporal_type() {
     for value in [
         r#"{"Date":"2026-10-13"}"#,
         r#"{"Time":"12:00:00"}"#,
+        r#"{"Timestamp":"2026-10-13T12:00:00Z"}"#,
         r#"{"Timestamptz":"2026-10-13T12:00:00Z"}"#,
     ] {
         assert!(serde_json::from_str::<Value>(value).is_err());
@@ -66,10 +88,10 @@ fn offsets_are_shifted_to_utc_without_losing_nanoseconds() {
         ),
     ] {
         assert_eq!(
-            Type::Timestamp
-                .validate(&Value::Timestamp(input.into()))
+            Type::Instant
+                .validate(&Value::Instant(input.into()))
                 .unwrap(),
-            Value::Timestamp(expected.into()),
+            Value::Instant(expected.into()),
             "{input}"
         );
     }
@@ -79,11 +101,11 @@ fn offsets_are_shifted_to_utc_without_losing_nanoseconds() {
 fn every_boxdb_write_path_stores_utc_in_both_formats() {
     for format in [Format::Binary, Format::Readable] {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("timestamps");
+        let path = temp.path().join("instants");
         let mut db = Database::open(&path, format).unwrap();
-        db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts TIMESTAMP)")
+        db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts INSTANT)")
             .unwrap();
-        for (id, value) in [Value::Timestamp(OFFSET.into()), Value::Text(OFFSET.into())]
+        for (id, value) in [Value::Instant(OFFSET.into()), Value::Text(OFFSET.into())]
             .into_iter()
             .enumerate()
         {
@@ -126,10 +148,10 @@ fn every_boxdb_write_path_stores_utc_in_both_formats() {
 }
 
 #[test]
-fn timestamps_reject_ambiguous_or_lossy_inputs_atomically() {
+fn instants_reject_ambiguous_or_lossy_inputs_atomically() {
     let mut db = Database::memory();
     db.execute(&format!(
-        "CREATE TABLE t(ts TIMESTAMP); INSERT INTO t VALUES('{UTC}')"
+        "CREATE TABLE t(ts INSTANT); INSERT INTO t VALUES('{UTC}')"
     ))
     .unwrap();
     for input in [
@@ -147,7 +169,7 @@ fn timestamps_reject_ambiguous_or_lossy_inputs_atomically() {
         "9999-12-31T23:59:59-01:00",
     ] {
         assert!(
-            db.execute_params("INSERT INTO t VALUES(?)", &[Value::Timestamp(input.into())])
+            db.execute_params("INSERT INTO t VALUES(?)", &[Value::Instant(input.into())])
                 .is_err(),
             "{input}"
         );
@@ -167,13 +189,13 @@ fn timestamps_reject_ambiguous_or_lossy_inputs_atomically() {
 }
 
 #[test]
-fn timestamp_arrays_normalize_typed_parameters_and_sql_json() {
+fn instant_arrays_normalize_typed_parameters_and_sql_json() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(ts TIMESTAMP[][])").unwrap();
+    db.execute("CREATE TABLE t(ts INSTANT[][])").unwrap();
     db.execute_params(
         "INSERT INTO t VALUES(?)",
         &[Value::Array(vec![
-            Value::Array(vec![Value::Timestamp(OFFSET.into()), Value::Null]),
+            Value::Array(vec![Value::Instant(OFFSET.into()), Value::Null]),
             Value::Array(vec![]),
         ])],
     )
@@ -205,22 +227,22 @@ fn normalization_handles_keys_shadowed_rowids_and_recursive_triggers() {
     for (table, declaration, insert) in [
         (
             "ordinary",
-            "id INT64 PRIMARY KEY,ts TIMESTAMP,other TIMESTAMP",
+            "id INT64 PRIMARY KEY,ts INSTANT,other INSTANT",
             format!("1,'{OFFSET}','{OFFSET}'"),
         ),
         (
             "keyed",
-            "ts TIMESTAMP PRIMARY KEY,other TIMESTAMP) WITHOUT ROWID --",
+            "ts INSTANT PRIMARY KEY,other INSTANT) WITHOUT ROWID --",
             format!("'{OFFSET}','{OFFSET}'"),
         ),
         (
             "shadowed",
-            "rowid TEXT,_rowid_ TEXT,oid TEXT,ts TIMESTAMP",
+            "rowid TEXT,_rowid_ TEXT,oid TEXT,ts INSTANT",
             format!("'a','b','c','{OFFSET}'"),
         ),
         (
             "quoted",
-            "\"odd column\" TEXT PRIMARY KEY,ts TIMESTAMP) WITHOUT ROWID --",
+            "\"odd column\" TEXT PRIMARY KEY,ts INSTANT) WITHOUT ROWID --",
             format!("'a','{OFFSET}'"),
         ),
     ] {
@@ -236,10 +258,8 @@ fn normalization_handles_keys_shadowed_rowids_and_recursive_triggers() {
             "{table}"
         );
     }
-    db.execute(
-        "CREATE TABLE composite(a TEXT,b INT64,ts TIMESTAMP,PRIMARY KEY(a,b)) WITHOUT ROWID",
-    )
-    .unwrap();
+    db.execute("CREATE TABLE composite(a TEXT,b INT64,ts INSTANT,PRIMARY KEY(a,b)) WITHOUT ROWID")
+        .unwrap();
     db.execute(&format!(
         "INSERT INTO composite VALUES('x',1,'{OFFSET}'),('x',2,'2026-10-13T12:01:00Z')"
     ))
@@ -253,25 +273,28 @@ fn normalization_handles_keys_shadowed_rowids_and_recursive_triggers() {
 }
 
 #[test]
-fn timestamp_defaults_are_stored_in_utc_and_invalid_ddl_rolls_back() {
+fn instant_defaults_are_stored_in_utc_and_invalid_ddl_rolls_back() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(id INT64 PRIMARY KEY); INSERT INTO t VALUES(1)")
         .unwrap();
     db.execute(&format!(
-        "ALTER TABLE t ADD COLUMN ts TIMESTAMP DEFAULT '{OFFSET}'"
+        "ALTER TABLE t ADD COLUMN ts INSTANT DEFAULT '{OFFSET}'"
     ))
     .unwrap();
     db.execute("INSERT INTO t(id) VALUES(2)").unwrap();
     assert_eq!(raw(&mut db, "t"), vec![vec![Value::Text(UTC.into())]; 2]);
     assert!(
-        db.execute("ALTER TABLE t ADD COLUMN bad TIMESTAMP DEFAULT '2026-10-13T12:00:00'")
+        db.execute("ALTER TABLE t ADD COLUMN bad INSTANT DEFAULT '2026-10-13T12:00:00'")
             .is_err()
     );
     assert_eq!(
         db.execute("SELECT * FROM t").unwrap()[0].columns,
         vec!["id", "ts"]
     );
-    db.execute(&format!("CREATE TABLE defaults(ts TIMESTAMP DEFAULT '{OFFSET}'); INSERT INTO defaults DEFAULT VALUES")).unwrap();
+    db.execute(&format!(
+        "CREATE TABLE defaults(ts INSTANT DEFAULT '{OFFSET}'); INSERT INTO defaults DEFAULT VALUES"
+    ))
+    .unwrap();
     assert_eq!(
         raw(&mut db, "defaults"),
         vec![vec![Value::Text(UTC.into())]]
@@ -279,9 +302,9 @@ fn timestamp_defaults_are_stored_in_utc_and_invalid_ddl_rolls_back() {
 }
 
 #[test]
-fn canonical_timestamps_sort_and_enforce_unique_instants() {
+fn canonical_instants_sort_and_enforce_unique_instants() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,ts TIMESTAMP UNIQUE); INSERT INTO t VALUES(1,'2026-10-13T12:00:00.1Z'),(2,'2026-10-13T16:00:00+04:00'),(3,'2026-10-13T12:00:00.000000001Z')").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,ts INSTANT UNIQUE); INSERT INTO t VALUES(1,'2026-10-13T12:00:00.1Z'),(2,'2026-10-13T16:00:00+04:00'),(3,'2026-10-13T12:00:00.000000001Z')").unwrap();
     assert_eq!(
         db.execute("SELECT id FROM t ORDER BY ts").unwrap()[0].rows,
         vec![
@@ -301,7 +324,7 @@ fn canonical_timestamps_sort_and_enforce_unique_instants() {
     assert_eq!(
         db.execute_params(
             "SELECT id FROM t WHERE ts=?",
-            &[Value::Timestamp("2026-10-13T16:00:00+04:00".into())]
+            &[Value::Instant("2026-10-13T16:00:00+04:00".into())]
         )
         .unwrap()[0]
             .rows,
@@ -310,9 +333,9 @@ fn canonical_timestamps_sort_and_enforce_unique_instants() {
 }
 
 #[test]
-fn generated_timestamps_must_already_use_canonical_utc() {
+fn generated_instants_must_already_use_canonical_utc() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(input TEXT,ts TIMESTAMP GENERATED ALWAYS AS(input) STORED)")
+    db.execute("CREATE TABLE t(input TEXT,ts INSTANT GENERATED ALWAYS AS(input) STORED)")
         .unwrap();
     db.execute_params("INSERT INTO t(input) VALUES(?)", &[Value::Text(UTC.into())])
         .unwrap();
@@ -327,9 +350,9 @@ fn generated_timestamps_must_already_use_canonical_utc() {
 }
 
 #[test]
-fn a_temp_table_cannot_redirect_main_timestamp_normalization() {
+fn a_temp_table_cannot_redirect_main_instant_normalization() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts TIMESTAMP); CREATE TEMP TABLE events(id INT64 PRIMARY KEY,ts TEXT); INSERT INTO temp.events VALUES(1,'temporary')").unwrap();
+    db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts INSTANT); CREATE TEMP TABLE events(id INT64 PRIMARY KEY,ts TEXT); INSERT INTO temp.events VALUES(1,'temporary')").unwrap();
     db.execute(&format!("INSERT INTO main.events VALUES(1,'{OFFSET}')"))
         .unwrap();
     assert_eq!(
@@ -345,7 +368,7 @@ fn a_temp_table_cannot_redirect_main_timestamp_normalization() {
 #[test]
 fn readable_import_normalizes_offsets_without_replaying_user_triggers() {
     let mut db = Database::memory();
-    db.execute(&format!("CREATE TABLE events(ts TIMESTAMP); INSERT INTO events VALUES('{UTC}'); CREATE TABLE audit(message TEXT); CREATE TRIGGER log AFTER UPDATE ON events BEGIN INSERT INTO audit VALUES('updated'); END")).unwrap();
+    db.execute(&format!("CREATE TABLE events(ts INSTANT); INSERT INTO events VALUES('{UTC}'); CREATE TABLE audit(message TEXT); CREATE TRIGGER log AFTER UPDATE ON events BEGIN INSERT INTO audit VALUES('updated'); END")).unwrap();
     let yaml = String::from_utf8(db.export(Format::Readable).unwrap())
         .unwrap()
         .replace(UTC, OFFSET);
@@ -361,9 +384,9 @@ fn readable_import_normalizes_offsets_without_replaying_user_triggers() {
 }
 
 #[test]
-fn readable_import_rejects_noncanonical_generated_timestamps() {
+fn readable_import_rejects_noncanonical_generated_instants() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE events(input TEXT,ts TIMESTAMP GENERATED ALWAYS AS(input) STORED)")
+    db.execute("CREATE TABLE events(input TEXT,ts INSTANT GENERATED ALWAYS AS(input) STORED)")
         .unwrap();
     db.execute_params(
         "INSERT INTO events(input) VALUES(?)",

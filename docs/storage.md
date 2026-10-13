@@ -52,7 +52,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | FLOAT4 | REAL with BoxDB's float32 validation |
 | BYTEA | BLOB with a storage-class CHECK |
 | NUMERIC, DECIMAL | Exact decimal text |
-| UUID and TIMESTAMP | Text |
+| UUID and INSTANT | Text |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
 Unsigned columns return `Value::UnsignedInteger`; signed columns return
@@ -61,7 +61,7 @@ so native comparisons and sorting retain their numeric meaning. Typed arrays
 preserve these logical element types.
 
 Typed parameter values are normalized before binding. Prefer `Value::Numeric`
-for exact decimals and typed UUID/timestamp values for canonical representations.
+for exact decimals and typed UUID/instant values for canonical representations.
 SQLite's ordinary SQL arithmetic and sorting still operate on physical storage
 classes. Extended CAST syntax from the former BoxDB executor is not supported.
 Computed columns return SQLite values; direct column projections, including
@@ -74,21 +74,21 @@ import. A SELECT containing an invalid projected typed value returns an error
 for the entire result. Foreign-key enforcement must be enabled on each external connection.
 This is a validation contract, not protection against deliberate metadata edits.
 
-`TIMESTAMP` is the only temporal column type. It represents an exact instant:
+`INSTANT` is the only temporal column type. It represents an exact instant:
 input must include `Z` or an explicit numeric UTC offset. BoxDB shifts offset
-timestamps to UTC and stores fixed-width RFC 3339 text with nine fractional
+instants to UTC and stores fixed-width RFC 3339 text with nine fractional
 digits, such as `2024-02-29T12:00:00.000000000Z`. This also makes ordinary SQLite
 text ordering chronological for canonical values. Dates without a time or
 offset, leap seconds, and precision beyond nanoseconds are rejected. The UTC
-year must be between 0000 and 9999. See [timestamp usage](temporal.md).
+year must be between 0000 and 9999. See [instant usage](temporal.md).
 
-SQL writes through BoxDB normalize timestamp columns and typed timestamp arrays
+SQL writes through BoxDB normalize instant columns and typed instant arrays
 using TEMP triggers. Defaults added to existing rows are normalized within the
 schema savepoint. Readable imports normalize rows before restoring user triggers.
-Generated timestamp expressions must already produce canonical
+Generated instant expressions must already produce canonical
 UTC text. Other SQLite connections do not run these triggers and should write
 canonical UTC values themselves. SQL comparisons with plain text literals still
-use SQLite text semantics; typed `Value::Timestamp` parameters are normalized
+use SQLite text semantics; typed `Value::Instant` parameters are normalized
 before binding.
 
 Use BoxDB for typed CREATE/ALTER/DROP operations: it updates schema and metadata
