@@ -75,9 +75,14 @@ reads do not include file access after opening. These are different storage
 architectures, so YAML ratios compare end-to-end behavior rather than client
 overhead alone. The SQLite reference settings are unchanged in YAML runs.
 
+The current harness explicitly uses STRICT tables for both clients. Saved
+reports collected before strict-by-default storage used ordinary records tables;
+their timings are retained unchanged.
+
 Both clients materialize owned Rust rows. BoxDB additionally returns column
 names, supports SQL batches, monitors external changes and decodes extended
-types. Ordinary SQLite SQL bypasses the BoxDB DDL parser. Prepared SQL and
+types. Table declarations apply BoxDB's strict policy; other SQL executes in
+SQLite directly. Prepared SQL and
 column-type information are cached; external changes invalidate type caches.
 
 With `--typed`, BoxDB declares the payload as VARCHAR(100), adding metadata and

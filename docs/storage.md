@@ -6,8 +6,8 @@
 transactions, locks, recovery, and the `-wal` and `-shm` sidecars. BoxDB opens
 binary databases in WAL mode with FULL synchronization, `fullfsync=ON` on macOS,
 foreign keys enabled, a five-second busy timeout, and normal locking. Other
-SQLite connections may use the file concurrently. Files containing BoxDB type
-metadata require SQLite 3.37 or later because that metadata table is STRICT.
+SQLite connections may use the file concurrently. Tables created through BoxDB
+use STRICT storage and require SQLite 3.37 or later.
 
 Do not copy only a live `.db` file while ignoring its WAL. Use SQLite's backup
 API, BoxDB export, or [Litestream](replication.md). Binary databases are not
@@ -23,7 +23,22 @@ on its connection, and installs TEMP triggers for INSERT and UPDATE. Those
 triggers also validate writes caused by SQL expressions, INSERT SELECT and user
 triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
 
-Standard SQLite types keep SQLite behavior. BoxDB's extended type declarations
+Ordinary CREATE TABLE statements are STRICT by default, including TEMP tables,
+WITHOUT ROWID and CREATE TABLE AS SELECT. An explicit STRICT suffix is accepted,
+including either ordering with WITHOUT ROWID. Standard types follow SQLite's
+[STRICT conversion rules](https://www.sqlite.org/stricttables.html): lossless
+conversions such as text `'42'` into an integer are allowed; incompatible values
+are rejected. ANY preserves each value's storage class. A column without a
+declared type becomes ANY. BIGINT/INT8 map to INT (64-bit, preserving the
+distinction from INTEGER PRIMARY KEY), and floating-point aliases map to REAL.
+
+The policy applies to table creation through BoxDB. Opening or importing an
+existing database preserves its schema. Virtual tables retain their SQLite
+module's typing rules. CTAS retains SQLite's inferred physical types; computed
+columns without a supported inferred type become ANY. Extended logical metadata
+is not inferred from SELECT expressions.
+
+BoxDB's extended type declarations
 are translated into physical types and, where applicable, portable CHECKs:
 
 | Logical type | SQLite representation |
@@ -47,7 +62,8 @@ aliases and views, use their original column's logical type.
 TEMP validators are specific to the BoxDB connection. An external SQLite writer
 gets portable SQLite constraints but can bypass the additional Rust validators.
 BoxDB checks extended values when reading them and validates them on snapshot
-import. Foreign-key enforcement must be enabled on each external connection.
+import. A SELECT containing an invalid projected typed value returns an error
+for the entire result. Foreign-key enforcement must be enabled on each external connection.
 This is a validation contract, not protection against deliberate metadata edits.
 
 Use BoxDB for typed CREATE/ALTER/DROP operations: it updates schema and metadata
@@ -72,7 +88,7 @@ kind: schema
 object_type: table
 name: notes
 table: notes
-sql: CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT)
+sql: CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT) STRICT
 ---
 kind: row
 table: notes

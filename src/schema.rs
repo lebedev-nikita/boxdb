@@ -74,7 +74,10 @@ fn extension(input: &str) -> Result<Option<Type>> {
         Err(_) => Ok(None),
     }
 }
+mod create;
 pub(crate) struct Declaration {
+    pub schema: String,
+    pub select: bool,
     pub sql: String,
     pub table: String,
     pub columns: Vec<(String, Type)>,
@@ -122,39 +125,24 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
         }
         return Ok(Some(ty));
     }
+    let native = match column.data_type.to_string().to_ascii_uppercase().as_str() {
+        "" => Some("ANY"),
+        "BIGINT" | "INT8" => Some("INT"),
+        "FLOAT" | "FLOAT8" | "DOUBLE" | "DOUBLE PRECISION" => Some("REAL"),
+        _ => None,
+    };
+    if let Some(native) = native {
+        column.data_type = DataType::Custom(ObjectName(vec![Ident::new(native)]), vec![]);
+    }
     Ok(None)
 }
 pub(crate) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     if !keyword(sql).eq_ignore_ascii_case("CREATE") {
         return Ok(None);
     }
-    // Native SQLite statements are passed through unchanged. The parser is used
-    // only for BoxDB's extended column declarations.
-    let Ok(statements) = Parser::parse_sql(&GenericDialect {}, sql) else {
-        return Ok(None);
-    };
-    let [Statement::CreateTable(table)] = statements.as_slice() else {
-        return Ok(None);
-    };
-    if main_name(&table.name).is_none() || table.temporary {
-        return Ok(None);
-    }
-    let mut physical = table.clone();
-    let mut columns = vec![];
-    for column in &mut physical.columns {
-        if let Some(ty) = translate_column(column)? {
-            columns.push((column.name.value.clone(), ty));
-        }
-    }
-    if columns.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(Declaration {
-        sql: physical.to_string(),
-        table: main_name(&table.name).unwrap().into(),
-        columns,
-    }))
+    create::declaration(sql)
 }
+
 pub(crate) struct Alteration {
     pub sql: String,
     pub table: String,
@@ -179,16 +167,19 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
     }
     let table = main_name(name).unwrap().to_owned();
     let mut columns = vec![];
+    let mut rewritten = false;
     for op in operations.iter_mut() {
-        if let AlterTableOperation::AddColumn { column_def, .. } = op
-            && let Some(ty) = translate_column(column_def)?
-        {
-            columns.push((column_def.name.value.clone(), ty));
+        if let AlterTableOperation::AddColumn { column_def, .. } = op {
+            let original = column_def.data_type.clone();
+            if let Some(ty) = translate_column(column_def)? {
+                columns.push((column_def.name.value.clone(), ty));
+            }
+            rewritten |= original != column_def.data_type;
         }
     }
     let changes = operations.clone();
     Ok(Some(Alteration {
-        sql: if columns.is_empty() {
+        sql: if !rewritten {
             sql.into()
         } else {
             statement.to_string()
@@ -247,6 +238,9 @@ pub(crate) fn save_alteration(db: &Connection, change: &Alteration) -> Result<()
     Ok(())
 }
 pub(crate) fn save(db: &Connection, declaration: &Declaration) -> Result<()> {
+    if declaration.columns.is_empty() {
+        return Ok(());
+    }
     db.execute_batch(META_SQL)?;
     if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? == 0 {
         db.pragma_update(None, "application_id", 0x424f5844i64)?;

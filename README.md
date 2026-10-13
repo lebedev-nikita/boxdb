@@ -38,8 +38,10 @@ JSON results. Use `boxdb --help` for all options.
 ## SQL and types
 
 SQLite executes SQL directly, including joins, views, triggers, UPSERT, CTEs,
-window functions, and SQLite functions. Standard SQLite column types retain
-SQLite's behavior; use SQLite `STRICT` tables for its built-in strict typing.
+window functions, and SQLite functions. Tables created through BoxDB are
+`STRICT` automatically; explicitly writing `STRICT` is also valid. Standard
+columns use SQLite's strict typing and lossless conversion rules. Use `ANY`
+for mixed storage classes; columns without a declared type default to `ANY`.
 `INTEGER` is 64-bit. BoxDB extensions include `SMALLINT`, `INT4`, `BOOLEAN`,
 bounded `VARCHAR`, exact `NUMERIC`/`DECIMAL`, UUID, JSON, temporal types, BYTEA,
 and typed arrays.
@@ -106,7 +108,8 @@ cargo bench --locked --bench sqlite_vs_boxdb -- --boxdb-format yaml
 ```
 
 The Litestream integration test requires the original `litestream` executable.
-The same 287 adapted upstream SQLite scenarios run against both BoxDB and
-rusqlite; additional tests cover types, schemas and file interoperability.
+The same 287 adapted upstream SQLite scenarios run against rusqlite and BoxDB
+in memory, binary and YAML modes, with persistence checks after reopening.
+Additional tests cover types, schemas, interrupted writes and interoperability.
 [Benchmark methodology and reports](docs/benchmarks.md) include BoxDB/SQLite
 ratios and retain measurements of previous storage implementations.

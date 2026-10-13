@@ -134,3 +134,30 @@ pub(crate) fn data_version(db: &Connection) -> Result<u32> {
     }
     Ok(version)
 }
+
+/// Reject a pending commit before publishing its readable snapshot. SQLite's
+/// counter avoids scanning every foreign-key table on each autocommit write.
+pub(crate) fn check_commit_constraints(db: &Connection) -> Result<()> {
+    let mut unresolved = 0;
+    let mut highwater = 0;
+    // SAFETY: the live connection owns its SQLite handle and both output
+    // pointers refer to initialized, correctly aligned integers.
+    let code = unsafe {
+        rusqlite::ffi::sqlite3_db_status(
+            db.handle(),
+            rusqlite::ffi::SQLITE_DBSTATUS_DEFERRED_FKS,
+            &mut unresolved,
+            &mut highwater,
+            0,
+        )
+    };
+    if code != rusqlite::ffi::SQLITE_OK {
+        return Err(Error(format!(
+            "cannot inspect pending SQLite constraints: {code}"
+        )));
+    }
+    if unresolved != 0 {
+        return Err(Error("FOREIGN KEY constraint failed".into()));
+    }
+    Ok(())
+}

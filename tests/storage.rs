@@ -171,3 +171,70 @@ fn failed_readable_publication_rolls_back_and_requires_reopen() {
         vec![vec![Value::Integer(1)]]
     );
 }
+
+#[test]
+fn failed_implicit_commit_does_not_publish_invalid_readable_data() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("deferred.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    db.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+    assert!(db.execute("INSERT INTO child VALUES(99)").is_err());
+    assert!(!db.in_transaction());
+    assert!(
+        db.execute("SELECT p FROM child").unwrap()[0]
+            .rows
+            .is_empty()
+    );
+    drop(db);
+    let mut reopened = Database::open(&path, Format::Readable).unwrap();
+    assert!(
+        reopened.execute("SELECT p FROM child").unwrap()[0]
+            .rows
+            .is_empty()
+    );
+    reopened
+        .execute("INSERT INTO parent VALUES(1); INSERT INTO child VALUES(1)")
+        .unwrap();
+    drop(reopened);
+    assert_eq!(
+        Database::open(&path, Format::Readable)
+            .unwrap()
+            .execute("SELECT p FROM child")
+            .unwrap()[0]
+            .rows,
+        vec![vec![Value::Integer(1)]]
+    );
+}
+
+#[test]
+fn failed_explicit_commit_keeps_pending_changes_private_until_repair_or_rollback() {
+    for format in [Format::Binary, Format::Readable] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("deferred");
+        let mut db = Database::open(&path, format).unwrap();
+        db.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+        db.execute("BEGIN; INSERT INTO child VALUES(99)").unwrap();
+        assert!(db.execute("COMMIT").is_err());
+        assert!(db.in_transaction());
+        let mut committed =
+            Database::from_snapshot(&Database::read_snapshot(&path).unwrap()).unwrap();
+        assert!(
+            committed.execute("SELECT p FROM child").unwrap()[0]
+                .rows
+                .is_empty()
+        );
+        db.execute("INSERT INTO parent VALUES(99); COMMIT").unwrap();
+        db.execute("BEGIN; INSERT INTO child VALUES(100)").unwrap();
+        assert!(db.execute("COMMIT").is_err());
+        db.execute("ROLLBACK").unwrap();
+        drop(db);
+        assert_eq!(
+            Database::open(&path, format)
+                .unwrap()
+                .execute("SELECT p FROM child")
+                .unwrap()[0]
+                .rows,
+            vec![vec![Value::Integer(99)]]
+        );
+    }
+}

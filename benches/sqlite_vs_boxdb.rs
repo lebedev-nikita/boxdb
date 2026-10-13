@@ -9,7 +9,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 type Rows = Vec<Vec<Value>>;
 const SCHEMA: &str = "CREATE TABLE records (
     id INTEGER PRIMARY KEY, category INTEGER NOT NULL,
-    score INTEGER NOT NULL, payload TEXT NOT NULL)";
+    score INTEGER NOT NULL, payload TEXT NOT NULL) STRICT";
 const ALL_ROWS: &str = "SELECT id,category,score,payload FROM records ORDER BY id";
 
 #[derive(Parser, Serialize)]

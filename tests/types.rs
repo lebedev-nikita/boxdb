@@ -110,6 +110,71 @@ fn invalid_rich_values_fail_without_committing_other_rows() {
         assert!(db.execute("SELECT * FROM t").unwrap()[0].rows.is_empty());
     }
 }
+
+#[test]
+fn reopened_readable_files_preserve_rich_types_and_reject_invalid_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("typed.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    db.execute(
+        "CREATE TABLE rich(id INTEGER PRIMARY KEY,u UUID,n NUMERIC(8,2),d DATE,tags TEXT[])",
+    )
+    .unwrap();
+    let row = vec![
+        Value::Integer(1),
+        Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
+        Value::Numeric("123.45".into()),
+        Value::Date("2024-02-29".into()),
+        Value::Array(vec![Value::Text("雪".into()), Value::Null]),
+    ];
+    db.execute_params("INSERT INTO rich VALUES(?,?,?,?,?)", &row)
+        .unwrap();
+    drop(db);
+    for sql in [
+        "UPDATE rich SET u='wrong'",
+        "UPDATE rich SET n='123.456'",
+        "UPDATE rich SET d='2023-02-29'",
+        "UPDATE rich SET tags='[1]'",
+        "INSERT INTO rich VALUES(2,'550e8400-e29b-41d4-a716-446655440000','1.23','2024-01-01','[]'),(3,'wrong','1.23','2024-01-01','[]')",
+    ] {
+        let mut db = Database::open(&path, Format::Readable).unwrap();
+        assert!(db.execute(sql).is_err(), "{sql}");
+        assert_eq!(
+            db.execute("SELECT * FROM rich ORDER BY id").unwrap()[0].rows,
+            vec![row.clone()]
+        );
+        drop(db);
+        assert_eq!(
+            Database::open(&path, Format::Readable)
+                .unwrap()
+                .execute("SELECT * FROM rich ORDER BY id")
+                .unwrap()[0]
+                .rows,
+            vec![row.clone()]
+        );
+    }
+}
+
+#[test]
+fn a_select_with_an_invalid_typed_cell_returns_an_error_for_the_whole_result() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("invalid.db");
+    let mut db = Database::open(&path, Format::Binary).unwrap();
+    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-02-29'),(2,'2024-01-01')").unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute("UPDATE t SET d='2024-02-30' WHERE id=2", [])
+        .unwrap();
+    assert!(db.execute("SELECT id,d FROM t ORDER BY id").is_err());
+    assert_eq!(
+        db.execute("SELECT id,d FROM t WHERE id=1").unwrap()[0].rows,
+        vec![vec![Value::Integer(1), Value::Date("2024-02-29".into())]]
+    );
+    assert_eq!(
+        db.execute("SELECT id FROM t ORDER BY id").unwrap()[0].rows,
+        vec![vec![Value::Integer(1)], vec![Value::Integer(2)]]
+    );
+}
 #[test]
 fn external_clients_need_no_boxdb_functions_and_invalid_values_are_detected() {
     let temp = tempfile::tempdir().unwrap();

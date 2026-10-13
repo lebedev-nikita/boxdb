@@ -348,7 +348,10 @@ impl Database {
                 return Err(Error("DDL parameters are unsupported".into()));
             }
             if self.connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1 COLLATE NOCASE)",
+                &format!(
+                    "SELECT EXISTS(SELECT 1 FROM {}.sqlite_schema WHERE name=?1 COLLATE NOCASE)",
+                    schema::quote(&declaration.schema)
+                ),
                 [&declaration.table],
                 |r| r.get::<_, bool>(0),
             )? {
@@ -359,7 +362,7 @@ impl Database {
             self.connection
                 .execute_batch("SAVEPOINT __boxdb_declaration")?;
             let result = (|| {
-                self.connection.execute_batch(&declaration.sql)?;
+                declaration.execute(&self.connection)?;
                 schema::save(&self.connection, &declaration)?;
                 self.refresh(true)?;
                 self.connection
@@ -417,7 +420,9 @@ impl Database {
         }
         // VACUUM rebuilds the complete database, including reserved metadata.
         let _vacuum_guard = (keyword == "VACUUM").then(|| InternalGuard::enter(&self.internal));
-        let result = self.run(sql, params);
+        let result = self
+            .run(sql, params)
+            .map(|result| if ddl { empty() } else { result });
         if result.is_err() {
             if guarded && !self.connection.is_autocommit() {
                 let _ = self
@@ -446,12 +451,12 @@ impl Database {
             if guarded {
                 // An internal savepoint nested inside a user transaction must
                 // not publish that transaction's pending readable data.
-                if outer_autocommit
-                    && let Some(file) = &self.readable
-                    && let Err(e) = file.publish(&self.connection)
-                {
-                    self.poisoned = true;
-                    return Err(e);
+                if outer_autocommit && let Some(file) = &self.readable {
+                    storage::check_commit_constraints(&self.connection)?;
+                    if let Err(e) = file.publish(&self.connection) {
+                        self.poisoned = true;
+                        return Err(e);
+                    }
                 }
                 self.connection.execute_batch("RELEASE __boxdb_write")?;
             } else if !readonly || matches!(keyword.as_str(), "COMMIT" | "END" | "RELEASE") {
