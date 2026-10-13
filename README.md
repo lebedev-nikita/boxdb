@@ -47,7 +47,7 @@ Integer declarations require a bit width: `INT8`, `INT16`, `INT32`, `INT64`,
 and the former byte-width aliases are rejected. `UINT64` is deferred;
 see [issue #1](https://github.com/lebedev-nikita/boxdb/issues/1).
 BoxDB extensions also include `BOOLEAN`, bounded `VARCHAR`, exact
-`NUMERIC`/`DECIMAL`, UUID, JSON, temporal types, BYTEA, and typed arrays.
+`NUMERIC`/`DECIMAL`, UUID, JSON, UTC `TIMESTAMP`, BYTEA, and typed arrays.
 
 BoxDB checks extended columns on its own connection, including expression
 updates, INSERT SELECT, and trigger writes. Some rules also have portable
@@ -85,11 +85,11 @@ use boxdb::{Database, Format, Value};
 
 fn main() -> boxdb::Result<()> {
     let mut db = Database::open("data.db", Format::Binary)?;
-    db.execute("CREATE TABLE IF NOT EXISTS events(id INT64 PRIMARY KEY,day DATE)")?;
-    db.execute_params("INSERT INTO events(day) VALUES(?)", &[
-        Value::Date("2024-02-29".into()),
+    db.execute("CREATE TABLE IF NOT EXISTS events(id INT64 PRIMARY KEY,at TIMESTAMP)")?;
+    db.execute_params("INSERT INTO events(at) VALUES(?)", &[
+        Value::Timestamp("2024-02-29T16:00:00+04:00".into()),
     ])?;
-    let results = db.execute("SELECT day FROM events")?;
+    let results = db.execute("SELECT at FROM events")?;
     println!("{:?}", results);
     Ok(())
 }

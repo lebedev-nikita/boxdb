@@ -83,6 +83,14 @@ fn authorizer(db: &Connection, internal: Arc<AtomicBool>) -> Result<()> {
         if internal.load(Ordering::Relaxed) {
             return Z::Allow;
         }
+        if let A::Function { function_name } = context.action
+            && function_name.starts_with("__boxdb_timestamp_write_")
+            && !context
+                .accessor
+                .is_some_and(|name| name.starts_with("__boxdb_validate_timestamp_"))
+        {
+            return Z::Deny;
+        }
         let object = match context.action {
             A::Insert { table_name }
             | A::Update { table_name, .. }
@@ -447,6 +455,9 @@ impl Database {
                 }
                 schema::cleanup(&self.connection)?;
                 self.refresh(true)?;
+                if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
+                    schema::normalize_timestamps(&self.connection, &self.types.borrow())?;
+                }
             }
             if guarded {
                 // An internal savepoint nested inside a user transaction must
