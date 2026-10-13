@@ -66,7 +66,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes musl-tools
+          sudo apt-get install --yes musl-tools libclang-dev
       - name: Build CLI
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -87,17 +87,17 @@ jobs:
           def run(*args):
               return subprocess.check_output([binary, *map(str, args)], text=True)
           assert run("--version").strip() == "boxdb " + os.environ["BOXDB_RELEASE_VERSION"]
-          sql = "CREATE TABLE smoke(id INTEGER PRIMARY KEY, label TEXT NOT NULL); INSERT INTO smoke VALUES(1,'BoxDB'); SELECT id,label FROM smoke"
+          sql = "CREATE TABLE smoke(id INTEGER PRIMARY KEY, label VARCHAR(12) NOT NULL); INSERT INTO smoke VALUES(1,'BoxDB'); SELECT id,label FROM smoke"
           expected = [[{"Integer": 1}, {"Text": "BoxDB"}]]
           memory = json.loads(run(":memory:", "--json", "-e", sql))
           assert memory["columns"] == ["id", "label"] and memory["rows"] == expected
           with tempfile.TemporaryDirectory() as directory:
-              readable = Path(directory) / "readable.jsonl"
+              readable = Path(directory) / "readable.yaml"
               compact = Path(directory) / "binary.boxdb"
-              restored = Path(directory) / "restored.jsonl"
+              restored = Path(directory) / "restored.yaml"
               assert json.loads(run(readable, "--format", "readable", "--json", "-e", sql))["rows"] == expected
-              rejected = subprocess.run([binary, str(readable), "-e", "INSERT INTO smoke VALUES('2','bad')"], capture_output=True, text=True)
-              assert rejected.returncode != 0 and "type mismatch" in rejected.stderr
+              rejected = subprocess.run([binary, str(readable), "-e", "INSERT INTO smoke VALUES(2,'label exceeding limit')"], capture_output=True, text=True)
+              assert rejected.returncode != 0 and "CHECK" in rejected.stderr
               run("convert", readable, compact, "--format", "binary")
               assert json.loads(run(compact, "--json", "-e", "SELECT id,label FROM smoke"))["rows"] == expected
               run("convert", compact, restored, "--format", "readable")
@@ -131,6 +131,8 @@ jobs:
           toolchain: stable
       - name: Test database and verify source package
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes libclang-dev
           cargo test --locked
           cargo package --locked
       - name: Upload source archive
@@ -237,7 +239,7 @@ jobs:
           gh release create "v$BOXDB_RELEASE_VERSION" release-assets/* \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "BoxDB $BOXDB_RELEASE_VERSION" \
-            --notes 'Strict typed SQL database with binary and Git-friendly storage, and S3 snapshot replication. Experimental; SQL compatibility is partial.'
+            --notes 'Extended SQLite client with typed columns, ordinary SQLite binary files, and Git-friendly YAML stream storage. Use original Litestream for replication. Experimental.'
       - name: Publish only the complete verified draft
         run: |
           python3 <<'PY'

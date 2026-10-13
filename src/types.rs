@@ -74,10 +74,10 @@ impl Type {
         };
         let result = match base {
             "SMALLINT" | "INT2" => Self::SmallInt,
-            "INT" | "INTEGER" | "INT4" => Self::Integer,
-            "BIGINT" | "INT8" => Self::BigInt,
-            "REAL" | "FLOAT4" => Self::Real,
-            "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
+            "INT4" => Self::Integer,
+            "INT" | "INTEGER" | "BIGINT" | "INT8" => Self::BigInt,
+            "FLOAT4" => Self::Real,
+            "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
             "NUMERIC" | "DECIMAL" => {
                 if args.is_empty() {
                     Self::Numeric(None)

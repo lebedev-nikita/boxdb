@@ -1,4 +1,3 @@
-use boxdb::replication::{Credentials, Replicator, S3Config};
 use boxdb::{Database, Error, Format, QueryResult, Result};
 use clap::{Parser, Subcommand};
 use std::{
@@ -10,7 +9,7 @@ use std::{
 #[command(
     name = "boxdb",
     version,
-    about = "Strict typed embedded database with binary and Git-friendly storage",
+    about = "Extended SQLite client with typed columns and readable YAML stream storage",
     subcommand_precedence_over_arg = true,
     args_conflicts_with_subcommands = true
 )]
@@ -38,56 +37,6 @@ enum Command {
         #[arg(long, value_enum)]
         format: Format,
     },
-    /// Stream committed file snapshots to S3; use --once for a single sync.
-    Replicate {
-        database: PathBuf,
-        #[command(flatten)]
-        s3: S3Options,
-        #[arg(long)]
-        once: bool,
-        #[arg(long,default_value="1000",value_parser=clap::value_parser!(u64).range(10..=60000))]
-        interval_ms: u64,
-    },
-    /// Restore the latest or an explicit S3 revision into a new local file.
-    Restore {
-        destination: PathBuf,
-        #[command(flatten)]
-        s3: S3Options,
-        #[arg(long)]
-        revision: Option<String>,
-    },
-}
-#[derive(clap::Args)]
-struct S3Options {
-    #[arg(long)]
-    bucket: String,
-    #[arg(long, default_value = "boxdb")]
-    prefix: String,
-    /// AWS region (defaults to AWS_REGION, AWS_DEFAULT_REGION, then us-east-1).
-    #[arg(long)]
-    region: Option<String>,
-    /// S3-compatible HTTP(S) endpoint. Defaults to the regional AWS endpoint.
-    #[arg(long)]
-    endpoint: Option<String>,
-}
-impl S3Options {
-    fn replicator(self) -> Result<Replicator> {
-        let region = self
-            .region
-            .or_else(|| std::env::var("AWS_REGION").ok())
-            .or_else(|| std::env::var("AWS_DEFAULT_REGION").ok())
-            .unwrap_or_else(|| "us-east-1".into());
-        let endpoint = self
-            .endpoint
-            .unwrap_or_else(|| format!("https://s3.{region}.amazonaws.com"));
-        Replicator::new(S3Config {
-            endpoint,
-            region,
-            bucket: self.bucket,
-            prefix: self.prefix,
-            credentials: Credentials::load()?,
-        })
-    }
 }
 fn main() {
     if let Err(error) = run(Cli::parse()) {
@@ -108,50 +57,6 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 let db = Database::open(&source, Format::Binary)?;
                 Database::restore(destination, &db.export(format)?)?;
-                Ok(())
-            }
-            Command::Replicate {
-                database,
-                s3,
-                once,
-                interval_ms,
-            } => {
-                let replicator = s3.replicator()?;
-                if !database.is_file() {
-                    return Err(Error("source database not found".into()));
-                }
-                loop {
-                    let result = std::fs::read(&database)
-                        .map_err(|e| Error(e.to_string()))
-                        .and_then(|bytes| {
-                            Database::from_snapshot(&bytes)?;
-                            replicator.push(&bytes)
-                        });
-                    match result {
-                        Ok(revision) => println!(
-                            "{}",
-                            serde_json::to_string(&revision).map_err(|e| Error(e.to_string()))?
-                        ),
-                        Err(e) if once => return Err(e),
-                        Err(e) => eprintln!("boxdb: replication failed; retrying: {e}"),
-                    }
-                    if once {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(interval_ms));
-                }
-                Ok(())
-            }
-            Command::Restore {
-                destination,
-                s3,
-                revision,
-            } => {
-                if destination.exists() {
-                    return Err(Error("destination already exists".into()));
-                }
-                let bytes = s3.replicator()?.restore(revision.as_deref())?;
-                Database::restore(destination, &bytes)?;
                 Ok(())
             }
         };
@@ -198,7 +103,7 @@ fn run(cli: Cli) -> Result<()> {
                 ".format" => println!("{:?}", db.format()),
                 ".tables" => execute(
                     &mut db,
-                    "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name",
+                    "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB '__boxdb_*' AND name NOT LIKE 'sqlite_%' ORDER BY name",
                     cli.json,
                 )?,
                 ".schema" => execute(
@@ -229,19 +134,11 @@ fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 fn complete(sql: &str) -> bool {
-    use sqlparser::{
-        dialect::GenericDialect,
-        tokenizer::{Token, Tokenizer},
+    let Ok(sql) = std::ffi::CString::new(sql) else {
+        return false;
     };
-    Tokenizer::new(&GenericDialect {}, sql)
-        .tokenize()
-        .ok()
-        .and_then(|tokens| {
-            tokens
-                .into_iter()
-                .rfind(|t| !matches!(t, Token::Whitespace(_)))
-        })
-        .is_some_and(|t| t == Token::SemiColon)
+    // SAFETY: CString remains alive and provides a NUL-terminated SQL string.
+    unsafe { rusqlite::ffi::sqlite3_complete(sql.as_ptr()) != 0 }
 }
 fn execute(db: &mut Database, sql: &str, json: bool) -> Result<()> {
     for result in db.execute(sql)? {

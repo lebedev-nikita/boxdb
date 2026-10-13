@@ -2,91 +2,99 @@
 
 # BoxDB
 
-An experimental embedded database for small, typed local datasets. BoxDB has
-its own Rust SQL executor, strict columns, binary or Git-friendly storage, and
-S3 snapshot replication. SQL compatibility is partial; this is not a production
-SQLite replacement.
+An experimental extended SQLite client for Rust and the command line. Binary
+files are ordinary SQLite databases. BoxDB adds logical types and validation;
+a separate YAML stream provides readable storage for Git. The project is still
+in version 0 and does not preserve old BoxDB file or API compatibility.
 
 ## Get started
 
-Install with Homebrew:
+Install from this checkout with a current Rust toolchain, native build tools and
+libclang (Xcode Command Line Tools on macOS; `libclang-dev` on Debian/Ubuntu):
 
 ```sh
-brew install lebedev-nikita/tap/boxdb
-```
-
-The [tap](https://github.com/lebedev-nikita/homebrew-tap#boxdb) checks stable
-GitHub releases hourly. Update with `brew update && brew upgrade boxdb`.
-Apple Silicon macOS and x86-64 Linux use prebuilt binaries; other supported
-architectures build from source.
-
-You can also download the CLI from
-[GitHub Releases](https://github.com/lebedev-nikita/boxdb/releases), or run
-`cargo install --path . --locked` from this checkout with a current Rust toolchain
-supporting edition 2024 and native C/C++ build tools.
-
-Create a readable database:
-
-```sh
-boxdb data.jsonl --format readable -e "
+cargo install --path . --locked
+boxdb data.db -e "
   CREATE TABLE accounts (
     id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    balance NUMERIC(12,2) DEFAULT 0
+    balance NUMERIC(12,2)
   );
-  INSERT INTO accounts(name,balance) VALUES('Ada',12.50);
+  INSERT INTO accounts(name,balance) VALUES('Ada','12.50');
   SELECT * FROM accounts;
 "
-boxdb data.jsonl --json -e 'SELECT * FROM accounts'
+sqlite3 data.db 'SELECT * FROM accounts'
 ```
 
-Without `-e`, `boxdb data.jsonl` opens a multiline shell or reads SQL from
-stdin. End statements with a semicolon; `.help` lists shell commands.
-Use `boxdb --help` and `boxdb <command> --help` for CLI options.
+Binary storage uses bundled SQLite with WAL, FULL synchronization, a busy
+timeout, and normal locking. Ordinary SQLite clients can read and write the same
+file while BoxDB is open. See [storage and types](docs/storage.md).
 
-Every column requires a type, and tables are strict by default; `STRICT` is
-rejected. Writes do not implicitly convert text to numbers or integers to
-booleans; use typed values or supported explicit casts. `INTEGER` is 32-bit;
-use `BIGINT` for 64-bit integers. Rich types
-include exact decimals, UUIDs, JSON, dates, timestamps, and arrays. See
-[type validation](src/types.rs) for supported names and limits.
+Without `-e`, BoxDB opens a multiline shell or reads SQL from stdin. End
+statements with a semicolon; `.help` lists shell commands. `--json` emits typed
+JSON results. Use `boxdb --help` for all options.
 
-Core SQL statements, constraints, joins, aggregation, and transactions are
-implemented. Features such as ALTER TABLE, views, triggers, UPSERT, CTEs,
-expression subqueries, and window functions remain unsupported. See the
-[public API tests](tests/database.rs) for working query examples.
+## SQL and types
 
-## Storage and Rust API
+SQLite executes SQL directly, including joins, views, triggers, UPSERT, CTEs,
+window functions, and SQLite functions. Tables created through BoxDB are
+`STRICT` automatically; explicitly writing `STRICT` is also valid. Standard
+columns use SQLite's strict typing and lossless conversion rules. Use `ANY`
+for mixed storage classes; columns without a declared type default to `ANY`.
+`INTEGER` is 64-bit. BoxDB extensions include `SMALLINT`, `INT4`, `BOOLEAN`,
+bounded `VARCHAR`, exact `NUMERIC`/`DECIMAL`, UUID, JSON, temporal types, BYTEA,
+and typed arrays.
 
-Existing files determine their own format; `--format` chooses a new file's
-format. Readable files use deterministic UTF-8 JSON Lines with SQL schema records
-and stable row IDs for Git diffs. Row values are untagged strings interpreted
-using the column types; SQL NULL is JSON `null`. Bytes use hex, JSON values use
-JSON text, and arrays use JSON text containing strings or nulls recursively.
-Binary files use a custom BoxDB format;
-BoxDB cannot open SQLite database files. Conversion destinations must be new:
+BoxDB checks extended columns on its own connection, including expression
+updates, INSERT SELECT, and trigger writes. Some rules also have portable
+SQLite CHECK constraints. External SQLite clients do not run BoxDB's additional
+validators; invalid extended values are detected when BoxDB reads those cells.
+Change typed schemas through BoxDB so their metadata stays synchronized.
+
+Extended values have ordinary SQLite representations. Exact decimals are stored
+as text: use decimal strings or `Value::Numeric`, avoiding floating-point SQL
+literals. SQL arithmetic, comparison and computed result types follow SQLite's
+storage semantics. See [src/types.rs](src/types.rs) and [type tests](tests/types.rs).
+
+## Readable storage and conversion
 
 ```sh
-boxdb convert data.jsonl compact.boxdb --format binary
-boxdb convert compact.boxdb readable.jsonl --format readable
-git add readable.jsonl
+boxdb notes.yaml --format readable -e 'CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT)'
+boxdb convert data.db export.yaml --format readable
+boxdb convert export.yaml restored.db --format binary
 ```
 
-The entire database lives in memory, and commits atomically replace its file.
-A connection holds an exclusive lock until dropped; keep the `.lock` sidecar
-in place. Both file size and uncompressed records are limited to 256 MiB.
-There is no WAL or shared connection concurrency.
+Conversion destinations must be new. YAML documents separated by `---` store
+schema declarations and rows with named columns. Text can use multiline block
+scalars; numbers, nulls and BLOBs retain their SQLite storage classes. See the
+[readable format example](docs/storage.md#independent-readable-yaml-stream).
 
-Run `cargo doc --no-deps --open` for the Rust API and a parameterized query
-example. The example also lives in [src/lib.rs](src/lib.rs). Statements commit
-individually unless enclosed in BEGIN/COMMIT; ROLLBACK discards pending changes.
+Readable storage uses SQLite in memory for execution and atomically publishes
+the complete YAML stream on commit. A readable file allows one writer and needs
+its `.lock` sidecar. Litestream works with binary SQLite files; see
+[replication setup](docs/replication.md).
 
-## S3 backup
+## Rust API
 
-The CLI can continuously replicate committed snapshots and restore a published
-revision. Follow the [S3 setup and recovery guide](docs/replication.md) for
-configuration and recovery limits.
+```rust
+use boxdb::{Database, Format, Value};
+
+fn main() -> boxdb::Result<()> {
+    let mut db = Database::open("data.db", Format::Binary)?;
+    db.execute("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,day DATE)")?;
+    db.execute_params("INSERT INTO events(day) VALUES(?)", &[
+        Value::Date("2024-02-29".into()),
+    ])?;
+    let results = db.execute("SELECT day FROM events")?;
+    println!("{:?}", results);
+    Ok(())
+}
+```
+
+The interface uses `Database`, `QueryResult` and typed `Value`s; it does not
+implement the full rusqlite Rust API. `cargo doc --no-deps --open` documents the
+library. Export requires an idle connection with no active transaction.
 
 ## Development
 
@@ -94,20 +102,14 @@ configuration and recovery limits.
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
+cargo test --locked --test litestream -- --ignored
+cargo bench --locked --bench sqlite_vs_boxdb
+cargo bench --locked --bench sqlite_vs_boxdb -- --boxdb-format yaml
 ```
 
-Stable release tags must match the version in `Cargo.toml` (`vX.Y.Z`). Pushing a
-tag runs [Release build](.github/workflows/release-build.yml): it tests and builds
-both CLI archives and the source package, then publishes them with `SHA256SUMS`.
-Existing releases are never overwritten. A manual run builds downloadable
-Actions artifacts without publishing a release. The Homebrew tap checks new
-stable releases hourly.
-
-Tests cover the public Rust API, CLI, reopening both formats, and S3 upload and
-restore through a local HTTP server.
-
-Only selected original SQLite cases have been adapted; the full SQLite test
-suite has not been ported or run against BoxDB. [Fixture provenance](tests/sqlite/provenance.json)
-records source revisions, checksums, and case counts.
-[The importer](tools/import_sqlite_tests.py) regenerates the fixtures with
-Python 3 and Tcl; running the Rust tests requires neither.
+The Litestream integration test requires the original `litestream` executable.
+The same 287 adapted upstream SQLite scenarios run against rusqlite and BoxDB
+in memory, binary and YAML modes, with persistence checks after reopening.
+Additional tests cover types, schemas, interrupted writes and interoperability.
+[Benchmark methodology and reports](docs/benchmarks.md) include BoxDB/SQLite
+ratios and retain measurements of previous storage implementations.

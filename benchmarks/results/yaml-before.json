@@ -1,0 +1,762 @@
+{
+  "boxdb_version": "0.1.0",
+  "sqlite_version": "3.53.2",
+  "os": "macos",
+  "arch": "aarch64",
+  "sqlite_settings": "journal_mode=WAL; synchronous=FULL; foreign_keys=ON; busy_timeout=5000; fullfsync=ON; locking_mode=NORMAL",
+  "config": {
+    "rows": 1000,
+    "samples": 5,
+    "reads": 100,
+    "read_repetitions": 20,
+    "batch_size": 100,
+    "writes": 20,
+    "sqlite_fullfsync": true,
+    "sqlite_cached": true,
+    "sqlite_exclusive": false,
+    "typed": false,
+    "boxdb_format": "yaml",
+    "directory": null,
+    "json": "benchmarks/results/yaml-before.json"
+  },
+  "samples": [
+    {
+      "engine": "BoxDB YAML",
+      "database_bytes": 177060,
+      "wal_bytes": 0,
+      "total_storage_bytes": 177060,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 14.038749999999999
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 1.566875
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 17.902375000000003
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 251.87025000000003
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 15.358583
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 269.895834
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 12.677000000000001
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 20.882250000000003
+        }
+      ]
+    },
+    {
+      "engine": "SQLite",
+      "database_bytes": 4096,
+      "wal_bytes": 140112,
+      "total_storage_bytes": 144208,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 5.973584
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 2.9598329999999997
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 18.499708000000002
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 258.388833
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 6.088
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 114.77416699999999
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 5.622
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 0.6645000000000001
+        }
+      ]
+    },
+    {
+      "engine": "SQLite",
+      "database_bytes": 4096,
+      "wal_bytes": 140112,
+      "total_storage_bytes": 144208,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 5.9500839999999995
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 3.03325
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 18.598459000000002
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 258.210167
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 6.016125
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 111.956792
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 6.671791
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 0.663292
+        }
+      ]
+    },
+    {
+      "engine": "BoxDB YAML",
+      "database_bytes": 177060,
+      "wal_bytes": 0,
+      "total_storage_bytes": 177060,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 17.909708
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 1.5927499999999999
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 17.862875
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 267.631542
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 17.597583
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 365.10979199999997
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 14.220625
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 21.489458
+        }
+      ]
+    },
+    {
+      "engine": "BoxDB YAML",
+      "database_bytes": 177060,
+      "wal_bytes": 0,
+      "total_storage_bytes": 177060,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 13.768625
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 1.609042
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 18.30925
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 263.65775
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 15.389083
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 300.38720800000004
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 14.010208
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 31.474334
+        }
+      ]
+    },
+    {
+      "engine": "SQLite",
+      "database_bytes": 4096,
+      "wal_bytes": 140112,
+      "total_storage_bytes": 144208,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 6.231416
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 3.034083
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 18.526417
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 257.59954200000004
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 5.117375
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 102.190708
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 4.537542
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 0.615083
+        }
+      ]
+    },
+    {
+      "engine": "SQLite",
+      "database_bytes": 4096,
+      "wal_bytes": 140112,
+      "total_storage_bytes": 144208,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 7.318125
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 2.969875
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 17.87875
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 257.495917
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 5.655708
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 108.438833
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 4.921
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 0.628375
+        }
+      ]
+    },
+    {
+      "engine": "BoxDB YAML",
+      "database_bytes": 177060,
+      "wal_bytes": 0,
+      "total_storage_bytes": 177060,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 15.000582999999999
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 1.579917
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 17.894707999999998
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 254.29579200000003
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 15.655542000000002
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 280.999
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 13.855583
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 21.5345
+        }
+      ]
+    },
+    {
+      "engine": "BoxDB YAML",
+      "database_bytes": 177060,
+      "wal_bytes": 0,
+      "total_storage_bytes": 177060,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 13.014583
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 1.5993750000000002
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 17.826583
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 309.00075
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 17.587125
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 279.528459
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 14.085958000000002
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 21.015292000000002
+        }
+      ]
+    },
+    {
+      "engine": "SQLite",
+      "database_bytes": 4096,
+      "wal_bytes": 140112,
+      "total_storage_bytes": 144208,
+      "timings": [
+        {
+          "workload": "insert_transaction",
+          "unit": "row",
+          "units": 1000,
+          "elapsed_ms": 5.99625
+        },
+        {
+          "workload": "point_lookup",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 3.034458
+        },
+        {
+          "workload": "range_scan",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 18.241500000000002
+        },
+        {
+          "workload": "aggregate",
+          "unit": "query",
+          "units": 2000,
+          "elapsed_ms": 269.12420799999995
+        },
+        {
+          "workload": "update_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 5.576417
+        },
+        {
+          "workload": "update_autocommit",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 109.101166
+        },
+        {
+          "workload": "delete_transaction",
+          "unit": "row",
+          "units": 20,
+          "elapsed_ms": 5.480042
+        },
+        {
+          "workload": "reopen_scan",
+          "unit": "database",
+          "units": 1,
+          "elapsed_ms": 0.875292
+        }
+      ]
+    }
+  ],
+  "summaries": [
+    {
+      "engine": "SQLite",
+      "workload": "insert_transaction",
+      "unit": "row",
+      "median_ms": 5.99625,
+      "median_us_per_unit": 5.99625
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "insert_transaction",
+      "unit": "row",
+      "median_ms": 14.038749999999999,
+      "median_us_per_unit": 14.038749999999999
+    },
+    {
+      "engine": "SQLite",
+      "workload": "point_lookup",
+      "unit": "query",
+      "median_ms": 3.03325,
+      "median_us_per_unit": 1.516625
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "point_lookup",
+      "unit": "query",
+      "median_ms": 1.5927499999999999,
+      "median_us_per_unit": 0.796375
+    },
+    {
+      "engine": "SQLite",
+      "workload": "range_scan",
+      "unit": "query",
+      "median_ms": 18.499708000000002,
+      "median_us_per_unit": 9.249854000000001
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "range_scan",
+      "unit": "query",
+      "median_ms": 17.894707999999998,
+      "median_us_per_unit": 8.947353999999999
+    },
+    {
+      "engine": "SQLite",
+      "workload": "aggregate",
+      "unit": "query",
+      "median_ms": 258.210167,
+      "median_us_per_unit": 129.1050835
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "aggregate",
+      "unit": "query",
+      "median_ms": 263.65775,
+      "median_us_per_unit": 131.828875
+    },
+    {
+      "engine": "SQLite",
+      "workload": "update_transaction",
+      "unit": "row",
+      "median_ms": 5.655708,
+      "median_us_per_unit": 282.7854
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "update_transaction",
+      "unit": "row",
+      "median_ms": 15.655542000000002,
+      "median_us_per_unit": 782.7771000000001
+    },
+    {
+      "engine": "SQLite",
+      "workload": "update_autocommit",
+      "unit": "row",
+      "median_ms": 109.101166,
+      "median_us_per_unit": 5455.058300000001
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "update_autocommit",
+      "unit": "row",
+      "median_ms": 280.999,
+      "median_us_per_unit": 14049.95
+    },
+    {
+      "engine": "SQLite",
+      "workload": "delete_transaction",
+      "unit": "row",
+      "median_ms": 5.480042,
+      "median_us_per_unit": 274.00210000000004
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "delete_transaction",
+      "unit": "row",
+      "median_ms": 14.010208,
+      "median_us_per_unit": 700.5104
+    },
+    {
+      "engine": "SQLite",
+      "workload": "reopen_scan",
+      "unit": "database",
+      "median_ms": 0.663292,
+      "median_us_per_unit": 663.292
+    },
+    {
+      "engine": "BoxDB YAML",
+      "workload": "reopen_scan",
+      "unit": "database",
+      "median_ms": 21.489458,
+      "median_us_per_unit": 21489.458
+    }
+  ],
+  "comparisons": [
+    {
+      "workload": "insert_transaction",
+      "unit": "row",
+      "sqlite_median_us_per_unit": 5.99625,
+      "boxdb_median_us_per_unit": 14.038749999999999,
+      "boxdb_over_sqlite": 2.3412549510110483
+    },
+    {
+      "workload": "point_lookup",
+      "unit": "query",
+      "sqlite_median_us_per_unit": 1.516625,
+      "boxdb_median_us_per_unit": 0.796375,
+      "boxdb_over_sqlite": 0.5250968433198715
+    },
+    {
+      "workload": "range_scan",
+      "unit": "query",
+      "sqlite_median_us_per_unit": 9.249854000000001,
+      "boxdb_median_us_per_unit": 8.947353999999999,
+      "boxdb_over_sqlite": 0.9672967811167612
+    },
+    {
+      "workload": "aggregate",
+      "unit": "query",
+      "sqlite_median_us_per_unit": 129.1050835,
+      "boxdb_median_us_per_unit": 131.828875,
+      "boxdb_over_sqlite": 1.0210974767697665
+    },
+    {
+      "workload": "update_transaction",
+      "unit": "row",
+      "sqlite_median_us_per_unit": 282.7854,
+      "boxdb_median_us_per_unit": 782.7771000000001,
+      "boxdb_over_sqlite": 2.7680958776513926
+    },
+    {
+      "workload": "update_autocommit",
+      "unit": "row",
+      "sqlite_median_us_per_unit": 5455.058300000001,
+      "boxdb_median_us_per_unit": 14049.95,
+      "boxdb_over_sqlite": 2.575582006153811
+    },
+    {
+      "workload": "delete_transaction",
+      "unit": "row",
+      "sqlite_median_us_per_unit": 274.00210000000004,
+      "boxdb_median_us_per_unit": 700.5104,
+      "boxdb_over_sqlite": 2.5565877049847425
+    },
+    {
+      "workload": "reopen_scan",
+      "unit": "database",
+      "sqlite_median_us_per_unit": 663.292,
+      "boxdb_median_us_per_unit": 21489.458,
+      "boxdb_over_sqlite": 32.39818662067385
+    }
+  ],
+  "git_revision": "380942bbdc89d1c447c528b55e3b3e18b7b9b44c",
+  "uncommitted_source_changes": true,
+  "source_sha256": "b771aa7bb500fde7a13cf3603c5374008c9c245e882592575041fd108d985615",
+  "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+  "collected_at_utc": "2026-10-13T15:36:51.637235+00:00",
+  "binary_format": "YAML stream v2: full snapshots over in-memory SQLite"
+}

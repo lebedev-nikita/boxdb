@@ -1,5 +1,7 @@
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::time::Duration;
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
@@ -28,8 +30,17 @@ fn cli_prints_standalone_values_with_column_names() {
 #[test]
 fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("data.jsonl");
-    let first = Command::new(BIN).arg(&path).args(["--format","readable","-e","CREATE TABLE t(n INTEGER,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t"]).output().unwrap();
+    let path = temp.path().join("data.yaml");
+    let first = Command::new(BIN)
+        .arg(&path)
+        .args([
+            "--format",
+            "readable",
+            "-e",
+            "CREATE TABLE t(n INT4,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t",
+        ])
+        .output()
+        .unwrap();
     assert!(
         first.status.success(),
         "{}",
@@ -46,15 +57,15 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     assert_eq!(result["rows"][0][0]["Integer"], 1);
     let bad = Command::new(BIN)
         .arg(&path)
-        .args(["-e", "INSERT INTO t VALUES('1','wrong')"])
+        .args(["-e", "INSERT INTO t VALUES(2147483648,'wrong')"])
         .output()
         .unwrap();
     assert!(!bad.status.success());
-    assert!(String::from_utf8_lossy(&bad.stderr).contains("type mismatch"));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("CHECK"));
     assert!(
         std::fs::read_to_string(&path)
             .unwrap()
-            .starts_with("{\"kind\":\"database\"")
+            .starts_with("---\nkind: database\n")
     );
 }
 
@@ -62,7 +73,7 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
 fn cli_reads_sql_from_stdin_and_converts_without_overwriting_destination() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source.boxdb");
-    let dest = temp.path().join("dest.jsonl");
+    let dest = temp.path().join("dest.yaml");
     let mut child = Command::new(BIN)
         .arg(&source)
         .stdin(Stdio::piped())
@@ -99,4 +110,147 @@ fn cli_reads_sql_from_stdin_and_converts_without_overwriting_destination() {
         .output()
         .unwrap();
     assert!(!again.status.success());
+}
+
+#[test]
+fn cli_accepts_multiline_sqlite_trigger_bodies() {
+    let mut child = Command::new(BIN)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"CREATE TABLE t(n INTEGER);\nCREATE TABLE log(n INTEGER);\nCREATE TRIGGER track AFTER INSERT ON t BEGIN\n INSERT INTO log VALUES(NEW.n);\n INSERT INTO log VALUES(NEW.n+1);\nEND;\nINSERT INTO t VALUES(5);\nSELECT n FROM log ORDER BY n;\n").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "n\n5\n6");
+}
+
+struct Session {
+    child: Child,
+    results: Receiver<serde_json::Value>,
+}
+impl Session {
+    fn open(path: &std::path::Path) -> Self {
+        let mut child = Command::new(BIN)
+            .arg(path)
+            .args(["--format", "readable", "--json"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (sender, results) = mpsc::channel();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                let result = serde_json::from_str(&line).unwrap();
+                if sender.send(result).is_err() {
+                    break;
+                }
+            }
+        });
+        Self { child, results }
+    }
+    fn send(&mut self, sql: &str) {
+        writeln!(self.child.stdin.as_mut().unwrap(), "{sql}").unwrap();
+    }
+    fn execute(&mut self, sql: &str) -> serde_json::Value {
+        self.send(sql);
+        self.results
+            .recv_timeout(Duration::from_secs(20))
+            .expect("CLI query acknowledgement")
+    }
+    fn kill(&mut self) {
+        self.child.kill().unwrap();
+        self.child.wait().unwrap();
+    }
+}
+impl Drop for Session {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn cli_crash_preserves_acknowledged_commits_and_discards_pending_writes() {
+    use boxdb::{Database, Format, Value};
+    for commit in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("crash.yaml");
+        let mut session = Session::open(&path);
+        assert_eq!(
+            session.execute(
+                "CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1); SELECT COUNT(*) FROM t;"
+            )["rows"][0][0]["Integer"],
+            1
+        );
+        let sql = if commit {
+            "BEGIN; INSERT INTO t VALUES(2); COMMIT; SELECT COUNT(*) FROM t;"
+        } else {
+            "BEGIN; INSERT INTO t VALUES(2); SELECT COUNT(*) FROM t;"
+        };
+        assert_eq!(session.execute(sql)["rows"][0][0]["Integer"], 2);
+        session.kill();
+        let mut db = Database::open(&path, Format::Readable).unwrap();
+        let expected = if commit {
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]]
+        } else {
+            vec![vec![Value::Integer(1)]]
+        };
+        assert_eq!(
+            db.execute("SELECT n FROM t ORDER BY n").unwrap()[0].rows,
+            expected
+        );
+    }
+}
+
+#[test]
+fn interrupting_readable_commit_leaves_a_complete_old_or_new_database() {
+    use boxdb::{Database, Format, Value};
+    // Different interruption delays exercise publication without depending on
+    // private callbacks or temporary-file names. Either commit outcome is valid.
+    for delay in [0, 2, 10, 25] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("interrupted.yaml");
+        let mut session = Session::open(&path);
+        assert_eq!(session.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT,revision INTEGER); BEGIN; WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1500) INSERT INTO t SELECT n,printf('%04096d',0),0 FROM rows; COMMIT; SELECT COUNT(*) FROM t;")["rows"][0][0]["Integer"], 1500);
+        assert_eq!(
+            session.execute(
+                "BEGIN; UPDATE t SET revision=1 WHERE id=1; SELECT revision FROM t WHERE id=1;"
+            )["rows"][0][0]["Integer"],
+            1
+        );
+        session.send("COMMIT; SELECT COUNT(*) FROM t;");
+        std::thread::sleep(Duration::from_millis(delay));
+        session.kill();
+        let mut db = Database::open(&path, Format::Readable).unwrap();
+        let row = &db
+            .execute("SELECT COUNT(*),SUM(id),SUM(length(body)),SUM(revision) FROM t")
+            .unwrap()[0]
+            .rows[0];
+        let old = vec![
+            Value::Integer(1500),
+            Value::Integer(1_125_750),
+            Value::Integer(6_144_000),
+            Value::Integer(0),
+        ];
+        let new = vec![
+            Value::Integer(1500),
+            Value::Integer(1_125_750),
+            Value::Integer(6_144_000),
+            Value::Integer(1),
+        ];
+        assert!(row == &old || row == &new, "delay={delay}: {row:?}");
+        assert_eq!(
+            db.execute("PRAGMA quick_check").unwrap()[0].rows,
+            vec![vec![Value::Text("ok".into())]]
+        );
+    }
 }
