@@ -1,0 +1,70 @@
+{
+  "sqlite_version": "3.54.0",
+  "revision": "be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3",
+  "source": "https://sqlite.org/src",
+  "files": {
+    "check.test": {
+      "sha256": "4be053c5dff3e475716a3e5c65f5d1b88a0cc3afaa0a2eed5f98cc768812fa2a",
+      "url": "https://sqlite.org/src/raw/test/check.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "delete.test": {
+      "sha256": "b91b952366438629b71aa0f5f8f7c9c5106915935d9594fc3d726d0f42de240f",
+      "url": "https://sqlite.org/src/raw/test/delete.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "expr.test": {
+      "sha256": "d27f22d16b466ea66ef01c4f1b561ca2d416a563838f1a179231ffb2351d414e",
+      "url": "https://sqlite.org/src/raw/test/expr.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "fkey1.test": {
+      "sha256": "a407aef580644667c06d12db92c5545b6fe44d09061af0b65bde5eba4e9c280c",
+      "url": "https://sqlite.org/src/raw/test/fkey1.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "index.test": {
+      "sha256": "baf51c5e75378b2de20fd09df0a806177b0c455d361c693f0699cefe9f2f224f",
+      "url": "https://sqlite.org/src/raw/test/index.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "insert.test": {
+      "sha256": "98c8e1196bc7970f242f009b93776cd0afab31f0f2232f8a43568fbe8d091d26",
+      "url": "https://sqlite.org/src/raw/test/insert.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "insert2.test": {
+      "sha256": "fcbe2ea256d3f7c0bca19f96cee088fd7f866eb34e7869ceff1902484501af00",
+      "url": "https://sqlite.org/src/raw/test/insert2.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "null.test": {
+      "sha256": "c5475fb2a61b92bd95686c929c38974fc1fe755944feb11be0186d6b7751fdc3",
+      "url": "https://sqlite.org/src/raw/test/null.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "select1.test": {
+      "sha256": "8c7d820028533c4a409d3b1efd338892f1398569f358c85b2cf6865597fef25a",
+      "url": "https://sqlite.org/src/raw/test/select1.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "trans.test": {
+      "sha256": "372c4b5533b02c6e32232878a3468df12c1be6e281393f4fb3968428261ef19e",
+      "url": "https://sqlite.org/src/raw/test/trans.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "unique.test": {
+      "sha256": "9190bb3275378c938d3b2752bfcb8f5b0317af578f35b2def891d4cdb66791a0",
+      "url": "https://sqlite.org/src/raw/test/unique.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    },
+    "update.test": {
+      "sha256": "f12fef87391265d3e0aee908be82e0927088d3dcff74bc6dca39d5051b448a8c",
+      "url": "https://sqlite.org/src/raw/test/update.test?ci=be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    }
+  },
+  "adapted_cases": {
+    "null": 32,
+    "select": 17,
+    "expr": 116,
+    "update": 18,
+    "insert": 14,
+    "transaction": 4,
+    "unique": 33,
+    "check": 17,
+    "index": 13,
+    "delete": 9,
+    "insert_select": 10,
+    "foreign_key": 4
+  },
+  "not_ported": "All cases not explicitly listed in cases.json. This is not the complete SQLite Tcl/C test harness."
+}

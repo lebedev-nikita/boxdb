@@ -1,0 +1,51 @@
+name: Release build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Install musl build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+      - name: Build CLI
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl
+      - name: Smoke test CLI
+        run: |
+          target/x86_64-unknown-linux-musl/release/boxdb --version
+          file target/x86_64-unknown-linux-musl/release/boxdb
+          target/x86_64-unknown-linux-musl/release/boxdb ':memory:' --json -e "
+            CREATE TABLE smoke(id INTEGER PRIMARY KEY, label TEXT NOT NULL);
+            INSERT INTO smoke VALUES(1,'BoxDB');
+            SELECT id, label FROM smoke;
+          " | python3 -c 'import json,sys; result=json.load(sys.stdin); assert result["columns"] == ["id","label"]; assert result["rows"] == [[{"Integer":1},{"Text":"BoxDB"}]]'
+      - name: Package CLI
+        id: package
+        run: |
+          boxdb_release_version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          boxdb_release_target="x86_64-unknown-linux-musl"
+          boxdb_release_archive="boxdb-${boxdb_release_version}-${boxdb_release_target}.tar.gz"
+          boxdb_release_stage="target/release-assets/staging"
+          mkdir -p "$boxdb_release_stage/docs" "$boxdb_release_stage/assets"
+          cp "target/${boxdb_release_target}/release/boxdb" README.md LICENSE "$boxdb_release_stage/"
+          cp docs/replication.md "$boxdb_release_stage/docs/"
+          cp assets/icon.svg "$boxdb_release_stage/assets/"
+          tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
+            boxdb README.md LICENSE docs/replication.md assets/icon.svg
+          printf 'archive=%s\n' "$boxdb_release_archive" >> "$GITHUB_OUTPUT"
+      - name: Upload CLI archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.package.outputs.archive }}
+          path: target/release-assets/${{ steps.package.outputs.archive }}
+          if-no-files-found: error
