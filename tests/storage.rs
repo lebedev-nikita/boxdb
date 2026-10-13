@@ -1,31 +1,163 @@
 use boxdb::{Database, Format, Value};
 
 #[test]
-fn binary_snapshots_use_boxdb_header_and_read_previous_format() {
-    // Captured from the pre-release binary format before the product rename.
-    let legacy = hex::decode("4c49474854444200017dcdee69816f7e9f6f3e0db7fd6bba1b87eeeaa03b29cd9c7fb7d24538b5249328b52ffd0058950500e28b2723306dab03861109d25c64ad2068448cf29af9c2280df3503a7728af9ad3890a0ac4300c8ba7e1797c1070821dccc80337ba7d1f21adeee893ec9b6e7474cb1d863dec8ac68e6bb25f4cff78cd03d4025219598f4965208364240561490a99500152094b2e0690890e061495482928117cdf28e05560bfd8e3350e11d2ee7ad8f1b9ef5b82ddf5dd188e8b27d9bbc760d38eeb1b32c391d7f7cbb1883b010500706c7047d68d83bd6cea428c423d01").unwrap();
-    let mut db = Database::from_snapshot(&legacy).unwrap();
+fn binary_snapshots_use_boxdb_header() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT); INSERT INTO notes VALUES(1,'snapshot')").unwrap();
+    let snapshot = db.export(Format::Binary).unwrap();
+    assert!(snapshot.starts_with(b"BOXDB\0\x01"));
+    let mut decoded = Database::from_snapshot(&snapshot).unwrap();
     assert_eq!(
-        db.execute("SELECT id,body FROM notes").unwrap()[0].rows,
-        vec![vec![
-            Value::Integer(1),
-            Value::Text("legacy snapshot".into())
-        ]]
-    );
-    assert!(
-        db.export(Format::Binary)
-            .unwrap()
-            .starts_with(b"BOXDB\0\x01")
+        decoded.execute("SELECT id,body FROM notes").unwrap()[0].rows,
+        vec![vec![Value::Integer(1), Value::Text("snapshot".into())]]
     );
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("restored.boxdb");
-    drop(Database::restore(&path, &legacy).unwrap());
+    drop(Database::restore(&path, &snapshot).unwrap());
     assert!(std::fs::read(&path).unwrap().starts_with(b"BOXDB\0\x01"));
     let mut reopened = Database::open(&path, Format::Binary).unwrap();
     assert_eq!(
         reopened.execute("SELECT body FROM notes").unwrap()[0].rows,
-        vec![vec![Value::Text("legacy snapshot".into())]]
+        vec![vec![Value::Text("snapshot".into())]]
     );
+}
+
+#[test]
+fn string_snapshots_round_trip_rich_types_without_losing_precision_or_nulls() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE rich(s SMALLINT,i INTEGER,b BIGINT,lo BIGINT,f DOUBLE PRECISION,n NUMERIC(20,4),ok BOOLEAN,word VARCHAR(3),bytes BYTEA,u UUID,j JSON,d DATE,t TIME,ts TIMESTAMP,tz TIMESTAMPTZ,tags TEXT[],matrix BIGINT[][],nothing TEXT,literal TEXT,empty TEXT,json_null JSON,empty_bytes BYTEA,empty_array TEXT[],booleans BOOLEAN[])").unwrap();
+    let values = vec![
+        Value::Integer(i16::MIN.into()),
+        Value::Integer(i32::MAX.into()),
+        Value::Integer(i64::MAX),
+        Value::Integer(i64::MIN),
+        Value::Real(f64::MAX),
+        Value::Numeric("1234567890123456.1234".into()),
+        Value::Boolean(true),
+        Value::Text("a🙂".into()),
+        Value::Bytea(vec![0, 127, 255]),
+        Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
+        Value::Json(serde_json::json!({"integer": i64::MAX, "text": "\"x\n", "null": null})),
+        Value::Date("2024-02-29".into()),
+        Value::Time("12:34:56.123456789".into()),
+        Value::Timestamp("2024-02-29 12:34:56.123456789".into()),
+        Value::Timestamptz("2024-02-29T12:34:56.123456789Z".into()),
+        Value::Array(vec![
+            Value::Text("NULL".into()),
+            Value::Text(String::new()),
+            Value::Text("quotes\"\n雪".into()),
+            Value::Null,
+        ]),
+        Value::Array(vec![
+            Value::Array(vec![Value::Integer(i64::MAX), Value::Null]),
+            Value::Array(vec![]),
+            Value::Null,
+        ]),
+        Value::Null,
+        Value::Text("NULL".into()),
+        Value::Text(String::new()),
+        Value::Json(serde_json::Value::Null),
+        Value::Bytea(vec![]),
+        Value::Array(vec![]),
+        Value::Array(vec![
+            Value::Boolean(true),
+            Value::Boolean(false),
+            Value::Null,
+        ]),
+    ];
+    let placeholders = vec!["?"; values.len()].join(",");
+    db.execute_params(&format!("INSERT INTO rich VALUES({placeholders})"), &values)
+        .unwrap();
+    let expected = db.execute("SELECT * FROM rich").unwrap()[0].rows.clone();
+    let readable = db.export(Format::Readable).unwrap();
+    let row: serde_json::Value = serde_json::from_str(
+        std::str::from_utf8(&readable)
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap(),
+    )
+    .unwrap();
+    let cells = row["values"].as_array().unwrap();
+    assert!(
+        cells
+            .iter()
+            .all(|value| value.is_string() || value.is_null())
+    );
+    assert_eq!(cells[2], i64::MAX.to_string());
+    assert_eq!(cells[3], i64::MIN.to_string());
+    assert_eq!(cells[5], "1234567890123456.1234");
+    assert_eq!(cells[6], "true");
+    assert_eq!(cells[8], "007fff");
+    assert_eq!(cells[17], serde_json::Value::Null);
+    assert_eq!(cells[18], "NULL");
+    assert_eq!(cells[19], "");
+    assert_eq!(cells[20], "null");
+    assert_eq!(cells[21], "");
+    assert_eq!(cells[22], "[]");
+    let tags: serde_json::Value = serde_json::from_str(cells[15].as_str().unwrap()).unwrap();
+    assert_eq!(tags, serde_json::json!(["NULL", "", "quotes\"\n雪", null]));
+    let matrix: Vec<Option<String>> = serde_json::from_str(cells[16].as_str().unwrap()).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(matrix[0].as_ref().unwrap()).unwrap(),
+        serde_json::json!([i64::MAX.to_string(), null])
+    );
+    assert_eq!(matrix[1].as_deref(), Some("[]"));
+    assert_eq!(matrix[2], None);
+    for format in [Format::Readable, Format::Binary] {
+        let snapshot = db.export(format).unwrap();
+        let mut reopened = Database::from_snapshot(&snapshot).unwrap();
+        assert_eq!(
+            reopened.execute("SELECT * FROM rich").unwrap()[0].rows,
+            expected
+        );
+        assert_eq!(reopened.export(Format::Readable).unwrap(), readable);
+    }
+}
+
+#[test]
+fn string_snapshots_reject_invalid_values_and_column_constraints() {
+    let cases = [
+        ("SMALLINT", serde_json::json!("32768")),
+        ("INTEGER", serde_json::json!("2147483648")),
+        ("BIGINT", serde_json::json!("9223372036854775808")),
+        ("INTEGER", serde_json::json!("not a number")),
+        ("INTEGER", serde_json::json!(1)),
+        ("INTEGER", serde_json::json!({"Integer": "1"})),
+        ("DOUBLE PRECISION", serde_json::json!("NaN")),
+        ("REAL", serde_json::json!("1e100")),
+        ("NUMERIC(3,1)", serde_json::json!("123.4")),
+        ("NUMERIC", serde_json::json!("bad")),
+        ("BOOLEAN", serde_json::json!("1")),
+        ("BOOLEAN", serde_json::json!(true)),
+        ("VARCHAR(3)", serde_json::json!("long")),
+        ("BYTEA", serde_json::json!("0")),
+        ("BYTEA", serde_json::json!("zz")),
+        ("UUID", serde_json::json!("bad")),
+        ("JSON", serde_json::json!("{")),
+        ("DATE", serde_json::json!("2024-02-30")),
+        ("TIME", serde_json::json!("25:00:00")),
+        ("TIMESTAMP", serde_json::json!("bad")),
+        ("TIMESTAMPTZ", serde_json::json!("bad")),
+        ("INTEGER[]", serde_json::json!("[1]")),
+        ("INTEGER[]", serde_json::json!("[\"bad\"]")),
+        ("INTEGER[]", serde_json::json!("{}")),
+        ("INTEGER[][]", serde_json::json!("[\"[1]\"]")),
+        ("TEXT NOT NULL", serde_json::Value::Null),
+        ("INTEGER CHECK(n>0)", serde_json::json!("-1")),
+    ];
+    for (column, value) in cases {
+        let mut db = Database::memory();
+        db.execute(&format!("CREATE TABLE t(n {column})")).unwrap();
+        let mut snapshot = String::from_utf8(db.export(Format::Readable).unwrap()).unwrap();
+        snapshot = snapshot.replace("\"next_rowid\":1", "\"next_rowid\":2");
+        let row = serde_json::json!({"kind": "row", "table": "t", "id": 1, "values": [value]});
+        snapshot.push_str(&format!("{row}\n"));
+        assert!(
+            Database::from_snapshot(snapshot.as_bytes()).is_err(),
+            "accepted invalid {column} value: {row}"
+        );
+    }
 }
 
 #[test]
@@ -67,7 +199,7 @@ fn releasing_outer_implicit_savepoint_commits_to_disk() {
 }
 
 #[test]
-fn readable_sql_schema_is_authoritative_for_typed_rows() {
+fn readable_sql_schema_determines_row_types() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("schema.jsonl");
     {
@@ -79,7 +211,11 @@ fn readable_sql_schema_is_authoritative_for_typed_rows() {
         .unwrap()
         .replace("CREATE TABLE t (n INTEGER)", "CREATE TABLE t (n TEXT)");
     std::fs::write(&path, text).unwrap();
-    assert!(Database::open(&path, Format::Readable).is_err());
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    assert_eq!(
+        db.execute("SELECT n FROM t").unwrap()[0].rows,
+        vec![vec![Value::Text("1".into())]]
+    );
 }
 
 #[test]
@@ -229,7 +365,7 @@ fn corrupted_files_are_rejected_without_overwriting_them() {
         } else {
             bytes = String::from_utf8(bytes)
                 .unwrap()
-                .replace("{\"Integer\":1}", "{\"Text\":\"bad\"}")
+                .replace("\"values\":[\"1\"]", "\"values\":[\"bad\"]")
                 .into_bytes();
         }
         std::fs::write(&path, &bytes).unwrap();

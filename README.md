@@ -61,7 +61,10 @@ expression subqueries, and window functions remain unsupported. See the
 
 Existing files determine their own format; `--format` chooses a new file's
 format. Readable files use deterministic UTF-8 JSON Lines with SQL schema records
-and stable row IDs for Git diffs. Binary files use a custom BoxDB format;
+and stable row IDs for Git diffs. Row values are untagged strings interpreted
+using the column types; SQL NULL is JSON `null`. Bytes use hex, JSON values use
+JSON text, and arrays use JSON text containing strings or nulls recursively.
+Binary files use a custom BoxDB format;
 BoxDB cannot open SQLite database files. Conversion destinations must be new:
 
 ```sh

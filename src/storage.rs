@@ -1,4 +1,4 @@
-use crate::{Error, Format, Result, Value, engine::State};
+use crate::{Error, Format, Result, Type, Value, engine::State};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -9,8 +9,6 @@ use std::{
 };
 
 const MAGIC: &[u8] = b"BOXDB\0\x01";
-// Accept snapshots created before the product rename; new writes use MAGIC.
-const LEGACY_MAGIC: &[u8] = b"LIGHTDB\0\x01";
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) struct Storage {
     pub path: PathBuf,
@@ -35,11 +33,43 @@ enum Record {
     Row {
         table: String,
         id: u64,
-        values: Vec<Value>,
+        values: Vec<Option<String>>,
     },
 }
 fn error(e: impl std::fmt::Display) -> Error {
     Error(e.to_string())
+}
+fn encode_value(value: &Value) -> Result<Option<String>> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Array(values) => {
+            let values = values
+                .iter()
+                .map(encode_value)
+                .collect::<Result<Vec<_>>>()?;
+            serde_json::to_string(&values).map(Some).map_err(error)
+        }
+        _ => Ok(Some(value.to_string())),
+    }
+}
+fn decode_value(ty: &Type, value: Option<String>) -> Result<Value> {
+    let Some(text) = value else {
+        return ty.validate(&Value::Null);
+    };
+    let value = match ty {
+        Type::Bytea => Value::Bytea(hex::decode(text).map_err(error)?),
+        Type::Array(inner) => {
+            let values: Vec<Option<String>> = serde_json::from_str(&text).map_err(error)?;
+            Value::Array(
+                values
+                    .into_iter()
+                    .map(|value| decode_value(inner, value))
+                    .collect::<Result<Vec<_>>>()?,
+            )
+        }
+        _ => return ty.cast(Value::Text(text)),
+    };
+    ty.validate(&value)
 }
 impl Storage {
     pub fn create(path: &Path, format: Format, state: &State) -> Result<Self> {
@@ -166,7 +196,7 @@ pub(crate) fn encode(state: &State, format: Format) -> Result<Vec<u8>> {
             records.push(Record::Row {
                 table: name.clone(),
                 id: *id,
-                values: row.clone(),
+                values: row.iter().map(encode_value).collect::<Result<Vec<_>>>()?,
             });
         }
     }
@@ -198,15 +228,12 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(State, Format)> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err(Error("database exceeds 256 MiB limit".into()));
     }
-    let header = [MAGIC, LEGACY_MAGIC]
-        .into_iter()
-        .find(|magic| bytes.starts_with(magic));
-    let (text, format) = if let Some(magic) = header {
-        if bytes.len() < magic.len() + 32 {
+    let (text, format) = if bytes.starts_with(MAGIC) {
+        if bytes.len() < MAGIC.len() + 32 {
             return Err(Error("truncated binary header".into()));
         }
         let mut text = vec![];
-        zstd::stream::read::Decoder::new(&bytes[magic.len() + 32..])
+        zstd::stream::read::Decoder::new(&bytes[MAGIC.len() + 32..])
             .map_err(error)?
             .take(MAX_BYTES + 1)
             .read_to_end(&mut text)
@@ -214,7 +241,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(State, Format)> {
         if text.len() as u64 > MAX_BYTES {
             return Err(Error("decompressed database exceeds limit".into()));
         }
-        if Sha256::digest(&text).as_slice() != &bytes[magic.len()..magic.len() + 32] {
+        if Sha256::digest(&text).as_slice() != &bytes[MAGIC.len()..MAGIC.len() + 32] {
             return Err(Error("database checksum mismatch".into()));
         }
         (text, Format::Binary)
@@ -290,7 +317,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(State, Format)> {
                 .columns
                 .iter()
                 .zip(values)
-                .map(|(column, value)| column.ty.validate(&value))
+                .map(|(column, value)| decode_value(&column.ty, value))
                 .collect::<Result<Vec<_>>>()?;
             table.rows.push(values);
         }
