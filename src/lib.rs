@@ -1,5 +1,5 @@
 //! An extended SQLite client. Binary files are ordinary SQLite databases;
-//! readable files independently store schemas and rows as JSONL.
+//! readable files independently store schemas and rows as a YAML stream.
 //!
 //! ```
 //! use boxdb::{Database, Value};
@@ -32,6 +32,8 @@ convert_error!(
     rusqlite::Error,
     std::io::Error,
     serde_json::Error,
+    serde_saphyr::DeserializeError,
+    serde_saphyr::SerializeError,
     sqlparser::parser::ParserError
 );
 pub mod types;
@@ -146,7 +148,7 @@ impl Database {
         )
         .expect("configure SQLite memory database")
     }
-    /// Open an ordinary SQLite binary database or a standalone JSONL database.
+    /// Open an ordinary SQLite binary database or a standalone YAML stream.
     /// Existing contents determine the format; `format` applies to new files.
     pub fn open(path: impl AsRef<Path>, format: Format) -> Result<Self> {
         let path = path.as_ref();

@@ -3,7 +3,7 @@
 BoxDB binary files are ordinary SQLite databases in WAL mode. Use the original
 [Litestream](https://litestream.io/) to replicate their data and BoxDB's type
 metadata. BoxDB has no built-in replication, S3 credentials, or remote restore
-commands. Readable JSONL files are not Litestream databases; convert them to
+commands. Readable YAML streams are not Litestream databases; convert them to
 binary storage when continuous replication is needed.
 
 ## Replicate and restore

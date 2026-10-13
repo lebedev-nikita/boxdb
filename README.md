@@ -4,7 +4,7 @@
 
 An experimental extended SQLite client for Rust and the command line. Binary
 files are ordinary SQLite databases. BoxDB adds logical types and validation;
-a separate JSONL format provides readable storage for Git. The project is still
+a separate YAML stream provides readable storage for Git. The project is still
 in version 0 and does not preserve old BoxDB file or API compatibility.
 
 ## Get started
@@ -57,16 +57,20 @@ storage semantics. See [src/types.rs](src/types.rs) and [type tests](tests/types
 ## Readable storage and conversion
 
 ```sh
-boxdb data.jsonl --format readable -e 'CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT)'
-boxdb convert data.db data.jsonl --format readable
-boxdb convert data.jsonl restored.db --format binary
+boxdb notes.yaml --format readable -e 'CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT)'
+boxdb convert data.db export.yaml --format readable
+boxdb convert export.yaml restored.db --format binary
 ```
 
-Conversion destinations must be new. JSONL stores SQL schema declarations and
-rows independently of the binary representation. It uses SQLite in memory for
-execution and atomically publishes the readable file on commit. A readable file
-allows one writer and needs its `.lock` sidecar. Litestream works with binary
-SQLite files; see [replication setup](docs/replication.md).
+Conversion destinations must be new. YAML documents separated by `---` store
+schema declarations and rows with named columns. Text can use multiline block
+scalars; numbers, nulls and BLOBs retain their SQLite storage classes. See the
+[readable format example](docs/storage.md#independent-readable-yaml-stream).
+
+Readable storage uses SQLite in memory for execution and atomically publishes
+the complete YAML stream on commit. A readable file allows one writer and needs
+its `.lock` sidecar. Litestream works with binary SQLite files; see
+[replication setup](docs/replication.md).
 
 ## Rust API
 

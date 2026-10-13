@@ -49,7 +49,7 @@ fn binary_files_are_sqlite_and_share_live_wal_with_other_clients() {
     db.execute("ROLLBACK").unwrap();
 }
 #[test]
-fn sqlite_and_jsonl_convert_schemas_rows_and_autoincrement_state() {
+fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT,n TEXT); INSERT INTO t VALUES(1,'a'),(10,'b'); DELETE FROM t WHERE id=10; CREATE INDEX t_n ON t(n); CREATE VIEW v AS SELECT * FROM t; CREATE TABLE audit(n TEXT); CREATE TRIGGER log AFTER INSERT ON t BEGIN INSERT INTO audit VALUES(NEW.n); END; CREATE TABLE emptied(id INTEGER PRIMARY KEY AUTOINCREMENT); INSERT INTO emptied VALUES(42); DELETE FROM emptied;").unwrap();
     for format in [Format::Binary, Format::Readable] {
@@ -108,7 +108,7 @@ fn readable_storage_handles_generated_and_without_rowid_tables() {
 #[test]
 fn readable_transactions_publish_only_committed_data_and_keep_exclusive_lock() {
     let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("readable.jsonl");
+    let path = temp.path().join("readable.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
     db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
         .unwrap();
@@ -135,7 +135,12 @@ fn old_binary_and_corrupt_snapshots_are_rejected_without_overwriting_destination
     std::fs::write(&path, old).unwrap();
     assert!(Database::open(&path, Format::Binary).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), old);
-    for bytes in [old.as_slice(), b"SQLite format 3\0invalid", b"{}"] {
+    for bytes in [
+        old.as_slice(),
+        b"SQLite format 3\0invalid",
+        b"{}",
+        b"{\"kind\":\"database\",\"version\":1,\"application_id\":0,\"user_version\":0}\n",
+    ] {
         assert!(Database::from_snapshot(bytes).is_err());
         let target = temp.path().join("target.db");
         assert!(Database::restore(&target, bytes).is_err());
@@ -145,11 +150,11 @@ fn old_binary_and_corrupt_snapshots_are_rejected_without_overwriting_destination
 #[test]
 fn failed_readable_publication_rolls_back_and_requires_reopen() {
     let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("db.jsonl");
+    let path = temp.path().join("db.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
     db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
         .unwrap();
-    let saved = temp.path().join("saved.jsonl");
+    let saved = temp.path().join("saved.yaml");
     std::fs::rename(&path, &saved).unwrap();
     std::fs::create_dir(&path).unwrap();
     assert!(db.execute("INSERT INTO t VALUES(2)").is_err());

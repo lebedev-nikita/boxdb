@@ -9,7 +9,7 @@ use std::{
 #[command(
     name = "boxdb",
     version,
-    about = "Extended SQLite client with typed columns and readable JSONL storage",
+    about = "Extended SQLite client with typed columns and readable YAML stream storage",
     subcommand_precedence_over_arg = true,
     args_conflicts_with_subcommands = true
 )]

@@ -28,7 +28,7 @@ fn cli_prints_standalone_values_with_column_names() {
 #[test]
 fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("data.jsonl");
+    let path = temp.path().join("data.yaml");
     let first = Command::new(BIN)
         .arg(&path)
         .args([
@@ -63,7 +63,7 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     assert!(
         std::fs::read_to_string(&path)
             .unwrap()
-            .starts_with("{\"kind\":\"database\"")
+            .starts_with("---\nkind: database\n")
     );
 }
 
@@ -71,7 +71,7 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
 fn cli_reads_sql_from_stdin_and_converts_without_overwriting_destination() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source.boxdb");
-    let dest = temp.path().join("dest.jsonl");
+    let dest = temp.path().join("dest.yaml");
     let mut child = Command::new(BIN)
         .arg(&source)
         .stdin(Stdio::piped())

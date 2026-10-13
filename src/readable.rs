@@ -1,11 +1,88 @@
-//! A standalone, deterministic JSONL representation of SQLite schemas and rows.
+//! A standalone, deterministic YAML stream of SQLite schemas and named rows.
 use crate::{
-    Error, Result, Value,
+    Error, Result,
     schema::{self, quote},
     storage::MAX_SNAPSHOT,
 };
 use rusqlite::{Connection, types::Value as SqlValue};
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, MapAccess, Visitor, value::MapAccessDeserializer},
+    ser::SerializeMap,
+};
+use std::{collections::BTreeMap, fmt};
+
+/// Native SQLite cells have natural YAML scalars. BLOBs use an explicit hex
+/// mapping so text, byte arrays and numbers remain distinguishable on import.
+struct Cell(SqlValue);
+impl Serialize for Cell {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match &self.0 {
+            SqlValue::Null => serializer.serialize_none(),
+            SqlValue::Integer(n) => serializer.serialize_i64(*n),
+            SqlValue::Real(n) if n.is_finite() => serializer.serialize_f64(*n),
+            SqlValue::Real(_) => Err(serde::ser::Error::custom(
+                "readable storage cannot represent non-finite SQLite values",
+            )),
+            SqlValue::Text(s) => serializer.serialize_str(s),
+            SqlValue::Blob(bytes) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("blob", &hex::encode(bytes))?;
+                map.end()
+            }
+        }
+    }
+}
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        struct CellVisitor;
+        impl<'de> Visitor<'de> for CellVisitor {
+            type Value = Cell;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a SQLite scalar or a {blob: hex} mapping")
+            }
+            fn visit_unit<E: de::Error>(self) -> std::result::Result<Cell, E> {
+                Ok(Cell(SqlValue::Null))
+            }
+            fn visit_i64<E: de::Error>(self, n: i64) -> std::result::Result<Cell, E> {
+                Ok(Cell(SqlValue::Integer(n)))
+            }
+            fn visit_u64<E: de::Error>(self, n: u64) -> std::result::Result<Cell, E> {
+                i64::try_from(n)
+                    .map(|n| Cell(SqlValue::Integer(n)))
+                    .map_err(E::custom)
+            }
+            fn visit_f64<E: de::Error>(self, n: f64) -> std::result::Result<Cell, E> {
+                if n.is_finite() {
+                    Ok(Cell(SqlValue::Real(n)))
+                } else {
+                    Err(E::custom("non-finite SQLite value"))
+                }
+            }
+            fn visit_bool<E: de::Error>(self, b: bool) -> std::result::Result<Cell, E> {
+                Ok(Cell(SqlValue::Integer(i64::from(b))))
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> std::result::Result<Cell, E> {
+                Ok(Cell(SqlValue::Text(s.into())))
+            }
+            fn visit_string<E: de::Error>(self, s: String) -> std::result::Result<Cell, E> {
+                Ok(Cell(SqlValue::Text(s)))
+            }
+            fn visit_map<M: MapAccess<'de>>(self, map: M) -> std::result::Result<Cell, M::Error> {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Blob {
+                    blob: String,
+                }
+                let Blob { blob } = Blob::deserialize(MapAccessDeserializer::new(map))?;
+                hex::decode(blob)
+                    .map(|bytes| Cell(SqlValue::Blob(bytes)))
+                    .map_err(de::Error::custom)
+            }
+        }
+        deserializer.deserialize_any(CellVisitor)
+    }
+}
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Record {
@@ -22,8 +99,9 @@ enum Record {
     },
     Row {
         table: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         rowid: Option<i64>,
-        values: Vec<Value>,
+        values: BTreeMap<String, Cell>,
     },
     Sequence {
         table: String,
@@ -56,7 +134,7 @@ fn rowid(db: &Connection, table: &str) -> Result<Option<&'static str>> {
 }
 pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
     let mut records = vec![Record::Database {
-        version: 1,
+        version: 2,
         application_id: db.query_row("PRAGMA application_id", [], |r| r.get(0))?,
         user_version: db.query_row("PRAGMA user_version", [], |r| r.get(0))?,
     }];
@@ -94,17 +172,11 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
             let offset = usize::from(rowid.is_some());
-            let values = (0..columns.len())
-                .map(|i| row.get::<_, SqlValue>(i + offset).map(schema::native))
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            if values
+            let values = columns
                 .iter()
-                .any(|v| matches!(v,Value::Real(n) if !n.is_finite()))
-            {
-                return Err(Error(
-                    "readable storage cannot represent non-finite SQLite values".into(),
-                ));
-            }
+                .enumerate()
+                .map(|(i, name)| row.get(i + offset).map(|value| (name.clone(), Cell(value))))
+                .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
             records.push(Record::Row {
                 table: table.clone(),
                 rowid: if rowid.is_some() {
@@ -131,22 +203,33 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
     }
     let mut bytes = vec![];
     for record in records {
-        serde_json::to_writer(&mut bytes, &record)?;
-        bytes.push(b'\n');
-    }
-    if bytes.len() > MAX_SNAPSHOT {
-        return Err(Error("snapshot exceeds 256 MiB limit".into()));
+        bytes.extend_from_slice(b"---\n");
+        serde_saphyr::to_io_writer(&mut bytes, &record)?;
+        if bytes.len() > MAX_SNAPSHOT {
+            return Err(Error("snapshot exceeds 256 MiB limit".into()));
+        }
     }
     Ok(bytes)
 }
 pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
-    let text = std::str::from_utf8(bytes).map_err(|e| Error(e.to_string()))?;
-    let records = text
-        .lines()
-        .map(serde_json::from_str::<Record>)
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records: Vec<Record> = serde_saphyr::from_slice_multiple_with_options(
+        bytes,
+        serde_saphyr::options! {
+            strict_booleans: true,
+            reject_unsupported_tags: true,
+            // A database stream has one document per row, unlike a typical
+            // configuration file. Tie structural budgets to the bounded input.
+            budget: serde_saphyr::budget! {
+                max_documents: bytes.len().saturating_add(1),
+                max_nodes: bytes.len().saturating_add(16),
+                max_events: bytes.len().saturating_mul(2).saturating_add(16),
+                max_total_scalar_bytes: MAX_SNAPSHOT,
+                max_total_comment_bytes: MAX_SNAPSHOT,
+            },
+        },
+    )?;
     let Some(Record::Database {
-        version: 1,
+        version: 2,
         application_id,
         user_version,
     }) = records.first()
@@ -197,13 +280,15 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
         } = record
         {
             let mut columns = columns(&db, table)?;
-            if columns.len() != values.len() {
-                return Err(Error("column count mismatch".into()));
+            if columns.len() != values.len()
+                || columns.iter().any(|name| !values.contains_key(name))
+            {
+                return Err(Error(format!("row columns do not match table: {table}")));
             }
-            let mut values = values
+            let mut values = columns
                 .iter()
-                .map(schema::encode)
-                .collect::<Result<Vec<_>>>()?;
+                .map(|name| values[name].0.clone())
+                .collect::<Vec<_>>();
             if let Some(id) = id {
                 let alias = rowid(&db, table)?.ok_or_else(|| Error("unexpected rowid".into()))?;
                 columns.insert(0, alias.into());

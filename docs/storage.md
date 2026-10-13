@@ -55,12 +55,43 @@ within one SQLite savepoint. Typed declarations apply to main database tables.
 External schema edits can leave stale metadata, which BoxDB rejects rather than
 silently guessing a new logical schema.
 
-## Independent readable JSONL
+## Independent readable YAML stream
 
 [The readable codec](../src/readable.rs) stores a versioned header, SQL schema
-objects, rows with explicit typed native cells, and AUTOINCREMENT sequences.
-Rows retain their accessible SQLite row IDs; generated columns are recomputed.
-It does not embed a SQLite file or use binary bytes as intermediate records.
+objects, rows with named columns, and AUTOINCREMENT sequences as separate YAML
+documents. Each document starts with `---`. A small complete database looks like:
+
+```yaml
+---
+kind: database
+version: 2
+application_id: 0
+user_version: 0
+---
+kind: schema
+object_type: table
+name: notes
+table: notes
+sql: CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT)
+---
+kind: row
+table: notes
+rowid: 1
+values:
+  body: |-
+    First line
+    Second line
+  id: 1
+```
+
+Native cells use YAML numbers, strings and nulls. Quote text that looks like a
+number or boolean. BLOBs use a mapping such as `bytes: {blob: '00ff'}`; boolean
+scalars are imported as SQLite integers 0/1. Rows retain their accessible SQLite
+row IDs; generated columns are recomputed. The representation is independent of
+SQLite file bytes.
+
+Comments are accepted on import and omitted when snapshots are regenerated.
+Duplicate keys, unknown row columns and malformed cells are rejected.
 
 Readable connections execute SQL in memory and publish a synchronized complete
 snapshot by atomic file replacement after committing. Pending transactions stay
@@ -72,4 +103,4 @@ do not support virtual tables or non-finite floating-point values.
 backup API to produce a self-contained file with committed WAL pages included.
 `Database::read_snapshot` opens a separate SQLite reader to capture committed
 binary data while a writer is active. Restore and conversion require a new
-path. Previous native BoxDB binary files and previous JSONL layouts are unsupported.
+path. Previous native BoxDB binary files and JSONL layouts are unsupported.

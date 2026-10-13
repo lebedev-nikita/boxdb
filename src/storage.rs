@@ -1,4 +1,4 @@
-//! SQLite owns binary files and their WAL. Only readable JSONL uses snapshot
+//! SQLite owns binary files and their WAL. Only readable YAML uses snapshot
 //! replacement and a separate single-writer lock.
 use crate::{Error, Result, readable};
 use fs2::FileExt;
