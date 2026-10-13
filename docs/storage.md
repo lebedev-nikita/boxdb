@@ -29,11 +29,14 @@ including either ordering with WITHOUT ROWID. Standard types follow SQLite's
 [STRICT conversion rules](https://www.sqlite.org/stricttables.html): lossless
 conversions such as text `'42'` into an integer are allowed; incompatible values
 are rejected. ANY preserves each value's storage class. A column without a
-declared type becomes ANY. BIGINT/INT8 map to INT (64-bit, preserving the
-distinction from INTEGER PRIMARY KEY), and floating-point aliases map to REAL.
+declared type becomes ANY. Integer declarations require an explicit bit width
+(see [supported types](../README.md#sql-and-types)); floating-point aliases map
+to REAL. INT64 maps to INTEGER, including SQLite's rowid alias and
+AUTOINCREMENT behavior for INT64 PRIMARY KEY.
 
 The policy applies to table creation through BoxDB. Opening or importing an
-existing database preserves its schema. Virtual tables retain their SQLite
+existing database preserves its schema and recognizes legacy integer metadata
+with its original bit widths. Virtual tables retain their SQLite
 module's typing rules. CTAS retains SQLite's inferred physical types; computed
 columns without a supported inferred type become ANY. Extended logical metadata
 is not inferred from SELECT expressions.
@@ -43,7 +46,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 
 | Logical type | SQLite representation |
 | --- | --- |
-| SMALLINT, INT4 | INTEGER with a range CHECK |
+| INT8, INT16, INT32, UINT8, UINT16, UINT32 | INTEGER with a range CHECK |
 | BOOLEAN | INTEGER with a 0/1 CHECK |
 | VARCHAR(n) | TEXT with a length CHECK |
 | FLOAT4 | REAL with BoxDB's float32 validation |
@@ -51,6 +54,11 @@ are translated into physical types and, where applicable, portable CHECKs:
 | NUMERIC, DECIMAL | Exact decimal text |
 | UUID and temporal types | Text |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
+
+Unsigned columns return `Value::UnsignedInteger`; signed columns return
+`Value::Integer`. Supported unsigned ranges fit in SQLite's signed INTEGER,
+so native comparisons and sorting retain their numeric meaning. Typed arrays
+preserve these logical element types.
 
 Typed parameter values are normalized before binding. Prefer `Value::Numeric`
 for exact decimals and typed UUID/temporal values for canonical representations.

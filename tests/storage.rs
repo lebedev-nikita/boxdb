@@ -6,7 +6,7 @@ fn binary_files_are_sqlite_and_share_live_wal_with_other_clients() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("shared.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT); INSERT INTO t VALUES(1,'boxdb')")
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,body TEXT); INSERT INTO t VALUES(1,'boxdb')")
         .unwrap();
     assert!(
         std::fs::read(&path)
@@ -51,7 +51,7 @@ fn binary_files_are_sqlite_and_share_live_wal_with_other_clients() {
 #[test]
 fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT,n TEXT); INSERT INTO t VALUES(1,'a'),(10,'b'); DELETE FROM t WHERE id=10; CREATE INDEX t_n ON t(n); CREATE VIEW v AS SELECT * FROM t; CREATE TABLE audit(n TEXT); CREATE TRIGGER log AFTER INSERT ON t BEGIN INSERT INTO audit VALUES(NEW.n); END; CREATE TABLE emptied(id INTEGER PRIMARY KEY AUTOINCREMENT); INSERT INTO emptied VALUES(42); DELETE FROM emptied;").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY AUTOINCREMENT,n TEXT); INSERT INTO t VALUES(1,'a'),(10,'b'); DELETE FROM t WHERE id=10; CREATE INDEX t_n ON t(n); CREATE VIEW v AS SELECT * FROM t; CREATE TABLE audit(n TEXT); CREATE TRIGGER log AFTER INSERT ON t BEGIN INSERT INTO audit VALUES(NEW.n); END; CREATE TABLE emptied(id INT64 PRIMARY KEY AUTOINCREMENT); INSERT INTO emptied VALUES(42); DELETE FROM emptied;").unwrap();
     for format in [Format::Binary, Format::Readable] {
         let bytes = db.export(format).unwrap();
         let mut restored = Database::from_snapshot(&bytes).unwrap();
@@ -89,7 +89,7 @@ fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
 #[test]
 fn readable_storage_handles_generated_and_without_rowid_tables() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(id TEXT PRIMARY KEY,n INTEGER,doubled INTEGER GENERATED ALWAYS AS(n*2) STORED) WITHOUT ROWID; INSERT INTO t(id,n) VALUES('a',2),('b',3)").unwrap();
+    db.execute("CREATE TABLE t(id TEXT PRIMARY KEY,n INT64,doubled INT64 GENERATED ALWAYS AS(n*2) STORED) WITHOUT ROWID; INSERT INTO t(id,n) VALUES('a',2),('b',3)").unwrap();
     let bytes = db.export(Format::Readable).unwrap();
     let mut restored = Database::from_snapshot(&bytes).unwrap();
     assert_eq!(
@@ -98,7 +98,7 @@ fn readable_storage_handles_generated_and_without_rowid_tables() {
     );
     assert_eq!(restored.export(Format::Readable).unwrap(), bytes);
 
-    db.execute("CREATE TABLE shadow(n INTEGER,_rowid_ INTEGER GENERATED ALWAYS AS(n*2)); INSERT INTO shadow(rowid,n) VALUES(99,3)").unwrap();
+    db.execute("CREATE TABLE shadow(n INT64,_rowid_ INT64 GENERATED ALWAYS AS(n*2)); INSERT INTO shadow(rowid,n) VALUES(99,3)").unwrap();
     let mut restored = Database::from_snapshot(&db.export(Format::Readable).unwrap()).unwrap();
     assert_eq!(
         restored.execute("SELECT rowid,* FROM shadow").unwrap(),
@@ -110,7 +110,7 @@ fn readable_transactions_publish_only_committed_data_and_keep_exclusive_lock() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("readable.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
-    db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
+    db.execute("CREATE TABLE t(n INT64); INSERT INTO t VALUES(1)")
         .unwrap();
     let before = std::fs::read(&path).unwrap();
     assert!(Database::open(&path, Format::Readable).is_err());
@@ -152,7 +152,7 @@ fn failed_readable_publication_rolls_back_and_requires_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("db.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
-    db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
+    db.execute("CREATE TABLE t(n INT64); INSERT INTO t VALUES(1)")
         .unwrap();
     let saved = temp.path().join("saved.yaml");
     std::fs::rename(&path, &saved).unwrap();
@@ -177,7 +177,7 @@ fn failed_implicit_commit_does_not_publish_invalid_readable_data() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("deferred.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
-    db.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+    db.execute("CREATE TABLE parent(id INT64 PRIMARY KEY); CREATE TABLE child(p INT64 REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
     assert!(db.execute("INSERT INTO child VALUES(99)").is_err());
     assert!(!db.in_transaction());
     assert!(
@@ -212,7 +212,7 @@ fn failed_explicit_commit_keeps_pending_changes_private_until_repair_or_rollback
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("deferred");
         let mut db = Database::open(&path, format).unwrap();
-        db.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+        db.execute("CREATE TABLE parent(id INT64 PRIMARY KEY); CREATE TABLE child(p INT64 REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
         db.execute("BEGIN; INSERT INTO child VALUES(99)").unwrap();
         assert!(db.execute("COMMIT").is_err());
         assert!(db.in_transaction());

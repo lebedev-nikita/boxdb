@@ -19,10 +19,8 @@ fn original_litestream_replicates_wal_and_restores_typed_metadata() {
     let restored = temp.path().join("restored.db");
     let replica = format!("file://{}", temp.path().join("replica").display());
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute(
-        "CREATE TABLE t(id INTEGER PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-01-01')",
-    )
-    .unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-01-01')")
+        .unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);
     db.execute("INSERT INTO t VALUES(2,'2024-02-29')").unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);

@@ -3,7 +3,7 @@ use boxdb::{Database, Format, Value};
 #[test]
 fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE cells(id INTEGER PRIMARY KEY,n ANY) STRICT")
+    db.execute("CREATE TABLE cells(id INT64 PRIMARY KEY,n ANY) STRICT")
         .unwrap();
     let mut values = vec![
         Value::Null,
@@ -158,7 +158,7 @@ fn handwritten_yaml_supports_comments_blocks_and_named_columns() {
 #[test]
 fn yaml_stream_handles_more_than_a_thousand_documents() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(n INTEGER); WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1100) INSERT INTO t SELECT n FROM rows").unwrap();
+    db.execute("CREATE TABLE t(n INT64); WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1100) INSERT INTO t SELECT n FROM rows").unwrap();
     let bytes = db.export(Format::Readable).unwrap();
     let mut restored = Database::from_snapshot(&bytes).unwrap();
     assert_eq!(
@@ -203,7 +203,7 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
     let mut db = Database::open(&path, Format::Readable).unwrap();
     let mut reference = Database::memory();
     for sql in [
-        "CREATE TABLE parent(id INTEGER PRIMARY KEY,label TEXT UNIQUE); CREATE TABLE child(id INTEGER PRIMARY KEY,p INTEGER REFERENCES parent(id) ON DELETE CASCADE); CREATE TABLE auxiliary(pk TEXT PRIMARY KEY,body TEXT) WITHOUT ROWID; CREATE TABLE shadow(_rowid_ TEXT,rowid TEXT,oid TEXT)",
+        "CREATE TABLE parent(id INT64 PRIMARY KEY,label TEXT UNIQUE); CREATE TABLE child(id INT64 PRIMARY KEY,p INT64 REFERENCES parent(id) ON DELETE CASCADE); CREATE TABLE auxiliary(pk TEXT PRIMARY KEY,body TEXT) WITHOUT ROWID; CREATE TABLE shadow(_rowid_ TEXT,rowid TEXT,oid TEXT)",
         "BEGIN; INSERT INTO parent VALUES(1,'a'),(2,'b'); INSERT INTO child VALUES(1,1); INSERT INTO auxiliary VALUES('x','start'); INSERT INTO shadow VALUES('a','b','c'); COMMIT",
         "INSERT OR REPLACE INTO parent VALUES(3,'a')",
         "UPDATE parent SET id=20 WHERE id=2",
@@ -215,7 +215,7 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
         "CREATE TABLE typed(d DATE); INSERT INTO typed VALUES('2024-01-01')",
         "BEGIN; ALTER TABLE typed ADD COLUMN tags TEXT[]; ROLLBACK",
         "ALTER TABLE typed RENAME COLUMN d TO day; ALTER TABLE typed RENAME TO dates",
-        "CREATE TABLE seq(id INTEGER PRIMARY KEY AUTOINCREMENT); INSERT INTO seq VALUES(40); DELETE FROM seq",
+        "CREATE TABLE seq(id INT64 PRIMARY KEY AUTOINCREMENT); INSERT INTO seq VALUES(40); DELETE FROM seq",
         "INSERT INTO seq DEFAULT VALUES",
         "PRAGMA user_version=17; PRAGMA application_id=123",
         "VACUUM",

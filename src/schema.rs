@@ -45,26 +45,18 @@ fn extension(input: &str) -> Result<Option<Type>> {
     let name = input.trim().to_ascii_uppercase();
     if matches!(
         name.as_str(),
-        "INT"
-            | "INTEGER"
-            | "BIGINT"
-            | "INT8"
-            | "REAL"
-            | "FLOAT"
-            | "FLOAT8"
-            | "DOUBLE"
-            | "DOUBLE PRECISION"
-            | "TEXT"
-            | "BLOB"
-            | "ANY"
-            | ""
+        "REAL" | "FLOAT" | "FLOAT8" | "DOUBLE" | "DOUBLE PRECISION" | "TEXT" | "BLOB" | "ANY" | ""
     ) {
         return Ok(None);
     }
     match Type::parse(input) {
         Ok(ty) => Ok(Some(ty)),
         Err(e)
-            if name.starts_with("NUMERIC")
+            if name.starts_with("INT")
+                || name.starts_with("UINT")
+                || name == "SMALLINT"
+                || name == "BIGINT"
+                || name.starts_with("NUMERIC")
                 || name.starts_with("DECIMAL")
                 || name.starts_with("VARCHAR")
                 || name.contains("[]") =>
@@ -85,8 +77,18 @@ pub(crate) struct Declaration {
 fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     if let Some(ty) = extension(&column.data_type.to_string())? {
         ty.validate(&Value::Null)?;
+        if ty == Type::Int64 {
+            column.data_type = DataType::Custom(ObjectName(vec![Ident::new("INTEGER")]), vec![]);
+            return Ok(None);
+        }
         let storage = match ty {
-            Type::SmallInt | Type::Integer | Type::Boolean => "INTEGER",
+            Type::Int8
+            | Type::Int16
+            | Type::Int32
+            | Type::Uint8
+            | Type::Uint16
+            | Type::Uint32
+            | Type::Boolean => "INTEGER",
             Type::Real => "REAL",
             Type::Bytea => "BLOB",
             _ => "TEXT",
@@ -94,11 +96,21 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
         column.data_type = DataType::Custom(ObjectName(vec![Ident::new(storage)]), vec![]);
         // Portable constraints protect these rules even in external clients.
         let check = match &ty {
-            Type::SmallInt => Some(format!(
+            Type::Int8 => Some(format!(
+                "{} BETWEEN -128 AND 127",
+                quote(&column.name.value)
+            )),
+            Type::Uint8 => Some(format!("{} BETWEEN 0 AND 255", quote(&column.name.value))),
+            Type::Uint16 => Some(format!("{} BETWEEN 0 AND 65535", quote(&column.name.value))),
+            Type::Uint32 => Some(format!(
+                "{} BETWEEN 0 AND 4294967295",
+                quote(&column.name.value)
+            )),
+            Type::Int16 => Some(format!(
                 "{} BETWEEN -32768 AND 32767",
                 quote(&column.name.value)
             )),
-            Type::Integer => Some(format!(
+            Type::Int32 => Some(format!(
                 "{} BETWEEN -2147483648 AND 2147483647",
                 quote(&column.name.value)
             )),
@@ -127,7 +139,6 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     }
     let native = match column.data_type.to_string().to_ascii_uppercase().as_str() {
         "" => Some("ANY"),
-        "BIGINT" | "INT8" => Some("INT"),
         "FLOAT" | "FLOAT8" | "DOUBLE" | "DOUBLE PRECISION" => Some("REAL"),
         _ => None,
     };
@@ -144,6 +155,7 @@ pub(crate) fn declaration(sql: &str) -> Result<Option<Declaration>> {
 }
 
 pub(crate) struct Alteration {
+    main: bool,
     pub sql: String,
     pub table: String,
     pub columns: Vec<(String, Type)>,
@@ -162,16 +174,22 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
     else {
         return Ok(None);
     };
-    if main_name(name).is_none() {
-        return Ok(None);
-    }
-    let table = main_name(name).unwrap().to_owned();
+    let main = main_name(name).is_some();
+    let table = name
+        .0
+        .last()
+        .ok_or_else(|| Error("missing table name".into()))?
+        .value
+        .clone();
     let mut columns = vec![];
     let mut rewritten = false;
     for op in operations.iter_mut() {
         if let AlterTableOperation::AddColumn { column_def, .. } = op {
             let original = column_def.data_type.clone();
             if let Some(ty) = translate_column(column_def)? {
+                if !main {
+                    return Err(Error("extended types require main database tables".into()));
+                }
                 columns.push((column_def.name.value.clone(), ty));
             }
             rewritten |= original != column_def.data_type;
@@ -179,6 +197,7 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
     }
     let changes = operations.clone();
     Ok(Some(Alteration {
+        main,
         sql: if !rewritten {
             sql.into()
         } else {
@@ -190,6 +209,9 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
     }))
 }
 pub(crate) fn save_alteration(db: &Connection, change: &Alteration) -> Result<()> {
+    if !change.main {
+        return Ok(());
+    }
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1)",
         [META],
@@ -327,10 +349,10 @@ pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
                 match (&ty, ctx.get_raw(0)) {
                     (_, ValueRef::Null) | (Type::Bytea, ValueRef::Blob(_)) => return Ok(1i64),
                     (Type::Boolean, ValueRef::Integer(0 | 1)) => return Ok(1),
-                    (Type::SmallInt, ValueRef::Integer(n)) if i16::try_from(n).is_ok() => {
+                    (Type::Int16, ValueRef::Integer(n)) if i16::try_from(n).is_ok() => {
                         return Ok(1);
                     }
-                    (Type::Integer, ValueRef::Integer(n)) if i32::try_from(n).is_ok() => {
+                    (Type::Int32, ValueRef::Integer(n)) if i32::try_from(n).is_ok() => {
                         return Ok(1);
                     }
                     (Type::Varchar(limit), ValueRef::Text(bytes)) => {
@@ -378,6 +400,10 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     Ok(match value {
         Value::Null => SqlValue::Null,
         Value::Integer(n) => SqlValue::Integer(*n),
+        Value::UnsignedInteger(n) => SqlValue::Integer(
+            i64::try_from(*n)
+                .map_err(|_| Error("unsigned value exceeds SQLite INTEGER range".into()))?,
+        ),
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
@@ -399,6 +425,7 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                 Ok(match v {
                     Value::Null => J::Null,
                     Value::Integer(n) => J::from(*n),
+                    Value::UnsignedInteger(n) => J::from(*n),
                     Value::Real(n) if n.is_finite() => J::from(*n),
                     Value::Real(_) => return Err(Error("non-finite array element".into())),
                     Value::Boolean(b) => J::from(*b),

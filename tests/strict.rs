@@ -9,7 +9,7 @@ fn ordinary_tables_are_strict_without_an_explicit_keyword() {
             None => Database::memory(),
             Some(format) => Database::open(&path, format).unwrap(),
         };
-        db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,n INTEGER)")
+        db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,n INT64)")
             .unwrap();
         assert_eq!(
             db.execute("SELECT strict FROM pragma_table_list WHERE schema='main' AND name='t'")
@@ -76,7 +76,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
 #[test]
 fn strict_tables_support_native_aliases_any_temp_and_sqlite_constraints() {
     let mut db = Database::memory();
-    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INTEGER PRIMARY KEY AUTOINCREMENT,n BIGINT,r DOUBLE PRECISION,v ANY,untyped,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
+    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INT64 PRIMARY KEY AUTOINCREMENT,n INT64,r DOUBLE PRECISION,v ANY,untyped,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
     db.execute("INSERT INTO [quoted table](n,r,v,untyped,word) VALUES(9223372036854775807,0.5,'001',x'00ff','a')").unwrap();
     assert_eq!(
         db.execute("SELECT id,n,r,v,typeof(v),untyped FROM [quoted table]")
@@ -91,7 +91,7 @@ fn strict_tables_support_native_aliases_any_temp_and_sqlite_constraints() {
             Value::Bytea(vec![0, 255])
         ]]
     );
-    db.execute("CREATE TEMP TABLE t(n INT); CREATE TABLE temp.explicit(n TEXT) STRICT; INSERT INTO t VALUES('42')").unwrap();
+    db.execute("CREATE TEMP TABLE t(n INT64); CREATE TABLE temp.explicit(n TEXT) STRICT; INSERT INTO t VALUES('42')").unwrap();
     assert_eq!(db.execute("SELECT strict FROM pragma_table_list WHERE schema='temp' AND name IN('t','explicit') ORDER BY name").unwrap()[0].rows, vec![vec![Value::Integer(1)],vec![Value::Integer(1)]]);
     assert_eq!(
         db.execute("SELECT n,typeof(n) FROM t").unwrap()[0].rows,
@@ -116,7 +116,7 @@ fn create_table_as_select_is_strict_and_preserves_inferred_cells() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("ctas");
         let mut db = Database::open(&path, format).unwrap();
-        db.execute("CREATE TABLE source(id BIGINT,n REAL,body TEXT); INSERT INTO source VALUES(1,0.5,'001'); CREATE TABLE copied AS SELECT id,n,body,id+1 AS computed FROM source").unwrap();
+        db.execute("CREATE TABLE source(id INT64,n REAL,body TEXT); INSERT INTO source VALUES(1,0.5,'001'); CREATE TABLE copied AS SELECT id,n,body,id+1 AS computed FROM source").unwrap();
         assert_eq!(
             db.execute(
                 "SELECT strict FROM pragma_table_list WHERE schema='main' AND name='copied'"
@@ -194,10 +194,10 @@ fn create_table_as_select_preserves_row_order_with_shadowed_rowid_names() {
 #[test]
 fn added_columns_keep_strict_typing_and_ddl_returns_no_internal_results() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY); INSERT INTO t VALUES(1)")
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY); INSERT INTO t VALUES(1)")
         .unwrap();
     let result = db
-        .execute("ALTER TABLE t ADD COLUMN score BIGINT DEFAULT 2")
+        .execute("ALTER TABLE t ADD COLUMN score INT64 DEFAULT 2")
         .unwrap();
     assert!(result[0].columns.is_empty());
     assert!(result[0].rows.is_empty());
@@ -216,7 +216,7 @@ fn added_columns_keep_strict_typing_and_ddl_returns_no_internal_results() {
 #[test]
 fn strict_creation_preserves_quoted_names_and_default_values() {
     let mut db = Database::memory();
-    db.execute(r#"CREATE TABLE "odd""table"("odd""column" TEXT DEFAULT 'it''s \path',tags TEXT[] DEFAULT '["a''b"]',bytes BLOB DEFAULT x'00ff',n 'INTEGER' DEFAULT 7)"#).unwrap();
+    db.execute(r#"CREATE TABLE "odd""table"("odd""column" TEXT DEFAULT 'it''s \path',tags TEXT[] DEFAULT '["a''b"]',bytes BLOB DEFAULT x'00ff',n 'INT64' DEFAULT 7)"#).unwrap();
     db.execute(r#"INSERT INTO "odd""table" DEFAULT VALUES"#)
         .unwrap();
     assert_eq!(
