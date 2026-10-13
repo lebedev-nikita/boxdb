@@ -121,12 +121,8 @@ fn run(cli: Cli) -> Result<()> {
                     return Err(Error("source database not found".into()));
                 }
                 loop {
-                    let result = std::fs::read(&database)
-                        .map_err(|e| Error(e.to_string()))
-                        .and_then(|bytes| {
-                            Database::from_snapshot(&bytes)?;
-                            replicator.push(&bytes)
-                        });
+                    let result = Database::read_snapshot(&database)
+                        .and_then(|bytes| replicator.push(&bytes));
                     match result {
                         Ok(revision) => println!(
                             "{}",

@@ -1,6 +1,148 @@
 use boxdb::{Database, Value};
 
 #[test]
+fn indexed_integer_predicates_match_scans_across_bounds_and_mutations() {
+    let mut scan = Database::memory();
+    scan.execute("CREATE TABLE t(n BIGINT,label TEXT); INSERT INTO t VALUES(10,'a'),(2,'b'),(-1,'a'),(0,'c'),(NULL,'a'),(100,'b'),(9223372036854775807,'a'),(-9223372036854775808,'a'),(2,'a')").unwrap();
+    let mut indexed =
+        Database::from_snapshot(&scan.export(boxdb::Format::Binary).unwrap()).unwrap();
+    indexed.execute("CREATE INDEX t_n ON t(n)").unwrap();
+    for predicate in [
+        "n=2",
+        "n=-1",
+        "n>2",
+        "n>=2",
+        "n<2",
+        "n<=2",
+        "2<n",
+        "2>=n",
+        "n>=0 AND n<=10",
+        "n>2 AND n<2",
+        "n>=2 AND n<=2",
+        "n>=10 AND n<=2",
+        "n=2 AND n=10",
+        "n>=0 AND n<=10 AND label='a'",
+        "(n>=0 AND n<10)",
+        "n>9223372036854775807",
+        "n<-9223372036854775808",
+        "n>=-9223372036854775808 AND n<=9223372036854775807",
+        "n=2.0",
+        "n>2.5",
+        "n<0 OR n=10",
+        "n IS NULL",
+        "n BETWEEN 0 AND 10",
+    ] {
+        let sql = format!("SELECT n,label FROM t WHERE {predicate} ORDER BY n,label");
+        assert_eq!(
+            indexed.execute(&sql).unwrap(),
+            scan.execute(&sql).unwrap(),
+            "{predicate}"
+        );
+    }
+    assert_eq!(
+        indexed
+            .execute("SELECT q.n FROM t AS q WHERE q.n>=2 AND q.n<10")
+            .unwrap(),
+        scan.execute("SELECT q.n FROM t AS q WHERE q.n>=2 AND q.n<10")
+            .unwrap()
+    );
+    for sql in [
+        "BEGIN",
+        "UPDATE t SET label='changed' WHERE n=2 RETURNING n,label",
+        "SAVEPOINT one",
+        "UPDATE t SET n=3 WHERE n=2 RETURNING n,label",
+        "SELECT n,label FROM t WHERE n=3",
+        "ROLLBACK TO one",
+        "SELECT n,label FROM t WHERE n=2",
+        "COMMIT",
+        "DELETE FROM t WHERE n>=0 AND n<=10 RETURNING n,label",
+        "SELECT n,label FROM t WHERE n>=-1 ORDER BY n,label",
+    ] {
+        assert_eq!(
+            indexed.execute(sql).unwrap(),
+            scan.execute(sql).unwrap(),
+            "{sql}"
+        );
+    }
+}
+
+#[test]
+fn hashed_unique_keys_preserve_signed_zero_nulls_and_nested_value_equality() {
+    for (ty, negative, positive) in [
+        ("DOUBLE PRECISION", Value::Real(-0.0), Value::Real(0.0)),
+        (
+            "DOUBLE PRECISION[]",
+            Value::Array(vec![Value::Real(-0.0), Value::Null]),
+            Value::Array(vec![Value::Real(0.0), Value::Null]),
+        ),
+        (
+            "JSON",
+            Value::Json(serde_json::json!({"a":[-0.0]})),
+            Value::Json(serde_json::json!({"a":[0.0]})),
+        ),
+    ] {
+        for separate_index in [false, true] {
+            let mut db = Database::memory();
+            db.execute(&format!(
+                "CREATE TABLE t(n {ty}{})",
+                if separate_index { "" } else { " UNIQUE" }
+            ))
+            .unwrap();
+            if separate_index {
+                db.execute("CREATE UNIQUE INDEX t_n ON t(n)").unwrap();
+            }
+            match ty {
+                "DOUBLE PRECISION" => {
+                    db.execute("INSERT INTO t VALUES(CAST('-0.0' AS DOUBLE PRECISION))")
+                        .unwrap();
+                }
+                "DOUBLE PRECISION[]" => {
+                    db.execute(
+                        "INSERT INTO t VALUES(ARRAY[CAST('-0.0' AS DOUBLE PRECISION),NULL])",
+                    )
+                    .unwrap();
+                }
+                _ => {
+                    db.execute_params("INSERT INTO t VALUES(?)", std::slice::from_ref(&negative))
+                        .unwrap();
+                }
+            }
+            assert!(
+                db.execute_params("INSERT INTO t VALUES(?)", std::slice::from_ref(&positive))
+                    .is_err(),
+                "{ty}"
+            );
+            db.execute("INSERT INTO t VALUES(NULL),(NULL)").unwrap();
+            assert_eq!(
+                db.execute("SELECT COUNT(*) FROM t").unwrap()[0].rows,
+                vec![vec![Value::Integer(3)]]
+            );
+        }
+    }
+}
+
+#[test]
+fn refreshing_indexes_tracks_foreign_key_cascades() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE parent(n INTEGER PRIMARY KEY); CREATE TABLE child(n INTEGER REFERENCES parent(n) ON UPDATE CASCADE ON DELETE CASCADE); CREATE INDEX parent_n ON parent(n); CREATE INDEX child_n ON child(n); INSERT INTO parent VALUES(1); INSERT INTO child VALUES(1); UPDATE parent SET n=2 WHERE n=1").unwrap();
+    assert_eq!(
+        db.execute("SELECT n FROM child WHERE n=2").unwrap()[0].rows,
+        vec![vec![Value::Integer(2)]]
+    );
+    assert!(
+        db.execute("SELECT n FROM child WHERE n=1").unwrap()[0]
+            .rows
+            .is_empty()
+    );
+    db.execute("DELETE FROM parent WHERE n=2").unwrap();
+    assert!(
+        db.execute("SELECT n FROM child WHERE n=2").unwrap()[0]
+            .rows
+            .is_empty()
+    );
+}
+
+#[test]
 fn query_validation_does_not_depend_on_existing_rows() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE a(id INTEGER); CREATE TABLE b(id INTEGER)")

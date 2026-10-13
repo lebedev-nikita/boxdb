@@ -17,11 +17,12 @@ uuid = { version = "1", features = ["serde"] }
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
-zstd = "0.13"
 fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 tempfile = "3"
+smallvec = "1"
+imbl = "7"
 
 [dev-dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled"] }

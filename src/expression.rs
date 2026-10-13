@@ -22,6 +22,7 @@ pub(crate) fn compare(a: &Value, b: &Value) -> Result<Ordering> {
     match (a, b) {
         (Value::Null, _) => Ok(Ordering::Less),
         (_, Value::Null) => Ok(Ordering::Greater),
+        (Value::Integer(a), Value::Integer(b)) => Ok(a.cmp(b)),
         (
             Value::Integer(_) | Value::Real(_) | Value::Numeric(_),
             Value::Integer(_) | Value::Real(_) | Value::Numeric(_),

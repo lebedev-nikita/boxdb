@@ -5,7 +5,7 @@ fn binary_snapshots_use_boxdb_header() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT); INSERT INTO notes VALUES(1,'snapshot')").unwrap();
     let snapshot = db.export(Format::Binary).unwrap();
-    assert!(snapshot.starts_with(b"BOXDB\0\x01"));
+    assert!(snapshot.starts_with(b"BOXDB\0\x03"));
     let mut decoded = Database::from_snapshot(&snapshot).unwrap();
     assert_eq!(
         decoded.execute("SELECT id,body FROM notes").unwrap()[0].rows,
@@ -14,12 +14,145 @@ fn binary_snapshots_use_boxdb_header() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("restored.boxdb");
     drop(Database::restore(&path, &snapshot).unwrap());
-    assert!(std::fs::read(&path).unwrap().starts_with(b"BOXDB\0\x01"));
+    assert!(std::fs::read(&path).unwrap().starts_with(b"BOXDB\0\x03"));
     let mut reopened = Database::open(&path, Format::Binary).unwrap();
     assert_eq!(
         reopened.execute("SELECT body FROM notes").unwrap()[0].rows,
         vec![vec![Value::Text("snapshot".into())]]
     );
+}
+
+#[test]
+fn native_binary_preserves_raw_cells_and_is_deterministic() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(n BIGINT,body TEXT,bytes BYTEA)")
+        .unwrap();
+    let text = "raw\nquotes\"\\雪";
+    let bytes = vec![0, 255, 1, 0, 254];
+    db.execute_params(
+        "INSERT INTO t VALUES(?,?,?)",
+        &[
+            Value::Integer(i64::MIN + 1),
+            Value::Text(text.into()),
+            Value::Bytea(bytes.clone()),
+        ],
+    )
+    .unwrap();
+    let binary = db.export(Format::Binary).unwrap();
+    assert!(binary.windows(text.len()).any(|w| w == text.as_bytes()));
+    assert!(binary.windows(bytes.len()).any(|w| w == bytes));
+    assert!(binary.windows(8).any(|w| w == (i64::MIN + 1).to_le_bytes()));
+    assert_eq!(db.export(Format::Binary).unwrap(), binary);
+    let mut restored = Database::from_snapshot(&binary).unwrap();
+    assert_eq!(
+        restored.execute("SELECT * FROM t").unwrap(),
+        db.execute("SELECT * FROM t").unwrap()
+    );
+    assert_eq!(restored.export(Format::Binary).unwrap(), binary);
+}
+
+fn checked_binary(payload: &[u8]) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    let mut bytes = b"BOXDB\0\x03".to_vec();
+    let length = payload.len() as u32;
+    bytes.push(0);
+    bytes.extend_from_slice(&length.to_le_bytes());
+    bytes.extend_from_slice(&(!length).to_le_bytes());
+    let mut hash = Sha256::new();
+    hash.update([0]);
+    hash.update(payload);
+    bytes.extend_from_slice(&hash.finalize());
+    bytes.extend_from_slice(payload);
+    bytes.extend_from_slice(b"COMMIT\0\0");
+    bytes
+}
+
+fn binary_cells(column: &str, cells: &[Vec<u8>]) -> Vec<u8> {
+    let mut payload = 1u32.to_le_bytes().to_vec();
+    for field in ["t".to_owned(), format!("CREATE TABLE t(n {column})")] {
+        payload.extend_from_slice(&(field.len() as u32).to_le_bytes());
+        payload.extend_from_slice(field.as_bytes());
+    }
+    payload.extend_from_slice(&(cells.len() as u64 + 1).to_le_bytes());
+    payload.extend_from_slice(&(cells.len() as u32).to_le_bytes());
+    for (i, cell) in cells.iter().enumerate() {
+        payload.extend_from_slice(&(i as u64 + 1).to_le_bytes());
+        payload.extend_from_slice(cell);
+    }
+    payload.extend_from_slice(&0u32.to_le_bytes());
+    checked_binary(&payload)
+}
+
+fn binary_string(text: &str) -> Vec<u8> {
+    let mut cell = vec![1];
+    cell.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    cell.extend_from_slice(text.as_bytes());
+    cell
+}
+
+#[test]
+fn malformed_native_binary_is_rejected_even_with_a_valid_checksum() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT); INSERT INTO t VALUES(1,'abc')")
+        .unwrap();
+    let valid = db.export(Format::Binary).unwrap();
+    for end in 48..valid.len() - 8 {
+        assert!(
+            Database::from_snapshot(&checked_binary(&valid[48..end])).is_err(),
+            "accepted prefix {end}"
+        );
+    }
+    let mut invalid = vec![
+        checked_binary(&u32::MAX.to_le_bytes()),
+        checked_binary(&[0; 4]),
+        checked_binary(&[0; 9]),
+        binary_cells("BOOLEAN", &[vec![1, 2]]),
+        binary_cells("INTEGER", &[vec![2]]),
+        binary_cells("INTEGER NOT NULL", &[vec![0]]),
+        binary_cells("TEXT", &[vec![1, 255, 255, 255, 255]]),
+        binary_cells("TEXT", &[vec![1, 1, 0, 0, 0, 255]]),
+        binary_cells("VARCHAR(2)", &[binary_string("long")]),
+        binary_cells("DATE", &[binary_string("2024-02-30")]),
+        binary_cells("JSON", &[vec![1, 255]]),
+        binary_cells(
+            "NUMERIC UNIQUE",
+            &[binary_string("1.0"), binary_string("1.00")],
+        ),
+    ];
+    let mut nan = vec![1];
+    nan.extend_from_slice(&f64::NAN.to_le_bytes());
+    invalid.push(binary_cells("DOUBLE PRECISION", &[nan]));
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("invalid.boxdb");
+    for bytes in invalid {
+        assert!(Database::from_snapshot(&bytes).is_err());
+        assert!(Database::restore(&path, &bytes).is_err());
+        assert!(!path.exists());
+    }
+    let mut future = valid;
+    future[6] = 255;
+    assert!(
+        Database::from_snapshot(&future)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unsupported binary format")
+    );
+}
+
+#[test]
+fn obsolete_binary_versions_are_rejected_without_modifying_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("obsolete.boxdb");
+    for version in [1, 2] {
+        let mut bytes = b"BOXDB\0".to_vec();
+        bytes.push(version);
+        bytes.extend([0; 64]);
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(Database::open(&path, Format::Binary).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert!(Database::from_snapshot(&bytes).is_err());
+    }
 }
 
 #[test]
@@ -37,7 +170,11 @@ fn string_snapshots_round_trip_rich_types_without_losing_precision_or_nulls() {
         Value::Text("a🙂".into()),
         Value::Bytea(vec![0, 127, 255]),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
-        Value::Json(serde_json::json!({"integer": i64::MAX, "text": "\"x\n", "null": null})),
+        Value::Json(serde_json::json!({
+            "integer": i64::MAX, "unsigned": u64::MAX,
+            "text": "\"x\n", "null": null, "empty": {},
+            "array": [true, false, null, -1, 1.0, 0.125, -0.0]
+        })),
         Value::Date("2024-02-29".into()),
         Value::Time("12:34:56.123456789".into()),
         Value::Timestamp("2024-02-29 12:34:56.123456789".into()),
@@ -220,34 +357,38 @@ fn readable_sql_schema_determines_row_types() {
 
 #[test]
 fn foreign_keys_reopen_independently_of_table_name_order() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("relations.jsonl");
-    {
-        let mut db = Database::open(&path, Format::Readable).unwrap();
-        db.execute("CREATE TABLE zparent(n INTEGER PRIMARY KEY); CREATE TABLE achild(n INTEGER REFERENCES zparent(n) ON DELETE CASCADE); INSERT INTO zparent VALUES(1); INSERT INTO achild VALUES(1)").unwrap();
+    for format in [Format::Readable, Format::Binary] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("relations.jsonl");
+        {
+            let mut db = Database::open(&path, format).unwrap();
+            db.execute("CREATE TABLE zparent(n INTEGER PRIMARY KEY); CREATE TABLE achild(n INTEGER REFERENCES zparent(n) ON DELETE CASCADE); INSERT INTO zparent VALUES(1); INSERT INTO achild VALUES(1)").unwrap();
+        }
+        let mut db = Database::open(&path, format).unwrap();
+        db.execute("DELETE FROM zparent").unwrap();
+        assert!(
+            db.execute("SELECT n FROM achild").unwrap()[0]
+                .rows
+                .is_empty()
+        );
     }
-    let mut db = Database::open(&path, Format::Readable).unwrap();
-    db.execute("DELETE FROM zparent").unwrap();
-    assert!(
-        db.execute("SELECT n FROM achild").unwrap()[0]
-            .rows
-            .is_empty()
-    );
 }
 
 #[test]
 fn foreign_keys_can_reopen_when_the_parent_key_is_a_separate_unique_index() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("indexes.jsonl");
-    {
-        let mut db = Database::open(&path, Format::Readable).unwrap();
-        db.execute("CREATE TABLE parent(n INTEGER); CREATE UNIQUE INDEX parent_n ON parent(n); CREATE TABLE child(n INTEGER REFERENCES parent(n)); INSERT INTO parent VALUES(1); INSERT INTO child VALUES(1)").unwrap();
+    for format in [Format::Readable, Format::Binary] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("indexes.jsonl");
+        {
+            let mut db = Database::open(&path, format).unwrap();
+            db.execute("CREATE TABLE parent(n INTEGER); CREATE UNIQUE INDEX parent_n ON parent(n); CREATE TABLE child(n INTEGER REFERENCES parent(n)); INSERT INTO parent VALUES(1); INSERT INTO child VALUES(1)").unwrap();
+        }
+        let mut db = Database::open(&path, format).unwrap();
+        assert_eq!(
+            db.execute("SELECT n FROM child").unwrap()[0].rows,
+            vec![vec![Value::Integer(1)]]
+        );
     }
-    let mut db = Database::open(&path, Format::Readable).unwrap();
-    assert_eq!(
-        db.execute("SELECT n FROM child").unwrap()[0].rows,
-        vec![vec![Value::Integer(1)]]
-    );
 }
 
 #[test]

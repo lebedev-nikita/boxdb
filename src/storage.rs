@@ -1,75 +1,58 @@
-use crate::{Error, Format, Result, Type, Value, engine::State};
+use crate::{Error, Format, Result, engine::State};
 use fs2::FileExt;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
+    cell::Cell,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
 };
 
-const MAGIC: &[u8] = b"BOXDB\0\x01";
+mod binary;
+mod readable;
+
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) struct Storage {
     pub path: PathBuf,
     pub format: Format,
     _lock: File,
+    snapshot_lock: File,
+    journal: Cell<Journal>,
 }
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum Record {
-    Database {
-        version: u32,
-    },
-    Table {
-        name: String,
-        next_rowid: u64,
-        sql: String,
-    },
-    Index {
-        name: String,
-        sql: String,
-    },
-    Row {
-        table: String,
-        id: u64,
-        values: Vec<Option<String>>,
-    },
+#[derive(Clone, Copy, Default)]
+struct Journal {
+    length: u64,
+    base_length: u64,
+    commits: u32,
+}
+struct SnapshotGuard<'a>(&'a File);
+impl<'a> SnapshotGuard<'a> {
+    fn exclusive(file: &'a File) -> Result<Self> {
+        fs2::FileExt::lock_exclusive(file).map_err(error)?;
+        Ok(Self(file))
+    }
+    fn shared(file: &'a File) -> Result<Self> {
+        fs2::FileExt::lock_shared(file).map_err(error)?;
+        Ok(Self(file))
+    }
+}
+impl Drop for SnapshotGuard<'_> {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(self.0);
+    }
+}
+fn snapshot_lock(path: &Path) -> Result<File> {
+    let mut lock_path = path.as_os_str().to_os_string();
+    lock_path.push(".snapshot.lock");
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(PathBuf::from(lock_path))
+        .map_err(error)
 }
 fn error(e: impl std::fmt::Display) -> Error {
     Error(e.to_string())
-}
-fn encode_value(value: &Value) -> Result<Option<String>> {
-    match value {
-        Value::Null => Ok(None),
-        Value::Array(values) => {
-            let values = values
-                .iter()
-                .map(encode_value)
-                .collect::<Result<Vec<_>>>()?;
-            serde_json::to_string(&values).map(Some).map_err(error)
-        }
-        _ => Ok(Some(value.to_string())),
-    }
-}
-fn decode_value(ty: &Type, value: Option<String>) -> Result<Value> {
-    let Some(text) = value else {
-        return ty.validate(&Value::Null);
-    };
-    let value = match ty {
-        Type::Bytea => Value::Bytea(hex::decode(text).map_err(error)?),
-        Type::Array(inner) => {
-            let values: Vec<Option<String>> = serde_json::from_str(&text).map_err(error)?;
-            Value::Array(
-                values
-                    .into_iter()
-                    .map(|value| decode_value(inner, value))
-                    .collect::<Result<Vec<_>>>()?,
-            )
-        }
-        _ => return ty.cast(Value::Text(text)),
-    };
-    ty.validate(&value)
 }
 impl Storage {
     pub fn create(path: &Path, format: Format, state: &State) -> Result<Self> {
@@ -96,9 +79,11 @@ impl Storage {
         lock.try_lock_exclusive()
             .map_err(|_| Error("destination is locked".into()))?;
         let storage = Self {
+            snapshot_lock: snapshot_lock(&path)?,
             path,
             format,
             _lock: lock,
+            journal: Cell::default(),
         };
         storage.publish_new(state)?;
         Ok(storage)
@@ -128,16 +113,31 @@ impl Storage {
         lock.try_lock_exclusive()
             .map_err(|_| Error("database is locked by another connection".into()))?;
         let mut storage = Self {
+            snapshot_lock: snapshot_lock(&path)?,
             path,
             format,
             _lock: lock,
+            journal: Cell::default(),
         };
         let state = if storage.path.exists() {
+            let _guard = SnapshotGuard::exclusive(&storage.snapshot_lock)?;
             if !storage.path.is_file() {
                 return Err(Error("database path is not a file".into()));
             }
             let bytes = read_limited(&storage.path)?;
-            let (state, detected) = decode(&bytes)?;
+            let (state, detected, journal) = decode_with_length(&bytes, true)?;
+            if detected == Format::Binary {
+                let valid_length = journal.length as usize;
+                if valid_length < bytes.len() {
+                    let file = OpenOptions::new()
+                        .write(true)
+                        .open(&storage.path)
+                        .map_err(error)?;
+                    file.set_len(valid_length as u64).map_err(error)?;
+                    file.sync_all().map_err(error)?;
+                }
+                storage.journal.set(journal);
+            }
             storage.format = detected;
             state
         } else {
@@ -145,14 +145,56 @@ impl Storage {
             storage.publish_new(&state)?;
             state
         };
-        state.validate()?;
         Ok((storage, state))
     }
     fn publish_new(&self, state: &State) -> Result<()> {
+        let _guard = SnapshotGuard::exclusive(&self.snapshot_lock)?;
         self.write(state, true)
     }
-    pub fn publish(&self, state: &State) -> Result<()> {
-        self.write(state, false)
+    pub fn publish(&self, state: &State, previous: &State) -> Result<()> {
+        let _guard = SnapshotGuard::exclusive(&self.snapshot_lock)?;
+        if self.format == Format::Readable {
+            return self.write(state, false);
+        }
+        let Some(frame) = binary::commit(state, previous)? else {
+            return Ok(());
+        };
+        // Schema changes and row compaction already require a complete image.
+        // Publish it directly instead of retaining obsolete snapshots in the log.
+        if frame[0] == 0 {
+            return self.write(state, false);
+        }
+        let journal = self.journal.get();
+        let length = journal.length + frame.len() as u64;
+        if length > MAX_BYTES
+            || length > (journal.base_length * 2).max(1024 * 1024)
+            || journal.commits >= 1024
+        {
+            return self.write(state, false);
+        }
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&self.path)
+            .map_err(error)?;
+        if !file.metadata().map_err(error)?.is_file()
+            || file.metadata().map_err(error)?.len() != journal.length
+        {
+            return Err(Error(
+                "database file changed outside this connection".into(),
+            ));
+        }
+        let mut file = file;
+        if let Err(failure) = file.write_all(&frame).and_then(|_| file.sync_all()) {
+            file.set_len(journal.length).map_err(error)?;
+            file.sync_all().map_err(error)?;
+            return Err(error(failure));
+        }
+        self.journal.set(Journal {
+            length,
+            commits: journal.commits + 1,
+            ..journal
+        });
+        Ok(())
     }
     fn write(&self, state: &State, new: bool) -> Result<()> {
         let bytes = encode(state, self.format)?;
@@ -168,6 +210,13 @@ impl Storage {
         File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(error)?;
+        if self.format == Format::Binary {
+            self.journal.set(Journal {
+                length: bytes.len() as u64,
+                base_length: bytes.len() as u64,
+                commits: 0,
+            });
+        }
         Ok(())
     }
 }
@@ -183,146 +232,72 @@ pub(crate) fn read_limited(path: &Path) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
+// State is private and every successful statement maintains its invariants.
+// Imported bytes are validated once below, before entering a Database.
 pub(crate) fn encode(state: &State, format: Format) -> Result<Vec<u8>> {
-    state.validate()?;
-    let mut records = vec![Record::Database { version: 1 }];
-    for (name, table) in &state.tables {
-        records.push(Record::Table {
-            name: name.clone(),
-            next_rowid: table.next_rowid,
-            sql: table.sql.clone(),
-        });
-        for (id, row) in table.row_ids.iter().zip(&table.rows) {
-            records.push(Record::Row {
-                table: name.clone(),
-                id: *id,
-                values: row.iter().map(encode_value).collect::<Result<Vec<_>>>()?,
-            });
-        }
-    }
-    for (name, index) in &state.indexes {
-        records.push(Record::Index {
-            name: name.clone(),
-            sql: index.sql.clone(),
-        });
-    }
-    let mut text = vec![];
-    for record in records {
-        serde_json::to_writer(&mut text, &record).map_err(error)?;
-        text.push(b'\n');
-    }
-    if text.len() as u64 > MAX_BYTES {
-        return Err(Error("database exceeds 256 MiB limit".into()));
-    }
     match format {
-        Format::Readable => Ok(text),
-        Format::Binary => {
-            let mut bytes = MAGIC.to_vec();
-            bytes.extend(Sha256::digest(&text));
-            bytes.extend(zstd::stream::encode_all(text.as_slice(), 3).map_err(error)?);
-            Ok(bytes)
-        }
+        Format::Binary => binary::encode(state),
+        Format::Readable => readable::encode(state),
     }
 }
 pub(crate) fn decode(bytes: &[u8]) -> Result<(State, Format)> {
+    decode_with_length(bytes, false).map(|(state, format, _)| (state, format))
+}
+fn decode_with_length(bytes: &[u8], recover: bool) -> Result<(State, Format, Journal)> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err(Error("database exceeds 256 MiB limit".into()));
     }
-    let (text, format) = if bytes.starts_with(MAGIC) {
-        if bytes.len() < MAGIC.len() + 32 {
-            return Err(Error("truncated binary header".into()));
-        }
-        let mut text = vec![];
-        zstd::stream::read::Decoder::new(&bytes[MAGIC.len() + 32..])
-            .map_err(error)?
-            .take(MAX_BYTES + 1)
-            .read_to_end(&mut text)
-            .map_err(error)?;
-        if text.len() as u64 > MAX_BYTES {
-            return Err(Error("decompressed database exceeds limit".into()));
-        }
-        if Sha256::digest(&text).as_slice() != &bytes[MAGIC.len()..MAGIC.len() + 32] {
-            return Err(Error("database checksum mismatch".into()));
-        }
-        (text, Format::Binary)
+    let (mut state, format, journal) = if bytes.starts_with(binary::MAGIC) {
+        let (state, journal) = binary::decode(bytes, recover)?;
+        (state, Format::Binary, journal)
+    } else if bytes.starts_with(b"BOXDB\0") {
+        return Err(Error("unsupported binary format version".into()));
     } else {
-        (bytes.to_vec(), Format::Readable)
+        (
+            readable::decode(bytes)?,
+            Format::Readable,
+            Journal {
+                length: bytes.len() as u64,
+                ..Journal::default()
+            },
+        )
     };
-    let text = std::str::from_utf8(&text).map_err(error)?;
-    let mut records = vec![];
-    for (line_number, line) in text.lines().enumerate() {
-        let record: Record = serde_json::from_str(line)
-            .map_err(|e| Error(format!("line {}: {e}", line_number + 1)))?;
-        records.push(record);
+    state.validate_import()?;
+    Ok((state, format, journal))
+}
+
+fn declare_table(state: &mut State, name: &str, sql: &str, next_rowid: u64) -> Result<()> {
+    let statements = crate::parse(sql)?;
+    let [sqlparser::ast::Statement::CreateTable(table)] = statements.as_slice() else {
+        return Err(Error("table record must contain one CREATE TABLE".into()));
+    };
+    if crate::engine::name(&table.name) != name || state.tables.contains_key(name) {
+        return Err(Error("mismatched or duplicate table record".into()));
     }
-    if !matches!(records.first(), Some(Record::Database { version: 1 }))
-        || records
-            .iter()
-            .skip(1)
-            .any(|r| matches!(r, Record::Database { .. }))
+    state.declare(&statements[0])?;
+    state.tables.get_mut(name).unwrap().next_rowid = next_rowid;
+    Ok(())
+}
+fn declare_index(state: &mut State, name: &str, sql: &str) -> Result<()> {
+    let statements = crate::parse(sql)?;
+    let [sqlparser::ast::Statement::CreateIndex(index)] = statements.as_slice() else {
+        return Err(Error("index record must contain one CREATE INDEX".into()));
+    };
+    if index.name.as_ref().map(crate::engine::name).as_deref() != Some(name)
+        || state.indexes.contains_key(name)
     {
-        return Err(Error("invalid database header or format version".into()));
+        return Err(Error("mismatched or duplicate index record".into()));
     }
-    let mut state = State::default();
-    // Load all declarations before rows: a child can sort before its parent.
-    for record in &records {
-        if let Record::Table {
-            name,
-            sql,
-            next_rowid,
-        } = record
-        {
-            let statements = crate::parse(sql)?;
-            let [sqlparser::ast::Statement::CreateTable(table)] = statements.as_slice() else {
-                return Err(Error("table record must contain one CREATE TABLE".into()));
-            };
-            if crate::engine::name(&table.name) != *name || state.tables.contains_key(name) {
-                return Err(Error("mismatched or duplicate table record".into()));
-            }
-            state.declare(&statements[0])?;
-            state.tables.get_mut(name).unwrap().next_rowid = *next_rowid;
-        }
-    }
-    for record in &records {
-        if let Record::Index { name, sql } = record {
-            let statements = crate::parse(sql)?;
-            let [sqlparser::ast::Statement::CreateIndex(index)] = statements.as_slice() else {
-                return Err(Error("index record must contain one CREATE INDEX".into()));
-            };
-            if index.name.as_ref().map(crate::engine::name).as_ref() != Some(name)
-                || state.indexes.contains_key(name)
-            {
-                return Err(Error("mismatched or duplicate index record".into()));
-            }
-            state.declare(&statements[0])?;
-        }
-    }
-    for record in records {
-        if let Record::Row { table, id, values } = record {
-            let table = state
-                .tables
-                .get_mut(&table)
-                .ok_or_else(|| Error("row references unknown table".into()))?;
-            if id == 0
-                || id >= table.next_rowid
-                || table.row_ids.last().is_some_and(|previous| *previous >= id)
-            {
-                return Err(Error("invalid or duplicate row id".into()));
-            }
-            table.row_ids.push(id);
-            if values.len() != table.columns.len() {
-                return Err(Error("column count mismatch".into()));
-            }
-            let values = table
-                .columns
-                .iter()
-                .zip(values)
-                .map(|(column, value)| decode_value(&column.ty, value))
-                .collect::<Result<Vec<_>>>()?;
-            table.rows.push(values);
-        }
-    }
-    state.validate()?;
-    state.rebuild_indexes()?;
-    Ok((state, format))
+    state.declare(&statements[0])?;
+    Ok(())
+}
+
+pub(crate) fn read_snapshot(path: &Path) -> Result<Vec<u8>> {
+    let path = fs::canonicalize(path).map_err(error)?;
+    let lock = snapshot_lock(&path)?;
+    let _guard = SnapshotGuard::shared(&lock)?;
+    let mut bytes = read_limited(&path)?;
+    let (_, _, journal) = decode_with_length(&bytes, true)?;
+    bytes.truncate(journal.length as usize);
+    Ok(bytes)
 }

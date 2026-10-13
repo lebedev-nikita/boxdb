@@ -3,6 +3,10 @@
 Use this guide to back up an existing BoxDB file and restore a stored
 snapshot. Both storage formats are supported. The replication process can run
 while a database writer remains open.
+The CLI uses `Database::read_snapshot` to acquire the publication lock and read
+only committed bytes. Binary log appends and checkpoints cannot overlap this
+read; uploads begin after the lock is released. Keep both `.lock` and
+`.snapshot.lock` sidecars beside the database.
 
 ## Configure access
 
@@ -60,8 +64,8 @@ An explicit revision can be restored if its manifest and blocks are complete,
 even if updating the latest pointer failed. Multiple commits between polls can
 coalesce, so changes after the last observed snapshot can be absent. Restore
 verifies snapshot integrity before creating the destination. BoxDB does not
-manage retention or remote garbage collection; binary compression can reduce
-upload reuse compared with readable storage.
+manage retention or remote garbage collection. Block reuse depends on the
+storage format and where edits occur within the snapshot.
 
 The client uses signed requests and path-style endpoints. Configure the correct
 region and endpoint; HTTP redirects and S3 Express directory buckets are not

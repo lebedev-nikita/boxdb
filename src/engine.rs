@@ -1,43 +1,245 @@
 use crate::{Error, QueryResult, Result, Type, Value};
-use serde::{Deserialize, Serialize};
+type Positions = smallvec::SmallVec<[usize; 1]>;
+mod aggregate;
+pub(crate) mod insert;
+mod plan;
+pub(crate) use plan::Plan;
 use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
 use sqlparser::ast::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct State {
     pub tables: BTreeMap<String, Table>,
     pub indexes: BTreeMap<String, Index>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub(crate) struct Index {
     pub table: String,
     pub columns: Vec<usize>,
     pub unique: bool,
     pub sql: String,
-    #[serde(skip)]
-    pub entries: BTreeMap<String, Vec<usize>>,
+    // Persistent B+ tree: a transaction clone shares nodes; editing a key only
+    // copies the affected path, rather than the complete index.
+    pub entries: imbl::OrdMap<IndexKey, Positions>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+// Integer keys have numeric order; other keys retain exact typed equality.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum IndexKey {
+    Integer(i64),
+    Other(String),
+}
+impl IndexKey {
+    fn new(row: &[Value], columns: &[usize]) -> Result<Self> {
+        if let [column] = columns
+            && let Value::Integer(n) = row[*column]
+        {
+            return Ok(Self::Integer(n));
+        }
+        let values = columns
+            .iter()
+            .map(|i| normalized_key(&row[*i]))
+            .collect::<Vec<_>>();
+        serde_json::to_string(&values)
+            .map(Self::Other)
+            .map_err(|e| Error(e.to_string()))
+    }
+}
+fn normalized_key(value: &Value) -> Value {
+    match value {
+        Value::Real(n) if *n == 0.0 => Value::Real(0.0),
+        Value::Array(values) => Value::Array(values.iter().map(normalized_key).collect()),
+        Value::Json(json) => {
+            fn normalize(json: &serde_json::Value) -> serde_json::Value {
+                use serde_json::Value as Json;
+                match json {
+                    Json::Number(n) if n.is_f64() && n.as_f64() == Some(0.0) => {
+                        serde_json::json!(0.0)
+                    }
+                    Json::Array(values) => Json::Array(values.iter().map(normalize).collect()),
+                    Json::Object(values) => Json::Object(
+                        values
+                            .iter()
+                            .map(|(k, v)| (k.clone(), normalize(v)))
+                            .collect(),
+                    ),
+                    _ => json.clone(),
+                }
+            }
+            Value::Json(normalize(json))
+        }
+        _ => value.clone(),
+    }
+}
+
+fn column_matches(expr: &Expr, column: &str, prefix: &str) -> bool {
+    match expr {
+        Expr::Identifier(n) => n.value.eq_ignore_ascii_case(column),
+        Expr::CompoundIdentifier(ids) if ids.len() == 2 => {
+            ids[0].value.eq_ignore_ascii_case(prefix) && ids[1].value.eq_ignore_ascii_case(column)
+        }
+        _ => false,
+    }
+}
+
+struct IntegerBounds {
+    lower: (i64, bool),
+    upper: (i64, bool),
+}
+impl IntegerBounds {
+    fn lower(&mut self, n: i64, inclusive: bool) {
+        if n > self.lower.0 {
+            self.lower = (n, inclusive);
+        } else if n == self.lower.0 {
+            self.lower.1 &= inclusive;
+        }
+    }
+    fn upper(&mut self, n: i64, inclusive: bool) {
+        if n < self.upper.0 {
+            self.upper = (n, inclusive);
+        } else if n == self.upper.0 {
+            self.upper.1 &= inclusive;
+        }
+    }
+    fn collect(&mut self, expr: &Expr, column: &str, prefix: &str) -> bool {
+        use BinaryOperator::*;
+        if let Expr::Nested(expr) = expr {
+            return self.collect(expr, column, prefix);
+        }
+        let Expr::BinaryOp { left, op, right } = expr else {
+            return false;
+        };
+        if *op == And {
+            let a = self.collect(left, column, prefix);
+            let b = self.collect(right, column, prefix);
+            return a || b;
+        }
+        let (literal, op) = if column_matches(left, column, prefix) {
+            (right.as_ref(), op.clone())
+        } else if column_matches(right, column, prefix) {
+            (
+                left.as_ref(),
+                match op {
+                    Lt => Gt,
+                    LtEq => GtEq,
+                    Gt => Lt,
+                    GtEq => LtEq,
+                    other => other.clone(),
+                },
+            )
+        } else {
+            return false;
+        };
+        let Ok(Value::Integer(n)) = eval(literal, &[], &[]) else {
+            return false;
+        };
+        match op {
+            Eq => {
+                self.lower(n, true);
+                self.upper(n, true);
+            }
+            Gt => self.lower(n, false),
+            GtEq => self.lower(n, true),
+            Lt => self.upper(n, false),
+            LtEq => self.upper(n, true),
+            _ => return false,
+        }
+        true
+    }
+    fn positions(&self, index: &Index) -> Vec<usize> {
+        use std::ops::Bound::{Excluded, Included};
+        if self.lower.0 > self.upper.0
+            || (self.lower.0 == self.upper.0 && !(self.lower.1 && self.upper.1))
+        {
+            return vec![];
+        }
+        let lower = if self.lower.1 {
+            Included(IndexKey::Integer(self.lower.0))
+        } else {
+            Excluded(IndexKey::Integer(self.lower.0))
+        };
+        let upper = if self.upper.1 {
+            Included(IndexKey::Integer(self.upper.0))
+        } else {
+            Excluded(IndexKey::Integer(self.upper.0))
+        };
+        let mut positions = index
+            .entries
+            .range((lower, upper))
+            .flat_map(|(_, rows)| rows.iter().copied())
+            .collect::<Vec<_>>();
+        // Preserve table order for queries without ORDER BY and DML RETURNING.
+        positions.sort_unstable();
+        positions
+    }
+}
+#[derive(Clone, Debug)]
 pub(crate) struct Table {
     pub columns: Vec<Column>,
-    pub rows: Vec<Vec<Value>>,
+    pub rows: crate::rows::Rows,
     pub constraints: Vec<Constraint>,
-    pub row_ids: Vec<u64>,
+    pub constraint_indexes: Vec<Index>,
     pub next_rowid: u64,
     pub sql: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+impl Table {
+    fn primary_sequence(&self) -> (Option<usize>, Option<i64>) {
+        let column = self.constraints.iter().find_map(|c| match c {
+            Constraint::Unique {
+                columns,
+                primary: true,
+            } if columns.len() == 1 && self.columns[columns[0]].ty == Type::Integer => {
+                Some(columns[0])
+            }
+            _ => None,
+        });
+        let maximum = column
+            .and_then(|column| {
+                self.constraint_indexes
+                    .iter()
+                    .find(|i| i.columns == [column])
+            })
+            .and_then(|i| i.entries.get_max())
+            .and_then(|(key, _)| {
+                if let IndexKey::Integer(n) = key {
+                    Some(*n)
+                } else {
+                    None
+                }
+            });
+        (column, maximum)
+    }
+    fn normalize_primary(
+        &self,
+        row: &mut [Value],
+        primary: Option<usize>,
+        maximum: &mut Option<i64>,
+    ) -> Result<()> {
+        if let Some(column) = primary {
+            if row[column] == Value::Null {
+                row[column] = self.columns[column].ty.validate(&Value::Integer(
+                    maximum
+                        .unwrap_or(0)
+                        .checked_add(1)
+                        .ok_or_else(|| Error("primary key exhausted".into()))?,
+                ))?;
+            }
+            if let Value::Integer(n) = row[column] {
+                *maximum = Some(maximum.map_or(n, |old| old.max(n)));
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Clone, Debug)]
 pub(crate) struct Column {
     pub name: String,
     pub ty: Type,
     pub not_null: bool,
     pub default: Option<Expr>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub(crate) enum Constraint {
     Unique {
         columns: Vec<usize>,
@@ -71,6 +273,142 @@ fn equivalent(a: &Value, b: &Value) -> bool {
 }
 fn same_columns(a: &[usize], b: &[usize]) -> bool {
     a.len() == b.len() && a.iter().all(|column| b.contains(column))
+}
+fn index_key(index: &Index, row: &[Value]) -> Result<Option<IndexKey>> {
+    if index.unique && index.columns.iter().any(|i| row[*i] == Value::Null) {
+        return Ok(None);
+    }
+    IndexKey::new(row, &index.columns).map(Some)
+}
+fn rebuild_index(index: &mut Index, rows: &crate::rows::Rows) -> Result<()> {
+    let mut keys = rows
+        .positions()
+        .filter_map(|(position, row)| {
+            index_key(index, row)
+                .transpose()
+                .map(|key| key.map(|key| (key, position)))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    keys.sort_unstable();
+    let mut entries: Vec<(IndexKey, Positions)> = Vec::with_capacity(keys.len());
+    for (key, position) in keys {
+        if let Some((previous, positions)) = entries.last_mut()
+            && *previous == key
+        {
+            if index.unique {
+                return Err(Error("UNIQUE constraint failed".into()));
+            }
+            positions.push(position);
+        } else {
+            entries.push((key, smallvec::smallvec![position]));
+        }
+    }
+    index.entries = entries.into_iter().collect();
+    Ok(())
+}
+fn update_index(index: &mut Index, changes: &[crate::rows::Change<'_>]) -> Result<()> {
+    let mut edits = Vec::new();
+    for change in changes {
+        if let (Some(old), Some(new)) = (change.old, change.new)
+            && index.columns.iter().all(|i| old[*i] == new[*i])
+        {
+            continue;
+        }
+        let old = change
+            .old
+            .map(|row| index_key(index, row))
+            .transpose()?
+            .flatten();
+        let new = change
+            .new
+            .map(|row| index_key(index, row))
+            .transpose()?
+            .flatten();
+        if old != new {
+            edits.push((change.position, old, new));
+        }
+    }
+    if edits.is_empty() {
+        return Ok(());
+    }
+    let entries = &mut index.entries;
+    // Remove all old keys before inserting new ones: a single UPDATE may swap
+    // unique keys. Constraint checks apply to the final statement state.
+    for (position, old, _) in &edits {
+        if let Some(old) = old
+            && let Some(positions) = entries.get_mut(old)
+        {
+            positions.retain(|p| *p != *position);
+            if positions.is_empty() {
+                entries.remove(old);
+            }
+        }
+    }
+    for (position, _, new) in edits {
+        if let Some(new) = new {
+            let positions = entries.entry(new).or_default();
+            if index.unique && !positions.is_empty() {
+                return Err(Error("UNIQUE constraint failed".into()));
+            }
+            positions.push(position);
+            positions.sort_unstable();
+        }
+    }
+    Ok(())
+}
+fn shared_constraint_index(
+    table: &Table,
+    index: &Index,
+) -> Option<imbl::OrdMap<IndexKey, Positions>> {
+    let non_null = index.columns.iter().all(|i| table.columns[*i].not_null || table.constraints.iter().any(|c| matches!(c, Constraint::Unique { columns, primary: true } if columns.contains(i))));
+    if !index.unique && !non_null {
+        return None;
+    }
+    table
+        .constraint_indexes
+        .iter()
+        .find(|i| i.columns == index.columns)
+        .map(|i| i.entries.clone())
+}
+fn indexed_reference(
+    parent: &Table,
+    index: &Index,
+    target: &[usize],
+    columns: &[usize],
+    row: &[Value],
+) -> Option<bool> {
+    let mut values = Vec::with_capacity(index.columns.len());
+    for column in &index.columns {
+        let value = &row[columns[target.iter().position(|i| i == column)?]];
+        let ty = &parent.columns[*column].ty;
+        let normalized = ty
+            .normalize(value.clone())
+            .or_else(|e| {
+                if matches!(
+                    value,
+                    Value::Integer(_) | Value::Real(_) | Value::Numeric(_)
+                ) && matches!(
+                    ty,
+                    Type::SmallInt
+                        | Type::Integer
+                        | Type::BigInt
+                        | Type::Real
+                        | Type::Double
+                        | Type::Numeric(_)
+                ) {
+                    ty.cast(value.clone())
+                } else {
+                    Err(e)
+                }
+            })
+            .ok()?;
+        if !equivalent(value, &normalized) {
+            return None;
+        }
+        values.push(normalized);
+    }
+    let key = IndexKey::new(&values, &(0..values.len()).collect::<Vec<_>>()).ok()?;
+    Some(index.entries.contains_key(&key))
 }
 impl State {
     pub fn execute(&mut self, statement: &Statement) -> Result<QueryResult> {
@@ -292,9 +630,24 @@ impl State {
                     name(&c.name),
                     Table {
                         columns,
+                        constraint_indexes: constraints
+                            .iter()
+                            .filter_map(|constraint| {
+                                if let Constraint::Unique { columns, .. } = constraint {
+                                    Some(Index {
+                                        table: name(&c.name),
+                                        columns: columns.clone(),
+                                        unique: true,
+                                        sql: String::new(),
+                                        entries: imbl::OrdMap::new(),
+                                    })
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
                         constraints,
-                        rows: vec![],
-                        row_ids: vec![],
+                        rows: crate::rows::Rows::default(),
                         next_rowid: 1,
                         sql: c.to_string(),
                     },
@@ -349,6 +702,7 @@ impl State {
                     .map(|p| project(p, &names, &vec![Value::Null; names.len()]).map(|r| r.0))
                     .transpose()?
                     .unwrap_or_default();
+                let (primary, mut maximum) = table.primary_sequence();
                 for source in sources {
                     let mut row = table
                         .columns
@@ -380,50 +734,18 @@ impl State {
                         return Err(Error("column count mismatch".into()));
                     }
                     for (value, index) in source.into_iter().zip(indexes) {
-                        row[index] = table.columns[index].ty.validate(&value)?;
+                        row[index] = table.columns[index].ty.normalize(value)?;
                     }
-                    if let Some(index) = table.constraints.iter().find_map(|c| {
-                        if let Constraint::Unique {
-                            columns,
-                            primary: true,
-                        } = c
-                        {
-                            (columns.len() == 1 && table.columns[columns[0]].ty == Type::Integer)
-                                .then_some(columns[0])
-                        } else {
-                            None
-                        }
-                    }) && row[index] == Value::Null
-                    {
-                        let previous = table
-                            .rows
-                            .iter()
-                            .filter_map(|row| {
-                                if let Value::Integer(n) = row[index] {
-                                    Some(n)
-                                } else {
-                                    None
-                                }
-                            })
-                            .max()
-                            .unwrap_or(0);
-                        row[index] = table.columns[index].ty.validate(&Value::Integer(
-                            previous
-                                .checked_add(1)
-                                .ok_or_else(|| Error("primary key exhausted".into()))?,
-                        ))?;
-                    }
+                    table.normalize_primary(&mut row, primary, &mut maximum)?;
                     if let Some(items) = &i.returning {
                         returned.push(project(items, &names, &row)?.1);
                     }
-                    table.rows.push(row);
-                    table.row_ids.push(table.next_rowid);
+                    table.rows.push(table.next_rowid, row)?;
                     table.next_rowid = table
                         .next_rowid
                         .checked_add(1)
                         .ok_or_else(|| Error("row id exhausted".into()))?;
                 }
-                self.validate()?;
                 Ok(QueryResult {
                     columns,
                     rows: returned,
@@ -445,6 +767,12 @@ impl State {
                 let TableFactor::Table { name: n, .. } = &table.relation else {
                     return Err(Error("UPDATE needs table".into()));
                 };
+                let positions = self.index_positions(&name(n), &name(n), selection.as_ref())?;
+                let cascades = self.tables.values().any(|table| {
+                    table.constraints.iter().any(
+                        |c| matches!(c, Constraint::Foreign { table, .. } if table == &name(n)),
+                    )
+                });
                 let t = self
                     .tables
                     .get_mut(&name(n))
@@ -465,11 +793,14 @@ impl State {
                 let mut returned = vec![];
                 let mut affected = 0;
                 let mut changes = vec![];
-                for row in &mut t.rows {
-                    if !selected(selection.as_ref(), &names, row)? {
+                for position in
+                    positions.unwrap_or_else(|| t.rows.positions().map(|(i, _)| i).collect())
+                {
+                    if !selected(selection.as_ref(), &names, &t.rows[position])? {
                         continue;
                     }
-                    let old = row.clone();
+                    let old = &t.rows[position];
+                    let mut edits = Vec::with_capacity(assignments.len());
                     for a in assignments {
                         let AssignmentTarget::ColumnName(n) = &a.target else {
                             return Err(Error("tuple assignments unsupported".into()));
@@ -478,12 +809,22 @@ impl State {
                             .iter()
                             .position(|c| *c == name(n))
                             .ok_or_else(|| Error(format!("no such column: {n}")))?;
-                        row[index] = t.columns[index]
-                            .ty
-                            .validate(&eval(&a.value, &names, &old)?)?;
+                        edits.push((
+                            index,
+                            t.columns[index]
+                                .ty
+                                .normalize(eval(&a.value, &names, old)?)?,
+                        ));
+                    }
+                    let old = cascades.then(|| old.clone());
+                    let row = &mut t.rows[position];
+                    for (index, value) in edits {
+                        row[index] = value;
                     }
                     affected += 1;
-                    if old != *row {
+                    if let Some(old) = old
+                        && old != *row
+                    {
                         changes.push((name(n), old, Some(row.clone())));
                     }
                     if let Some(p) = returning {
@@ -496,7 +837,6 @@ impl State {
                     .transpose()?
                     .unwrap_or_default();
                 self.cascade(changes)?;
-                self.validate()?;
                 Ok(QueryResult {
                     columns,
                     rows: returned,
@@ -518,6 +858,12 @@ impl State {
                 let TableFactor::Table { name: n, .. } = &from[0].relation else {
                     return Err(Error("DELETE needs table".into()));
                 };
+                let positions = self.index_positions(&name(n), &name(n), d.selection.as_ref())?;
+                let cascades = self.tables.values().any(|table| {
+                    table.constraints.iter().any(
+                        |c| matches!(c, Constraint::Foreign { table, .. } if table == &name(n)),
+                    )
+                });
                 let t = self
                     .tables
                     .get_mut(&name(n))
@@ -526,25 +872,24 @@ impl State {
                 if let Some(e) = &d.selection {
                     bind(e, &names, false)?;
                 }
-                let mut remaining = vec![];
-                let mut remaining_ids = vec![];
                 let mut returned = vec![];
                 let mut affected = 0;
                 let mut changes = vec![];
-                for (id, row) in t.row_ids.iter().zip(&t.rows) {
+                let candidates =
+                    positions.unwrap_or_else(|| t.rows.positions().map(|(i, _)| i).collect());
+                for position in candidates {
+                    let row = &t.rows[position];
                     if selected(d.selection.as_ref(), &names, row)? {
                         affected += 1;
-                        changes.push((name(n), row.clone(), None));
+                        if cascades {
+                            changes.push((name(n), row.clone(), None));
+                        }
                         if let Some(p) = &d.returning {
                             returned.push(project(p, &names, row)?.1);
                         }
-                    } else {
-                        remaining.push(row.clone());
-                        remaining_ids.push(*id);
+                        t.rows.remove(position);
                     }
                 }
-                t.rows = remaining;
-                t.row_ids = remaining_ids;
                 let columns = d
                     .returning
                     .as_ref()
@@ -552,7 +897,6 @@ impl State {
                     .transpose()?
                     .unwrap_or_default();
                 self.cascade(changes)?;
-                self.validate()?;
                 Ok(QueryResult {
                     columns,
                     rows: returned,
@@ -629,7 +973,7 @@ impl State {
                         columns,
                         unique: i.unique,
                         sql: i.to_string(),
-                        entries: BTreeMap::new(),
+                        entries: imbl::OrdMap::new(),
                     },
                 );
                 if validate_declaration {
@@ -703,7 +1047,7 @@ impl State {
                     continue;
                 }
                 let table = self.tables.get_mut(&child).unwrap();
-                for position in (0..table.rows.len()).rev() {
+                for position in table.rows.positions().map(|(i, _)| i).collect::<Vec<_>>() {
                     let row = &table.rows[position];
                     if columns.iter().any(|i| row[*i] == Value::Null)
                         || !columns
@@ -719,7 +1063,6 @@ impl State {
                     let old_child = row.clone();
                     if action == ReferentialAction::Cascade && new.is_none() {
                         table.rows.remove(position);
-                        table.row_ids.remove(position);
                         changes.push((child.clone(), old_child, None));
                     } else {
                         for (column, target) in columns.iter().zip(&target) {
@@ -749,6 +1092,15 @@ impl State {
         Ok(())
     }
     pub fn validate(&self) -> Result<()> {
+        self.validate_inner(true)
+    }
+    pub fn validate_import(&mut self) -> Result<()> {
+        // SQL declaration parsing has bound schema/index columns, and codecs
+        // have checked row widths. Building indexes checks unique keys once.
+        self.rebuild_indexes()?;
+        self.validate_inner(false)
+    }
+    fn validate_inner(&self, unique: bool) -> Result<()> {
         use crate::expression::truth;
         for (table_name, table) in &self.tables {
             let names = table
@@ -758,12 +1110,7 @@ impl State {
                 .collect::<Vec<_>>();
             if table.columns.is_empty()
                 || table.next_rowid == 0
-                || table.row_ids.len() != table.rows.len()
-                || table.row_ids.windows(2).any(|w| w[0] >= w[1])
-                || table
-                    .row_ids
-                    .last()
-                    .is_some_and(|id| *id >= table.next_rowid)
+                || table.rows.last_id() >= table.next_rowid
             {
                 return Err(Error("invalid table metadata".into()));
             }
@@ -808,12 +1155,13 @@ impl State {
                     }
                 }
             }
-            for (row_index, row) in table.rows.iter().enumerate() {
+            let mut unique_keys = vec![HashSet::new(); table.constraints.len()];
+            for row in table.rows.iter() {
                 if row.len() != table.columns.len() {
                     return Err(Error("column count mismatch".into()));
                 }
                 for (column, value) in table.columns.iter().zip(row) {
-                    column.ty.validate(value)?;
+                    column.ty.check(value)?;
                     if column.not_null && *value == Value::Null {
                         return Err(Error(format!(
                             "NOT NULL constraint failed: {table_name}.{}",
@@ -821,7 +1169,7 @@ impl State {
                         )));
                     }
                 }
-                for constraint in &table.constraints {
+                for (constraint_index, constraint) in table.constraints.iter().enumerate() {
                     match constraint {
                         Constraint::Check(e) => {
                             if truth(&eval(e, &names, row)?)? == Some(false) {
@@ -838,9 +1186,9 @@ impl State {
                                 }
                                 continue;
                             }
-                            if table.rows[..row_index]
-                                .iter()
-                                .any(|other| columns.iter().all(|i| row[*i] == other[*i]))
+                            if unique
+                                && !unique_keys[constraint_index]
+                                    .insert(IndexKey::new(row, columns)?)
                             {
                                 return Err(Error(format!(
                                     "UNIQUE constraint failed: {table_name}"
@@ -849,11 +1197,11 @@ impl State {
                         }
                         Constraint::Foreign {
                             columns,
-                            table: target_table,
+                            table: parent_name,
                             target,
                             ..
                         } => {
-                            let target_table = self.tables.get(target_table).ok_or_else(|| {
+                            let target_table = self.tables.get(parent_name).ok_or_else(|| {
                                 Error("foreign key references missing table".into())
                             })?;
                             let target_indexes = reference_columns(target_table, target)?;
@@ -863,11 +1211,33 @@ impl State {
                             if columns.iter().any(|i| row[*i] == Value::Null) {
                                 continue;
                             }
-                            if !target_table.rows.iter().any(|other| {
-                                columns
+                            let cached = if !unique {
+                                target_table
+                                    .constraint_indexes
                                     .iter()
-                                    .zip(&target_indexes)
-                                    .all(|(a, b)| equivalent(&row[*a], &other[*b]))
+                                    .chain(
+                                        self.indexes.values().filter(|i| i.table == *parent_name),
+                                    )
+                                    .find(|i| i.unique && same_columns(&i.columns, &target_indexes))
+                                    .and_then(|i| {
+                                        indexed_reference(
+                                            target_table,
+                                            i,
+                                            &target_indexes,
+                                            columns,
+                                            row,
+                                        )
+                                    })
+                            } else {
+                                None
+                            };
+                            if !cached.unwrap_or_else(|| {
+                                target_table.rows.iter().any(|other| {
+                                    columns
+                                        .iter()
+                                        .zip(&target_indexes)
+                                        .all(|(a, b)| equivalent(&row[*a], &other[*b]))
+                                })
                             }) {
                                 return Err(Error("FOREIGN KEY constraint failed".into()));
                             }
@@ -884,43 +1254,159 @@ impl State {
             if index.columns.is_empty() || index.columns.iter().any(|i| *i >= table.columns.len()) {
                 return Err(Error("invalid index column".into()));
             }
-            if index.unique {
-                let mut seen = vec![];
-                for row in &table.rows {
-                    let key = index
-                        .columns
-                        .iter()
-                        .map(|i| row[*i].clone())
-                        .collect::<Vec<_>>();
-                    if key.contains(&Value::Null) {
+            if unique && index.unique {
+                let mut seen = HashSet::new();
+                for row in table.rows.iter() {
+                    if index.columns.iter().any(|i| row[*i] == Value::Null) {
                         continue;
                     }
-                    if seen.contains(&key) {
+                    if !seen.insert(IndexKey::new(row, &index.columns)?) {
                         return Err(Error(format!("UNIQUE index constraint failed: {name}")));
                     }
-                    seen.push(key);
                 }
             }
         }
         Ok(())
     }
     pub fn rebuild_indexes(&mut self) -> Result<()> {
-        for index in self.indexes.values_mut() {
-            index.entries.clear();
-            for (position, row) in self.tables[&index.table].rows.iter().enumerate() {
-                let key = index
-                    .columns
-                    .iter()
-                    .map(|i| row[*i].clone())
-                    .collect::<Vec<_>>();
-                index
-                    .entries
-                    .entry(serde_json::to_string(&key).map_err(|e| Error(e.to_string()))?)
-                    .or_default()
-                    .push(position);
+        for (name, table) in &mut self.tables {
+            for index in &mut table.constraint_indexes {
+                rebuild_index(index, &table.rows)?;
+            }
+            for index in self.indexes.values_mut().filter(|i| i.table == *name) {
+                if let Some(entries) = shared_constraint_index(table, index) {
+                    index.entries = entries;
+                } else {
+                    rebuild_index(index, &table.rows)?;
+                }
             }
         }
         Ok(())
+    }
+    pub fn validate_changes(&mut self, previous: &State, mutation: bool) -> Result<()> {
+        for table in self.tables.values_mut() {
+            table.rows.compact();
+        }
+        let local = mutation
+            && self.tables.iter().all(|(name, table)| {
+                previous
+                    .tables
+                    .get(name)
+                    .is_some_and(|old| table.rows.shares_history(&old.rows))
+                    && !table
+                        .constraints
+                        .iter()
+                        .any(|c| matches!(c, Constraint::Foreign { .. }))
+            });
+        if !local {
+            return self.validate_import();
+        }
+        for (name, table) in &mut self.tables {
+            let changes = table.rows.changes(&previous.tables[name].rows);
+            if changes.is_empty() {
+                continue;
+            }
+            let columns = table
+                .columns
+                .iter()
+                .map(|c| c.name.clone())
+                .collect::<Vec<_>>();
+            for change in &changes {
+                if let Some(row) = change.new {
+                    for (column, value) in table.columns.iter().zip(row) {
+                        // INSERT/UPDATE have already normalized and checked
+                        // assigned cells. Constraints below check the new row.
+                        if column.not_null && *value == Value::Null {
+                            return Err(Error(format!(
+                                "NOT NULL constraint failed: {name}.{}",
+                                column.name
+                            )));
+                        }
+                    }
+                    for constraint in &table.constraints {
+                        match constraint {
+                            Constraint::Check(expr)
+                                if crate::expression::truth(&eval(expr, &columns, row)?)?
+                                    == Some(false) =>
+                            {
+                                return Err(Error(format!("CHECK constraint failed: {name}")));
+                            }
+                            Constraint::Unique {
+                                columns,
+                                primary: true,
+                            } if columns.iter().any(|i| row[*i] == Value::Null) => {
+                                return Err(Error("PRIMARY KEY cannot contain NULL".into()));
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+            for index in &mut table.constraint_indexes {
+                update_index(index, &changes)?;
+            }
+            for index in self.indexes.values_mut().filter(|i| i.table == *name) {
+                if let Some(entries) = shared_constraint_index(table, index) {
+                    index.entries = entries;
+                } else {
+                    update_index(index, &changes)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn index_positions(
+        &self,
+        table_name: &str,
+        prefix: &str,
+        selection: Option<&Expr>,
+    ) -> Result<Option<Vec<usize>>> {
+        let (Some(table), Some(selection)) = (self.tables.get(table_name), selection) else {
+            return Ok(None);
+        };
+        for index in table
+            .constraint_indexes
+            .iter()
+            .chain(self.indexes.values().filter(|i| i.table == table_name))
+            .filter(|i| i.columns.len() == 1)
+        {
+            let column = &table.columns[index.columns[0]];
+            if matches!(column.ty, Type::SmallInt | Type::Integer | Type::BigInt) {
+                let mut bounds = IntegerBounds {
+                    lower: (i64::MIN, true),
+                    upper: (i64::MAX, true),
+                };
+                if bounds.collect(selection, &column.name, prefix) {
+                    return Ok(Some(bounds.positions(index)));
+                }
+            }
+            if let Expr::BinaryOp {
+                left,
+                op: BinaryOperator::Eq,
+                right,
+            } = selection
+            {
+                for (expr, literal) in [
+                    (left.as_ref(), right.as_ref()),
+                    (right.as_ref(), left.as_ref()),
+                ] {
+                    if column_matches(expr, &column.name, prefix)
+                        && let Ok(value) =
+                            eval(literal, &[], &[]).and_then(|value| column.ty.validate(&value))
+                    {
+                        let key = IndexKey::new(&[value], &[0])?;
+                        return Ok(Some(
+                            index
+                                .entries
+                                .get(&key)
+                                .map(|p| p.to_vec())
+                                .unwrap_or_default(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
     fn query(&self, q: &Query) -> Result<QueryResult> {
         if q.with.is_some()
@@ -1042,20 +1528,23 @@ impl State {
                         right_columns = combined_columns;
                         right_rows = combined_rows;
                     }
-                    rows = rows
-                        .iter()
-                        .flat_map(|l| {
-                            right_rows
-                                .iter()
-                                .map(move |r| [l.clone(), r.clone()].concat())
-                        })
-                        .collect();
+                    rows = if columns.is_empty() && rows == [vec![]] {
+                        right_rows
+                    } else {
+                        rows.iter()
+                            .flat_map(|l| {
+                                right_rows
+                                    .iter()
+                                    .map(move |r| [l.clone(), r.clone()].concat())
+                            })
+                            .collect()
+                    };
                     columns.extend(right_columns);
                 }
                 let filtered = rows
-                    .iter()
-                    .filter_map(|row| match selected(s.selection.as_ref(), &columns, row) {
-                        Ok(true) => Some(Ok(row.clone())),
+                    .into_iter()
+                    .filter_map(|row| match selected(s.selection.as_ref(), &columns, &row) {
+                        Ok(true) => Some(Ok(row)),
                         Ok(false) => None,
                         Err(e) => Some(Err(e)),
                     })
@@ -1091,19 +1580,22 @@ impl State {
                     })
                     || s.having.as_ref().is_some_and(has_aggregate);
                 let groups = if !group_exprs.is_empty() {
-                    let mut groups: Vec<(Vec<Value>, Vec<Vec<Value>>)> = vec![];
+                    let mut groups: Vec<Vec<Vec<Value>>> = vec![];
+                    let mut positions: HashMap<IndexKey, usize> = HashMap::new();
+                    let key_columns = (0..group_exprs.len()).collect::<Vec<_>>();
                     for row in filtered {
                         let key = group_exprs
                             .iter()
                             .map(|e| eval(e, &columns, &row))
                             .collect::<Result<Vec<_>>>()?;
-                        if let Some((_, rows)) = groups.iter_mut().find(|(k, _)| *k == key) {
-                            rows.push(row);
-                        } else {
-                            groups.push((key, vec![row]));
-                        }
+                        let key = IndexKey::new(&key, &key_columns)?;
+                        let position = *positions.entry(key).or_insert_with(|| {
+                            groups.push(vec![]);
+                            groups.len() - 1
+                        });
+                        groups[position].push(row);
                     }
-                    groups.into_iter().map(|(_, rows)| rows).collect::<Vec<_>>()
+                    groups
                 } else if aggregated {
                     vec![filtered]
                 } else {
@@ -1117,6 +1609,11 @@ impl State {
                     Some(&[]),
                 )?
                 .0;
+                let projection = if aggregated {
+                    None
+                } else {
+                    simple_projection(&s.projection, &columns)?
+                };
                 if let Some(order) = &q.order_by {
                     for o in &order.exprs {
                         match &o.expr {
@@ -1149,7 +1646,11 @@ impl State {
                     {
                         continue;
                     }
-                    let projected = project_group(&s.projection, &columns, row, context)?.1;
+                    let projected = if let Some(projection) = &projection {
+                        projection.iter().map(|i| row[*i].clone()).collect()
+                    } else {
+                        project_group(&s.projection, &columns, row, context)?.1
+                    };
                     let mut keys = vec![];
                     if let Some(order) = &q.order_by {
                         for o in &order.exprs {
@@ -1403,45 +1904,10 @@ impl State {
                     .as_ref()
                     .map(|a| a.name.value.to_lowercase())
                     .unwrap_or(name(n));
-                let mut positions = None;
-                if let Some(Expr::BinaryOp {
-                    left,
-                    op: BinaryOperator::Eq,
-                    right,
-                }) = selection
-                {
-                    for (column, value) in [
-                        (left.as_ref(), right.as_ref()),
-                        (right.as_ref(), left.as_ref()),
-                    ] {
-                        let column = match column {
-                            Expr::Identifier(i) => Some(i.value.to_lowercase()),
-                            Expr::CompoundIdentifier(ids)
-                                if ids.len() == 2 && ids[0].value.eq_ignore_ascii_case(&prefix) =>
-                            {
-                                Some(ids[1].value.to_lowercase())
-                            }
-                            _ => None,
-                        };
-                        if let Some(column) = column
-                            && let Some(column) = t.columns.iter().position(|c| c.name == column)
-                            && let Ok(value) = eval(value, &[], &[])
-                                .and_then(|v| t.columns[column].ty.validate(&v))
-                            && let Some(index) = self
-                                .indexes
-                                .values()
-                                .find(|i| i.table == name(n) && i.columns == [column])
-                        {
-                            let key = serde_json::to_string(&vec![value])
-                                .map_err(|e| Error(e.to_string()))?;
-                            positions = Some(index.entries.get(&key).cloned().unwrap_or_default());
-                            break;
-                        }
-                    }
-                }
+                let positions = self.index_positions(&name(n), &prefix, selection)?;
                 let rows = positions
                     .map(|positions| positions.into_iter().map(|i| t.rows[i].clone()).collect())
-                    .unwrap_or_else(|| t.rows.clone());
+                    .unwrap_or_else(|| t.rows.iter().cloned().collect());
                 Ok((
                     t.columns
                         .iter()
@@ -1727,8 +2193,8 @@ pub(crate) fn eval(e: &Expr, columns: &[String], row: &[Value]) -> Result<Value>
         _ => Err(Error(format!("unsupported expression: {e}"))),
     }
 }
-fn lookup(n: &str, columns: &[String], row: &[Value]) -> Result<Value> {
-    let indexes = columns
+fn lookup_index(n: &str, columns: &[String]) -> Result<usize> {
+    let mut indexes = columns
         .iter()
         .enumerate()
         .filter(|(_, c)| {
@@ -1738,13 +2204,48 @@ fn lookup(n: &str, columns: &[String], row: &[Value]) -> Result<Value> {
                 c.rsplit('.').next().unwrap().eq_ignore_ascii_case(n)
             }
         })
-        .map(|(i, _)| i)
-        .collect::<Vec<_>>();
-    match indexes.as_slice() {
-        [i] => Ok(row[*i].clone()),
-        [] => Err(Error(format!("no such column: {n}"))),
+        .map(|(i, _)| i);
+    match (indexes.next(), indexes.next()) {
+        (Some(i), None) => Ok(i),
+        (None, _) => Err(Error(format!("no such column: {n}"))),
         _ => Err(Error(format!("ambiguous column: {n}"))),
     }
+}
+fn lookup(n: &str, columns: &[String], row: &[Value]) -> Result<Value> {
+    Ok(row[lookup_index(n, columns)?].clone())
+}
+
+// Bind direct column projections once; the row loop only copies result cells.
+fn simple_projection(items: &[SelectItem], columns: &[String]) -> Result<Option<Vec<usize>>> {
+    let mut projection = Vec::new();
+    for item in items {
+        match item {
+            SelectItem::Wildcard(_) => projection.extend(0..columns.len()),
+            SelectItem::QualifiedWildcard(prefix, _) => {
+                let prefix = format!("{}.", name(prefix));
+                projection.extend(
+                    columns
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, c)| c.starts_with(&prefix))
+                        .map(|(i, _)| i),
+                );
+            }
+            SelectItem::UnnamedExpr(expr) | SelectItem::ExprWithAlias { expr, .. } => {
+                let column = match expr {
+                    Expr::Identifier(n) => n.value.clone(),
+                    Expr::CompoundIdentifier(ids) => ids
+                        .iter()
+                        .map(|n| n.value.as_str())
+                        .collect::<Vec<_>>()
+                        .join("."),
+                    _ => return Ok(None),
+                };
+                projection.push(lookup_index(&column, columns)?);
+            }
+        }
+    }
+    Ok(Some(projection))
 }
 fn reference_columns(table: &Table, names: &[String]) -> Result<Vec<usize>> {
     if names.is_empty() {

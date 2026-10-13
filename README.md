@@ -64,8 +64,12 @@ format. Readable files use deterministic UTF-8 JSON Lines with SQL schema record
 and stable row IDs for Git diffs. Row values are untagged strings interpreted
 using the column types; SQL NULL is JSON `null`. Bytes use hex, JSON values use
 JSON text, and arrays use JSON text containing strings or nulls recursively.
-Binary files use a custom BoxDB format;
-BoxDB cannot open SQLite database files. Conversion destinations must be new:
+Binary v3 uses native typed cells and a checksummed commit log. Updates append
+only changed cells, and checkpoints compact the file. Its codec uses no JSONL
+or compression. Binary v1 and v2 files are unsupported; readable storage retains
+its existing format.
+See [storage formats](docs/storage.md). BoxDB cannot open SQLite database files.
+Conversion destinations must be new:
 
 ```sh
 boxdb convert data.jsonl compact.boxdb --format binary
@@ -73,10 +77,12 @@ boxdb convert compact.boxdb readable.jsonl --format readable
 git add readable.jsonl
 ```
 
-The entire database lives in memory, and commits atomically replace its file.
-A connection holds an exclusive lock until dropped; keep the `.lock` sidecar
-in place. Both file size and uncompressed records are limited to 256 MiB.
-There is no WAL or shared connection concurrency.
+The entire database lives in memory. Readable commits atomically replace the
+file; binary commits synchronize appended records, with atomic replacement for
+checkpoints and schema changes. A connection holds an exclusive lock until
+dropped. Keep both `.lock` and `.snapshot.lock` sidecars in place. Files and
+snapshots are limited to 256 MiB. Only one database connection may open a file;
+`Database::read_snapshot` lets replication read committed data while it is open.
 
 Run `cargo doc --no-deps --open` for the Rust API and a parameterized query
 example. The example also lives in [src/lib.rs](src/lib.rs). Statements commit

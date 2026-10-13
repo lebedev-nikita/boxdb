@@ -30,6 +30,15 @@ struct Config {
     /// Point updates/deletes per workload, capped at --rows.
     #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..))]
     writes: u32,
+    /// Match BoxDB's hardware flush on macOS (false reproduces older reports).
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    sqlite_fullfsync: bool,
+    /// Reuse SQLite prepared statements; BoxDB caches parsed SQL and bound plans.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    sqlite_cached: bool,
+    /// Hold SQLite's lock for the connection lifetime, as BoxDB does.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    sqlite_exclusive: bool,
     /// Existing parent directory for temporary databases (selects the filesystem).
     #[arg(long)]
     directory: Option<PathBuf>,
@@ -58,19 +67,30 @@ impl Engine {
 }
 
 enum Backend {
-    Sqlite(Connection),
+    Sqlite(Connection, bool),
     Boxdb(Box<Database>),
 }
 
 impl Backend {
-    fn open(engine: Engine, path: &std::path::Path) -> Result<Self> {
+    fn open(engine: Engine, path: &std::path::Path, config: &Config) -> Result<Self> {
         Ok(match engine {
             Engine::Sqlite => {
                 let db = Connection::open(path)?;
                 // DELETE avoids deferred WAL checkpoints; EXTRA syncs the directory
                 // after journal deletion. Neither engine disables durable writes.
                 db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA")?;
-                Self::Sqlite(db)
+                db.pragma_update(None, "fullfsync", config.sqlite_fullfsync)?;
+                db.pragma_update(
+                    None,
+                    "locking_mode",
+                    if config.sqlite_exclusive {
+                        "EXCLUSIVE"
+                    } else {
+                        "NORMAL"
+                    },
+                )?;
+                db.set_prepared_statement_cache_capacity(512);
+                Self::Sqlite(db, config.sqlite_cached)
             }
             Engine::Boxdb => Self::Boxdb(Box::new(Database::open(path, Format::Binary)?)),
         })
@@ -78,7 +98,13 @@ impl Backend {
 
     fn execute(&mut self, sql: &str) -> Result<()> {
         match self {
-            Self::Sqlite(db) => db.execute_batch(sql)?,
+            Self::Sqlite(db, cached) => {
+                if *cached {
+                    db.prepare_cached(sql)?.execute([])?;
+                } else {
+                    db.execute_batch(sql)?;
+                }
+            }
             Self::Boxdb(db) => {
                 black_box(db.execute(sql)?);
             }
@@ -89,29 +115,36 @@ impl Backend {
     fn query(&mut self, sql: &str) -> Result<Rows> {
         match self {
             Self::Boxdb(db) => Ok(db.execute(sql)?.remove(0).rows),
-            Self::Sqlite(db) => {
-                // Prepare each query: BoxDB has no prepared-statement API.
-                let mut statement = db.prepare(sql)?;
-                let columns = statement.column_count();
-                let mut cursor = statement.query([])?;
-                let mut rows = Vec::new();
-                while let Some(row) = cursor.next()? {
-                    let mut values = Vec::with_capacity(columns);
-                    for column in 0..columns {
-                        values.push(match row.get_ref(column)? {
-                            ValueRef::Integer(n) => Value::Integer(n),
-                            ValueRef::Text(s) => Value::Text(std::str::from_utf8(s)?.into()),
-                            other => {
-                                return Err(format!("unexpected SQLite value: {other:?}").into());
-                            }
-                        });
-                    }
-                    rows.push(values);
+            Self::Sqlite(db, cached) => {
+                if *cached {
+                    let mut statement = db.prepare_cached(sql)?;
+                    sqlite_rows(&mut statement)
+                } else {
+                    sqlite_rows(&mut db.prepare(sql)?)
                 }
-                Ok(rows)
             }
         }
     }
+}
+
+fn sqlite_rows(statement: &mut rusqlite::Statement<'_>) -> Result<Rows> {
+    let columns = statement.column_count();
+    let mut cursor = statement.query([])?;
+    let mut rows = Vec::new();
+    while let Some(row) = cursor.next()? {
+        let mut values = Vec::with_capacity(columns);
+        for column in 0..columns {
+            values.push(match row.get_ref(column)? {
+                ValueRef::Integer(n) => Value::Integer(n),
+                ValueRef::Text(s) => Value::Text(std::str::from_utf8(s)?.into()),
+                other => {
+                    return Err(format!("unexpected SQLite value: {other:?}").into());
+                }
+            });
+        }
+        rows.push(values);
+    }
+    Ok(rows)
 }
 
 struct ReadWorkload {
@@ -256,7 +289,7 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
         None => tempfile::tempdir()?,
     };
     let path = temp.path().join("data.db");
-    let mut db = Backend::open(engine, &path)?;
+    let mut db = Backend::open(engine, &path, config)?;
     db.execute(SCHEMA)?;
     // An explicit index makes BoxDB's equality lookup use its index too.
     db.execute("CREATE INDEX records_id ON records(id)")?;
@@ -315,7 +348,7 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
     let mut reopened = None;
     let mut persisted = None;
     measure(&mut timings, "reopen_scan", "database", 1, || {
-        let mut db = Backend::open(engine, &path)?;
+        let mut db = Backend::open(engine, &path, config)?;
         persisted = Some(black_box(db.query(ALL_ROWS)?));
         reopened = Some(db);
         Ok(())
@@ -352,15 +385,25 @@ struct Summary {
 }
 
 #[derive(Serialize)]
+struct Comparison {
+    workload: &'static str,
+    unit: &'static str,
+    sqlite_median_us_per_unit: f64,
+    boxdb_median_us_per_unit: f64,
+    boxdb_over_sqlite: f64,
+}
+
+#[derive(Serialize)]
 struct Report {
     boxdb_version: &'static str,
     sqlite_version: &'static str,
     os: &'static str,
     arch: &'static str,
-    sqlite_settings: &'static str,
+    sqlite_settings: String,
     config: Config,
     samples: Vec<Sample>,
     summaries: Vec<Summary>,
+    comparisons: Vec<Comparison>,
 }
 
 fn main() -> Result<()> {
@@ -374,12 +417,15 @@ fn main() -> Result<()> {
         std::env::consts::ARCH
     );
     println!(
-        "rows={} samples={} reads={} batch_size={} writes={} | SQLite DELETE/EXTRA",
+        "rows={} samples={} reads={} batch_size={} writes={} | SQLite DELETE/EXTRA fullfsync={} cached={} exclusive={}",
         config.rows,
         config.samples,
         config.reads,
         config.batch_size,
-        workload.updates.len()
+        workload.updates.len(),
+        config.sqlite_fullfsync,
+        config.sqlite_cached,
+        config.sqlite_exclusive
     );
     let mut samples = Vec::new();
     for iteration in 0..=config.samples {
@@ -406,6 +452,7 @@ fn main() -> Result<()> {
         "workload", "SQLite us/unit", "BoxDB us/unit", "BoxDB/SQLite"
     );
     let mut summaries = Vec::new();
+    let mut comparisons = Vec::new();
     for (index, timing) in samples[0].timings.iter().enumerate() {
         let mut per_unit = Vec::new();
         for engine in [Engine::Sqlite, Engine::Boxdb] {
@@ -425,14 +472,18 @@ fn main() -> Result<()> {
                 median_us_per_unit,
             });
         }
+        let comparison = Comparison {
+            workload: timing.workload,
+            unit: timing.unit,
+            sqlite_median_us_per_unit: per_unit[0],
+            boxdb_median_us_per_unit: per_unit[1],
+            boxdb_over_sqlite: per_unit[1] / per_unit[0],
+        };
         println!(
             "{:<23} {:>13.3} {:>13.3} {:>11.2}x  {}",
-            timing.workload,
-            per_unit[0],
-            per_unit[1],
-            per_unit[1] / per_unit[0],
-            timing.unit
+            timing.workload, per_unit[0], per_unit[1], comparison.boxdb_over_sqlite, timing.unit
         );
+        comparisons.push(comparison);
     }
     for engine in [Engine::Sqlite, Engine::Boxdb] {
         let bytes = median(
@@ -453,10 +504,19 @@ fn main() -> Result<()> {
             sqlite_version: rusqlite::version(),
             os: std::env::consts::OS,
             arch: std::env::consts::ARCH,
-            sqlite_settings: "journal_mode=DELETE; synchronous=EXTRA",
+            sqlite_settings: format!(
+                "journal_mode=DELETE; synchronous=EXTRA; fullfsync={}; locking_mode={}",
+                if config.sqlite_fullfsync { "ON" } else { "OFF" },
+                if config.sqlite_exclusive {
+                    "EXCLUSIVE"
+                } else {
+                    "NORMAL"
+                }
+            ),
             config,
             samples,
             summaries,
+            comparisons,
         };
         std::fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
         println!("JSON report: {}", path.display());
