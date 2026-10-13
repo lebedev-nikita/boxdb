@@ -574,7 +574,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
     // Import restores data, so it must not replay application update effects.
     let types = schema::load(&db)?;
     schema::install(&db, &types)?;
-    schema::normalize_timestamps(&db, &types)?;
+    schema::normalize_instants(&db, &types)?;
     schema::uninstall(&db)?;
     for record in &records {
         match record {

@@ -4,7 +4,7 @@ use rusqlite::Connection;
 #[test]
 fn rich_types_round_trip_through_sqlite_and_readable_storage() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n NUMERIC(20,4),u UUID,j JSON,ts TIMESTAMP,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals NUMERIC(20,4)[],blobs BYTEA[])").unwrap();
+    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n NUMERIC(20,4),u UUID,j JSON,ts INSTANT,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals NUMERIC(20,4)[],blobs BYTEA[])").unwrap();
     let values = vec![
         Value::Integer(1),
         Value::Integer(i16::MIN.into()),
@@ -14,7 +14,7 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
         Value::Numeric("1234567890123456.1234".into()),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
         Value::Json(serde_json::json!({"x":[true,null,1]})),
-        Value::Timestamp("2024-02-29T12:34:56.123456789Z".into()),
+        Value::Instant("2024-02-29T12:34:56.123456789Z".into()),
         Value::Bytea(vec![0, 255]),
         Value::Array(vec![
             Value::Text("NULL".into()),
@@ -57,7 +57,7 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
 #[test]
 fn type_checks_cover_expressions_insert_select_triggers_and_atomic_batches() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE dates(id INT64 PRIMARY KEY,d TIMESTAMP); INSERT INTO dates VALUES(1,'2024-02-29T00:00:00.000000000Z')").unwrap();
+    db.execute("CREATE TABLE dates(id INT64 PRIMARY KEY,d INSTANT); INSERT INTO dates VALUES(1,'2024-02-29T00:00:00.000000000Z')").unwrap();
     for sql in [
         "INSERT INTO dates VALUES(2,'2023-02-29T00:00:00.000000000Z')",
         "UPDATE dates SET d='2024-'||'02-30' WHERE id=1",
@@ -90,10 +90,10 @@ fn invalid_rich_values_fail_without_committing_other_rows() {
         ("UUID", Value::Text("wrong".into())),
         ("JSON", Value::Text("{".into())),
         (
-            "TIMESTAMP",
+            "INSTANT",
             Value::Text("2024-02-30T00:00:00.000000000Z".into()),
         ),
-        ("TIMESTAMP", Value::Text("2024-02-29T25:00:00Z".into())),
+        ("INSTANT", Value::Text("2024-02-29T25:00:00Z".into())),
         ("TEXT[]", Value::Array(vec![Value::Integer(1)])),
         (
             "DOUBLE PRECISION[]",
@@ -117,14 +117,14 @@ fn reopened_readable_files_preserve_rich_types_and_reject_invalid_writes() {
     let path = temp.path().join("typed.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
     db.execute(
-        "CREATE TABLE rich(id INT64 PRIMARY KEY,u UUID,n NUMERIC(8,2),d TIMESTAMP,tags TEXT[])",
+        "CREATE TABLE rich(id INT64 PRIMARY KEY,u UUID,n NUMERIC(8,2),d INSTANT,tags TEXT[])",
     )
     .unwrap();
     let row = vec![
         Value::Integer(1),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
         Value::Numeric("123.45".into()),
-        Value::Timestamp("2024-02-29T00:00:00.000000000Z".into()),
+        Value::Instant("2024-02-29T00:00:00.000000000Z".into()),
         Value::Array(vec![Value::Text("雪".into()), Value::Null]),
     ];
     db.execute_params("INSERT INTO rich VALUES(?,?,?,?,?)", &row)
@@ -160,7 +160,7 @@ fn a_select_with_an_invalid_typed_cell_returns_an_error_for_the_whole_result() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("invalid.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d TIMESTAMP); INSERT INTO t VALUES(1,'2024-02-29T00:00:00.000000000Z'),(2,'2024-01-01T00:00:00.000000000Z')").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d INSTANT); INSERT INTO t VALUES(1,'2024-02-29T00:00:00.000000000Z'),(2,'2024-01-01T00:00:00.000000000Z')").unwrap();
     Connection::open(&path)
         .unwrap()
         .execute(
@@ -173,7 +173,7 @@ fn a_select_with_an_invalid_typed_cell_returns_an_error_for_the_whole_result() {
         db.execute("SELECT id,d FROM t WHERE id=1").unwrap()[0].rows,
         vec![vec![
             Value::Integer(1),
-            Value::Timestamp("2024-02-29T00:00:00.000000000Z".into())
+            Value::Instant("2024-02-29T00:00:00.000000000Z".into())
         ]]
     );
     assert_eq!(
@@ -186,7 +186,7 @@ fn external_clients_need_no_boxdb_functions_and_invalid_values_are_detected() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("types.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,b BOOLEAN,d TIMESTAMP); INSERT INTO t VALUES(1,1,'2024-02-29T00:00:00.000000000Z'); CREATE TABLE blobs(bytes BYTEA)").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,b BOOLEAN,d INSTANT); INSERT INTO t VALUES(1,1,'2024-02-29T00:00:00.000000000Z'); CREATE TABLE blobs(bytes BYTEA)").unwrap();
     let sqlite = Connection::open(&path).unwrap();
     sqlite
         .execute_batch("INSERT INTO t VALUES(2,0,'2024-01-01T00:00:00.000000000Z')")
@@ -224,7 +224,7 @@ fn external_clients_need_no_boxdb_functions_and_invalid_values_are_detected() {
 #[test]
 fn typed_metadata_and_triggers_follow_rollback_and_savepoints() {
     let mut db = Database::memory();
-    db.execute("BEGIN; CREATE TABLE t(d TIMESTAMP); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z'); SAVEPOINT s; DROP TABLE t; CREATE TABLE t(n INT64); INSERT INTO t VALUES(1); ROLLBACK TO s").unwrap();
+    db.execute("BEGIN; CREATE TABLE t(d INSTANT); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z'); SAVEPOINT s; DROP TABLE t; CREATE TABLE t(n INT64); INSERT INTO t VALUES(1); ROLLBACK TO s").unwrap();
     assert!(db.execute("INSERT INTO t VALUES('wrong')").is_err());
     db.execute("ROLLBACK").unwrap();
     db.execute("CREATE TABLE t(n INT64); INSERT INTO t VALUES(1)")
@@ -239,7 +239,7 @@ fn typed_metadata_and_triggers_follow_rollback_and_savepoints() {
 fn typed_alter_table_keeps_metadata_atomic_and_tracks_renames() {
     let mut db = Database::memory();
     db.execute(
-        "CREATE TABLE t(id INT64 PRIMARY KEY,d TIMESTAMP); INSERT INTO t VALUES(1,'2024-01-01T00:00:00.000000000Z')",
+        "CREATE TABLE t(id INT64 PRIMARY KEY,d INSTANT); INSERT INTO t VALUES(1,'2024-01-01T00:00:00.000000000Z')",
     )
     .unwrap();
     db.execute("ALTER TABLE t ADD COLUMN tags TEXT[]; ALTER TABLE t RENAME COLUMN d TO day; ALTER TABLE t RENAME TO events").unwrap();
@@ -251,7 +251,7 @@ fn typed_alter_table_keeps_metadata_atomic_and_tracks_renames() {
     assert_eq!(
         db.execute("SELECT day,tags FROM events").unwrap()[0].rows,
         vec![vec![
-            Value::Timestamp("2024-01-01T00:00:00.000000000Z".into()),
+            Value::Instant("2024-01-01T00:00:00.000000000Z".into()),
             Value::Array(vec![Value::Text("new".into())])
         ]]
     );
@@ -277,12 +277,12 @@ fn a_long_lived_client_discovers_types_created_by_another_boxdb_client() {
     let mut writer = Database::open(&path, Format::Binary).unwrap();
     writer
         .execute(
-            "CREATE TABLE t(d TIMESTAMP); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z')",
+            "CREATE TABLE t(d INSTANT); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z')",
         )
         .unwrap();
     assert_eq!(
         reader.execute("SELECT d FROM t").unwrap()[0].rows,
-        vec![vec![Value::Timestamp(
+        vec![vec![Value::Instant(
             "2024-01-01T00:00:00.000000000Z".into()
         )]]
     );
@@ -292,10 +292,8 @@ fn a_long_lived_client_discovers_types_created_by_another_boxdb_client() {
 #[test]
 fn metadata_is_reserved_and_invalid_typed_alter_defaults_rollback() {
     let mut db = Database::memory();
-    db.execute(
-        "CREATE TABLE t(d TIMESTAMP); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z')",
-    )
-    .unwrap();
+    db.execute("CREATE TABLE t(d INSTANT); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z')")
+        .unwrap();
     for sql in [
         "DELETE FROM __boxdb_columns",
         "DROP TABLE __boxdb_columns",
@@ -305,7 +303,7 @@ fn metadata_is_reserved_and_invalid_typed_alter_defaults_rollback() {
         assert!(db.execute(sql).is_err(), "{sql}");
     }
     assert!(
-        db.execute("ALTER TABLE t ADD COLUMN wrong TIMESTAMP DEFAULT 'invalid'")
+        db.execute("ALTER TABLE t ADD COLUMN wrong INSTANT DEFAULT 'invalid'")
             .is_err()
     );
     assert_eq!(db.execute("SELECT * FROM t").unwrap()[0].columns, vec!["d"]);
@@ -315,7 +313,7 @@ fn metadata_is_reserved_and_invalid_typed_alter_defaults_rollback() {
 #[test]
 fn comments_and_explicit_main_schema_keep_type_validation() {
     let mut db = Database::memory();
-    db.execute("-- schema\n /* BoxDB */ CREATE TABLE main.t(d TIMESTAMP)")
+    db.execute("-- schema\n /* BoxDB */ CREATE TABLE main.t(d INSTANT)")
         .unwrap();
     db.execute("CREATE TABLE IF NOT EXISTS main.T(d UUID)")
         .unwrap();
@@ -334,7 +332,7 @@ fn another_boxdb_clients_typed_schema_changes_refresh_write_validators() {
     let path = temp.path().join("alter.db");
     let mut writer = Database::open(&path, Format::Binary).unwrap();
     writer
-        .execute("CREATE TABLE t(id INT64 PRIMARY KEY,d TIMESTAMP)")
+        .execute("CREATE TABLE t(id INT64 PRIMARY KEY,d INSTANT)")
         .unwrap();
     let mut reader = Database::open(&path, Format::Binary).unwrap();
     writer
@@ -346,7 +344,7 @@ fn another_boxdb_clients_typed_schema_changes_refresh_write_validators() {
         .unwrap();
     assert_eq!(
         reader.execute("SELECT day FROM t").unwrap()[0].rows,
-        vec![vec![Value::Timestamp(
+        vec![vec![Value::Instant(
             "2024-01-01T00:00:00.000000000Z".into()
         )]]
     );
@@ -357,7 +355,7 @@ fn another_boxdb_clients_typed_schema_changes_refresh_write_validators() {
     let sql = "SELECT value FROM v";
     assert_eq!(
         reader.execute(sql).unwrap()[0].rows,
-        vec![vec![Value::Timestamp(
+        vec![vec![Value::Instant(
             "2024-01-01T00:00:00.000000000Z".into()
         )]]
     );
@@ -379,11 +377,13 @@ fn another_boxdb_clients_typed_schema_changes_refresh_write_validators() {
 #[test]
 fn sqlite_vacuum_preserves_typed_metadata() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(d TIMESTAMP); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z'); VACUUM")
-        .unwrap();
+    db.execute(
+        "CREATE TABLE t(d INSTANT); INSERT INTO t VALUES('2024-01-01T00:00:00.000000000Z'); VACUUM",
+    )
+    .unwrap();
     assert_eq!(
         db.execute("SELECT d FROM t").unwrap()[0].rows,
-        vec![vec![Value::Timestamp(
+        vec![vec![Value::Instant(
             "2024-01-01T00:00:00.000000000Z".into()
         )]]
     );

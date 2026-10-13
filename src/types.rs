@@ -17,7 +17,7 @@ pub enum Value {
     Uuid(String),
     Json(serde_json::Value),
     /// An RFC 3339 instant, normalized to UTC with nanosecond precision.
-    Timestamp(String),
+    Instant(String),
     Array(Vec<Value>),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub enum Type {
     Bytea,
     Uuid,
     Json,
-    Timestamp,
+    Instant,
     Array(Box<Type>),
 }
 
@@ -108,7 +108,7 @@ impl Type {
             "BYTEA" | "BLOB" => Self::Bytea,
             "UUID" => Self::Uuid,
             "JSON" | "JSONB" => Self::Json,
-            "TIMESTAMP" => Self::Timestamp,
+            "INSTANT" => Self::Instant,
             _ => return Err(Error(format!("unsupported or missing type: {input}"))),
         };
         if !args.is_empty() && !matches!(result, Self::Numeric(_) | Self::Varchar(_)) {
@@ -193,7 +193,7 @@ impl Type {
                 .map(|u| Value::Uuid(u.to_string()))
                 .map_err(|_| invalid()),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
-            (Self::Timestamp, Value::Timestamp(s)) => {
+            (Self::Instant, Value::Instant(s)) => {
                 // Chrono accepts leap seconds and truncates extra fractional
                 // digits. Neither is part of this exact, nanosecond contract.
                 if s.split_once('.').is_some_and(|(_, fraction)| {
@@ -209,7 +209,7 @@ impl Type {
                 {
                     return Err(invalid());
                 }
-                Ok(Value::Timestamp(
+                Ok(Value::Instant(
                     instant.to_rfc3339_opts(SecondsFormat::Nanos, true),
                 ))
             }
@@ -251,7 +251,7 @@ impl Type {
             }),
             Self::Text | Self::Varchar(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
-            Self::Timestamp => Value::Timestamp(text),
+            Self::Instant => Value::Instant(text),
             Self::Json => {
                 Value::Json(serde_json::from_str(&text).map_err(|e| Error(e.to_string()))?)
             }
@@ -269,7 +269,7 @@ impl std::fmt::Display for Value {
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),
-            Self::Numeric(s) | Self::Text(s) | Self::Uuid(s) | Self::Timestamp(s) => {
+            Self::Numeric(s) | Self::Text(s) | Self::Uuid(s) | Self::Instant(s) => {
                 write!(f, "{s}")
             }
             Self::Json(j) => write!(f, "{j}"),
