@@ -325,9 +325,18 @@ fn sample(engine: Engine, config: &Config, workload: &Workload) -> Result<Sample
                 "payload TEXT NOT NULL CHECK(length(payload)<=100)",
             ),
         };
+        let schema = if matches!(engine, Engine::Boxdb | Engine::Yaml) {
+            schema.replace("INTEGER", "INT64")
+        } else {
+            schema
+        };
         db.execute(&schema)?;
     } else {
-        db.execute(SCHEMA)?;
+        if matches!(engine, Engine::Boxdb | Engine::Yaml) {
+            db.execute(&SCHEMA.replace("INTEGER", "INT64"))?;
+        } else {
+            db.execute(SCHEMA)?;
+        }
     }
     // Both clients have identical schemas, including the explicit ID index.
     db.execute("CREATE INDEX records_id ON records(id)")?;

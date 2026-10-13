@@ -4,7 +4,7 @@
 //! ```
 //! use boxdb::{Database, Value};
 //! let mut db = Database::memory();
-//! db.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")?;
+//! db.execute("CREATE TABLE users(id INT64 PRIMARY KEY, name TEXT NOT NULL)")?;
 //! db.execute_params("INSERT INTO users(name) VALUES(?)", &[Value::Text("Ada".into())])?;
 //! assert_eq!(db.execute("SELECT name FROM users")?[0].rows,
 //!            vec![vec![Value::Text("Ada".into())]]);

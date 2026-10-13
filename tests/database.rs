@@ -7,14 +7,14 @@ use common::sqlite_execute;
 fn native_sql_programs_have_the_same_results_as_sqlite() {
     for program in [
         vec![
-            "CREATE TABLE t(id INTEGER PRIMARY KEY,n ANY) STRICT",
+            "CREATE TABLE t(id INT64 PRIMARY KEY,n ANY) STRICT",
             "INSERT INTO t VALUES(NULL,'001'),(NULL,9223372036854775807)",
             "SELECT id,n,typeof(n) AS ty FROM t ORDER BY id",
             "UPDATE t SET n=n+1 WHERE id=2 RETURNING id,n",
             "SELECT id,n FROM t",
         ],
         vec![
-            "CREATE TABLE t(id INTEGER PRIMARY KEY,n TEXT)",
+            "CREATE TABLE t(id INT64 PRIMARY KEY,n TEXT)",
             "INSERT INTO t VALUES(1,'x') ON CONFLICT(id) DO UPDATE SET n=excluded.n",
             "CREATE VIEW v AS SELECT id,n FROM t",
             "CREATE TABLE audit(n TEXT)",
@@ -24,7 +24,7 @@ fn native_sql_programs_have_the_same_results_as_sqlite() {
             "WITH q AS(SELECT id,n FROM v) SELECT id,n,row_number() OVER(ORDER BY id) AS position FROM q",
         ],
         vec![
-            "CREATE TABLE t(n INTEGER)",
+            "CREATE TABLE t(n INT64)",
             "INSERT INTO t VALUES(1),(2)",
             "SELECT * FROM t",
             "BEGIN IMMEDIATE",
@@ -37,8 +37,8 @@ fn native_sql_programs_have_the_same_results_as_sqlite() {
             "SELECT * FROM t WHERE n>0 ORDER BY n",
         ],
         vec![
-            "CREATE TABLE parent(id INTEGER PRIMARY KEY)",
-            "CREATE TABLE child(id INTEGER REFERENCES parent(id) ON DELETE CASCADE)",
+            "CREATE TABLE parent(id INT64 PRIMARY KEY)",
+            "CREATE TABLE child(id INT64 REFERENCES parent(id) ON DELETE CASCADE)",
             "INSERT INTO parent VALUES(1)",
             "INSERT INTO child VALUES(1)",
             "DELETE FROM parent",
@@ -70,7 +70,7 @@ fn native_sql_programs_have_the_same_results_as_sqlite() {
 #[test]
 fn parameters_and_statement_atomicity_match_sqlite() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,n TEXT UNIQUE)")
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,n TEXT UNIQUE)")
         .unwrap();
     let params = [Value::Integer(1), Value::Text("'; DROP TABLE t; --".into())];
     db.execute_params("INSERT INTO t VALUES(?1,?2)", &params)
@@ -104,7 +104,7 @@ fn cached_queries_follow_schema_changes_even_from_another_client() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("shared.db");
     let mut db = Database::open(&path, boxdb::Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
+    db.execute("CREATE TABLE t(n INT64); INSERT INTO t VALUES(1)")
         .unwrap();
     assert_eq!(db.execute("SELECT * FROM t").unwrap()[0].columns, vec!["n"]);
     let sqlite = Connection::open(&path).unwrap();

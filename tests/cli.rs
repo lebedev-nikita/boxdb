@@ -37,7 +37,7 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
             "--format",
             "readable",
             "-e",
-            "CREATE TABLE t(n INT4,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t",
+            "CREATE TABLE t(n INT32,name TEXT); INSERT INTO t VALUES(1,'a;b'); SELECT name FROM t",
         ])
         .output()
         .unwrap();
@@ -85,7 +85,7 @@ fn cli_reads_sql_from_stdin_and_converts_without_overwriting_destination() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"CREATE TABLE t(n INTEGER);\nINSERT INTO t VALUES(7);\nSELECT n FROM t;")
+        .write_all(b"CREATE TABLE t(n INT64);\nINSERT INTO t VALUES(7);\nSELECT n FROM t;")
         .unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(output.status.success());
@@ -120,7 +120,7 @@ fn cli_accepts_multiline_sqlite_trigger_bodies() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(b"CREATE TABLE t(n INTEGER);\nCREATE TABLE log(n INTEGER);\nCREATE TRIGGER track AFTER INSERT ON t BEGIN\n INSERT INTO log VALUES(NEW.n);\n INSERT INTO log VALUES(NEW.n+1);\nEND;\nINSERT INTO t VALUES(5);\nSELECT n FROM log ORDER BY n;\n").unwrap();
+    child.stdin.take().unwrap().write_all(b"CREATE TABLE t(n INT64);\nCREATE TABLE log(n INT64);\nCREATE TRIGGER track AFTER INSERT ON t BEGIN\n INSERT INTO log VALUES(NEW.n);\n INSERT INTO log VALUES(NEW.n+1);\nEND;\nINSERT INTO t VALUES(5);\nSELECT n FROM log ORDER BY n;\n").unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(
         output.status.success(),
@@ -187,7 +187,7 @@ fn cli_crash_preserves_acknowledged_commits_and_discards_pending_writes() {
         let mut session = Session::open(&path);
         assert_eq!(
             session.execute(
-                "CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1); SELECT COUNT(*) FROM t;"
+                "CREATE TABLE t(n INT64); INSERT INTO t VALUES(1); SELECT COUNT(*) FROM t;"
             )["rows"][0][0]["Integer"],
             1
         );
@@ -220,7 +220,7 @@ fn interrupting_readable_commit_leaves_a_complete_old_or_new_database() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("interrupted.yaml");
         let mut session = Session::open(&path);
-        assert_eq!(session.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT,revision INTEGER); BEGIN; WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1500) INSERT INTO t SELECT n,printf('%04096d',0),0 FROM rows; COMMIT; SELECT COUNT(*) FROM t;")["rows"][0][0]["Integer"], 1500);
+        assert_eq!(session.execute("CREATE TABLE t(id INT64 PRIMARY KEY,body TEXT,revision INT64); BEGIN; WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1500) INSERT INTO t SELECT n,printf('%04096d',0),0 FROM rows; COMMIT; SELECT COUNT(*) FROM t;")["rows"][0][0]["Integer"], 1500);
         assert_eq!(
             session.execute(
                 "BEGIN; UPDATE t SET revision=1 WHERE id=1; SELECT revision FROM t WHERE id=1;"

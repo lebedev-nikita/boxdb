@@ -8,6 +8,7 @@ use std::str::FromStr;
 pub enum Value {
     Null,
     Integer(i64),
+    UnsignedInteger(u64),
     Real(f64),
     Numeric(String),
     Boolean(bool),
@@ -23,9 +24,16 @@ pub enum Value {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Type {
-    SmallInt,
-    Integer,
-    BigInt,
+    Int8,
+    #[serde(alias = "SmallInt")]
+    Int16,
+    #[serde(alias = "Integer")]
+    Int32,
+    #[serde(alias = "BigInt")]
+    Int64,
+    Uint8,
+    Uint16,
+    Uint32,
     Real,
     Double,
     Numeric(Option<(u32, u32)>),
@@ -73,9 +81,13 @@ impl Type {
             (ty.as_str(), vec![])
         };
         let result = match base {
-            "SMALLINT" | "INT2" => Self::SmallInt,
-            "INT4" => Self::Integer,
-            "INT" | "INTEGER" | "BIGINT" | "INT8" => Self::BigInt,
+            "INT8" => Self::Int8,
+            "INT16" => Self::Int16,
+            "INT32" => Self::Int32,
+            "INT64" => Self::Int64,
+            "UINT8" => Self::Uint8,
+            "UINT16" => Self::Uint16,
+            "UINT32" => Self::Uint32,
             "FLOAT4" => Self::Real,
             "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
             "NUMERIC" | "DECIMAL" => {
@@ -126,9 +138,23 @@ impl Type {
         }
         let invalid = || Error(format!("type mismatch: expected {self:?}, got {value:?}"));
         match (self, value) {
-            (Self::SmallInt, Value::Integer(n)) if i16::try_from(*n).is_ok() => Ok(value.clone()),
-            (Self::Integer, Value::Integer(n)) if i32::try_from(*n).is_ok() => Ok(value.clone()),
-            (Self::BigInt, Value::Integer(_)) => Ok(value.clone()),
+            (Self::Int8, Value::Integer(n)) if i8::try_from(*n).is_ok() => Ok(value.clone()),
+            (Self::Int16, Value::Integer(n)) if i16::try_from(*n).is_ok() => Ok(value.clone()),
+            (Self::Int32, Value::Integer(n)) if i32::try_from(*n).is_ok() => Ok(value.clone()),
+            (Self::Int64, Value::Integer(_)) => Ok(value.clone()),
+            (Self::Uint8 | Self::Uint16 | Self::Uint32, Value::Integer(n)) => {
+                let n = u64::try_from(*n).map_err(|_| invalid())?;
+                self.validate(&Value::UnsignedInteger(n))
+            }
+            (Self::Uint8, Value::UnsignedInteger(n)) if u8::try_from(*n).is_ok() => {
+                Ok(value.clone())
+            }
+            (Self::Uint16, Value::UnsignedInteger(n)) if u16::try_from(*n).is_ok() => {
+                Ok(value.clone())
+            }
+            (Self::Uint32, Value::UnsignedInteger(n)) if u32::try_from(*n).is_ok() => {
+                Ok(value.clone())
+            }
             (Self::Real | Self::Double, Value::Integer(_) | Value::Numeric(_) | Value::Real(_)) => {
                 let n: f64 = value.to_string().parse().map_err(|_| invalid())?;
                 let n = if matches!(self, Self::Real) {
@@ -211,9 +237,13 @@ impl Type {
         }
         let text = value.to_string();
         let parsed = match self {
-            Self::SmallInt | Self::Integer | Self::BigInt => Value::Integer(
+            Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 => Value::Integer(
                 text.parse()
                     .map_err(|_| Error("invalid integer cast".into()))?,
+            ),
+            Self::Uint8 | Self::Uint16 | Self::Uint32 => Value::UnsignedInteger(
+                text.parse()
+                    .map_err(|_| Error("invalid unsigned integer cast".into()))?,
             ),
             Self::Real | Self::Double => Value::Real(
                 text.parse()
@@ -247,6 +277,7 @@ impl std::fmt::Display for Value {
         match self {
             Self::Null => write!(f, "NULL"),
             Self::Integer(n) => write!(f, "{n}"),
+            Self::UnsignedInteger(n) => write!(f, "{n}"),
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),

@@ -4,7 +4,7 @@ use rusqlite::Connection;
 #[test]
 fn rich_types_round_trip_through_sqlite_and_readable_storage() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE rich(id INTEGER PRIMARY KEY,s SMALLINT,i INT4,b BOOLEAN,word VARCHAR(3),n NUMERIC(20,4),u UUID,j JSON,d DATE,t TIME,ts TIMESTAMP,tz TIMESTAMPTZ,bytes BYTEA,tags TEXT[],matrix BIGINT[][],f FLOAT4,decimals NUMERIC(20,4)[],blobs BYTEA[])").unwrap();
+    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n NUMERIC(20,4),u UUID,j JSON,d DATE,t TIME,ts TIMESTAMP,tz TIMESTAMPTZ,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals NUMERIC(20,4)[],blobs BYTEA[])").unwrap();
     let values = vec![
         Value::Integer(1),
         Value::Integer(i16::MIN.into()),
@@ -60,7 +60,10 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
 #[test]
 fn type_checks_cover_expressions_insert_select_triggers_and_atomic_batches() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE dates(id INTEGER PRIMARY KEY,d DATE); INSERT INTO dates VALUES(1,'2024-02-29')").unwrap();
+    db.execute(
+        "CREATE TABLE dates(id INT64 PRIMARY KEY,d DATE); INSERT INTO dates VALUES(1,'2024-02-29')",
+    )
+    .unwrap();
     for sql in [
         "INSERT INTO dates VALUES(2,'2023-02-29')",
         "UPDATE dates SET d='2024-'||'02-30' WHERE id=1",
@@ -73,7 +76,7 @@ fn type_checks_cover_expressions_insert_select_triggers_and_atomic_batches() {
             1
         );
     }
-    db.execute("CREATE TABLE source(n INTEGER); CREATE TRIGGER bad AFTER INSERT ON source BEGIN INSERT INTO dates VALUES(NEW.n,'wrong'); END;").unwrap();
+    db.execute("CREATE TABLE source(n INT64); CREATE TRIGGER bad AFTER INSERT ON source BEGIN INSERT INTO dates VALUES(NEW.n,'wrong'); END;").unwrap();
     assert!(db.execute("INSERT INTO source VALUES(2)").is_err());
     assert!(
         db.execute("SELECT * FROM source").unwrap()[0]
@@ -84,8 +87,8 @@ fn type_checks_cover_expressions_insert_select_triggers_and_atomic_batches() {
 #[test]
 fn invalid_rich_values_fail_without_committing_other_rows() {
     for (ty, value) in [
-        ("SMALLINT", Value::Integer(32768)),
-        ("INT4", Value::Integer(i64::MAX)),
+        ("INT16", Value::Integer(32768)),
+        ("INT32", Value::Integer(i64::MAX)),
         ("FLOAT4", Value::Real(1e40)),
         ("BOOLEAN", Value::Integer(2)),
         ("VARCHAR(2)", Value::Text("abc".into())),
@@ -116,10 +119,8 @@ fn reopened_readable_files_preserve_rich_types_and_reject_invalid_writes() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("typed.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
-    db.execute(
-        "CREATE TABLE rich(id INTEGER PRIMARY KEY,u UUID,n NUMERIC(8,2),d DATE,tags TEXT[])",
-    )
-    .unwrap();
+    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,u UUID,n NUMERIC(8,2),d DATE,tags TEXT[])")
+        .unwrap();
     let row = vec![
         Value::Integer(1),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
@@ -160,7 +161,7 @@ fn a_select_with_an_invalid_typed_cell_returns_an_error_for_the_whole_result() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("invalid.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-02-29'),(2,'2024-01-01')").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-02-29'),(2,'2024-01-01')").unwrap();
     Connection::open(&path)
         .unwrap()
         .execute("UPDATE t SET d='2024-02-30' WHERE id=2", [])
@@ -180,7 +181,7 @@ fn external_clients_need_no_boxdb_functions_and_invalid_values_are_detected() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("types.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,b BOOLEAN,d DATE); INSERT INTO t VALUES(1,1,'2024-02-29'); CREATE TABLE blobs(bytes BYTEA)").unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,b BOOLEAN,d DATE); INSERT INTO t VALUES(1,1,'2024-02-29'); CREATE TABLE blobs(bytes BYTEA)").unwrap();
     let sqlite = Connection::open(&path).unwrap();
     sqlite
         .execute_batch("INSERT INTO t VALUES(2,0,'2024-01-01')")
@@ -218,10 +219,10 @@ fn external_clients_need_no_boxdb_functions_and_invalid_values_are_detected() {
 #[test]
 fn typed_metadata_and_triggers_follow_rollback_and_savepoints() {
     let mut db = Database::memory();
-    db.execute("BEGIN; CREATE TABLE t(d DATE); INSERT INTO t VALUES('2024-01-01'); SAVEPOINT s; DROP TABLE t; CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1); ROLLBACK TO s").unwrap();
+    db.execute("BEGIN; CREATE TABLE t(d DATE); INSERT INTO t VALUES('2024-01-01'); SAVEPOINT s; DROP TABLE t; CREATE TABLE t(n INT64); INSERT INTO t VALUES(1); ROLLBACK TO s").unwrap();
     assert!(db.execute("INSERT INTO t VALUES('wrong')").is_err());
     db.execute("ROLLBACK").unwrap();
-    db.execute("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)")
+    db.execute("CREATE TABLE t(n INT64); INSERT INTO t VALUES(1)")
         .unwrap();
     assert_eq!(
         db.execute("SELECT * FROM t").unwrap()[0].rows,
@@ -232,10 +233,8 @@ fn typed_metadata_and_triggers_follow_rollback_and_savepoints() {
 #[test]
 fn typed_alter_table_keeps_metadata_atomic_and_tracks_renames() {
     let mut db = Database::memory();
-    db.execute(
-        "CREATE TABLE t(id INTEGER PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-01-01')",
-    )
-    .unwrap();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-01-01')")
+        .unwrap();
     db.execute("ALTER TABLE t ADD COLUMN tags TEXT[]; ALTER TABLE t RENAME COLUMN d TO day; ALTER TABLE t RENAME TO events").unwrap();
     db.execute_params(
         "UPDATE events SET tags=?",
@@ -288,7 +287,7 @@ fn metadata_is_reserved_and_invalid_typed_alter_defaults_rollback() {
         "DELETE FROM __boxdb_columns",
         "DROP TABLE __boxdb_columns",
         "DROP TRIGGER temp.__boxdb_validate_0_INSERT",
-        "CREATE TABLE __boxdb_fake(n INTEGER)",
+        "CREATE TABLE __boxdb_fake(n INT64)",
     ] {
         assert!(db.execute(sql).is_err(), "{sql}");
     }
@@ -322,7 +321,7 @@ fn another_boxdb_clients_typed_schema_changes_refresh_write_validators() {
     let path = temp.path().join("alter.db");
     let mut writer = Database::open(&path, Format::Binary).unwrap();
     writer
-        .execute("CREATE TABLE t(id INTEGER PRIMARY KEY,d DATE)")
+        .execute("CREATE TABLE t(id INT64 PRIMARY KEY,d DATE)")
         .unwrap();
     let mut reader = Database::open(&path, Format::Binary).unwrap();
     writer

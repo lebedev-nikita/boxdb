@@ -32,14 +32,14 @@ fn suite_mode(group: &str, format: Option<Format>) {
             None => Database::memory(),
             Some(format) => Database::open(&path, format).unwrap(),
         };
-        db.execute(&case.setup)
+        db.execute(&common::integer_sql(&case.setup, true))
             .unwrap_or_else(|e| panic!("{label} setup: {e}"));
         let reference = Connection::open_in_memory().unwrap();
         reference.pragma_update(None, "foreign_keys", true).unwrap();
         sqlite_execute(&reference, &case.setup)
             .unwrap_or_else(|e| panic!("{label} SQLite setup: {e}"));
         for (client, results) in [
-            ("BoxDB", db.execute(&case.sql)),
+            ("BoxDB", db.execute(&common::integer_sql(&case.sql, true))),
             ("SQLite", sqlite_execute(&reference, &case.sql)),
         ] {
             let label = format!("{client} {label}");

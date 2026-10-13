@@ -16,7 +16,7 @@ libclang (Xcode Command Line Tools on macOS; `libclang-dev` on Debian/Ubuntu):
 cargo install --path . --locked
 boxdb data.db -e "
   CREATE TABLE accounts (
-    id INTEGER PRIMARY KEY,
+    id INT64 PRIMARY KEY,
     name TEXT NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     balance NUMERIC(12,2)
@@ -42,9 +42,12 @@ window functions, and SQLite functions. Tables created through BoxDB are
 `STRICT` automatically; explicitly writing `STRICT` is also valid. Standard
 columns use SQLite's strict typing and lossless conversion rules. Use `ANY`
 for mixed storage classes; columns without a declared type default to `ANY`.
-`INTEGER` is 64-bit. BoxDB extensions include `SMALLINT`, `INT4`, `BOOLEAN`,
-bounded `VARCHAR`, exact `NUMERIC`/`DECIMAL`, UUID, JSON, temporal types, BYTEA,
-and typed arrays.
+Integer declarations require a bit width: `INT8`, `INT16`, `INT32`, `INT64`,
+`UINT8`, `UINT16`, or `UINT32`. `INT8` means eight bits. Unsized integer names
+and the former byte-width aliases are rejected. `UINT64` is deferred;
+see [issue #1](https://github.com/lebedev-nikita/boxdb/issues/1).
+BoxDB extensions also include `BOOLEAN`, bounded `VARCHAR`, exact
+`NUMERIC`/`DECIMAL`, UUID, JSON, temporal types, BYTEA, and typed arrays.
 
 BoxDB checks extended columns on its own connection, including expression
 updates, INSERT SELECT, and trigger writes. Some rules also have portable
@@ -60,7 +63,7 @@ storage semantics. See [src/types.rs](src/types.rs) and [type tests](tests/types
 ## Readable storage and conversion
 
 ```sh
-boxdb notes.yaml --format readable -e 'CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT)'
+boxdb notes.yaml --format readable -e 'CREATE TABLE notes(id INT64 PRIMARY KEY,body TEXT)'
 boxdb convert data.db export.yaml --format readable
 boxdb convert export.yaml restored.db --format binary
 ```
@@ -82,7 +85,7 @@ use boxdb::{Database, Format, Value};
 
 fn main() -> boxdb::Result<()> {
     let mut db = Database::open("data.db", Format::Binary)?;
-    db.execute("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,day DATE)")?;
+    db.execute("CREATE TABLE IF NOT EXISTS events(id INT64 PRIMARY KEY,day DATE)")?;
     db.execute_params("INSERT INTO events(day) VALUES(?)", &[
         Value::Date("2024-02-29".into()),
     ])?;
