@@ -47,7 +47,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
         ("reversed", "WITHOUT ROWID, STRICT"),
     ] {
         db.execute(&format!(
-            "CREATE TABLE {name}(id TEXT PRIMARY KEY,d DATE,n NUMERIC(8,2)) {suffix}"
+            "CREATE TABLE {name}(id TEXT PRIMARY KEY,d TIMESTAMP,n NUMERIC(8,2)) {suffix}"
         ))
         .unwrap();
         assert_eq!(
@@ -59,14 +59,14 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
             vec![vec![Value::Integer(1), Value::Integer(1)]]
         );
         db.execute(&format!(
-            "INSERT INTO {name} VALUES('a','2024-02-29','12.34')"
+            "INSERT INTO {name} VALUES('a','2024-02-29T00:00:00.000000000Z','12.34')"
         ))
         .unwrap();
         assert!(db.execute(&format!("UPDATE {name} SET d='wrong'")).is_err());
         assert_eq!(
             db.execute(&format!("SELECT d,n FROM {name}")).unwrap()[0].rows,
             vec![vec![
-                Value::Date("2024-02-29".into()),
+                Value::Timestamp("2024-02-29T00:00:00.000000000Z".into()),
                 Value::Numeric("12.34".into())
             ]]
         );
@@ -206,10 +206,13 @@ fn added_columns_keep_strict_typing_and_ddl_returns_no_internal_results() {
         vec![vec![Value::Integer(2)]]
     );
     assert!(db.execute("UPDATE t SET score='wrong'").is_err());
-    db.execute("ALTER TABLE t ADD COLUMN ratio FLOAT8 DEFAULT 0.5; ALTER TABLE t ADD COLUMN d DATE DEFAULT '2024-02-29'").unwrap();
+    db.execute("ALTER TABLE t ADD COLUMN ratio FLOAT8 DEFAULT 0.5; ALTER TABLE t ADD COLUMN d TIMESTAMP DEFAULT '2024-02-29T00:00:00.000000000Z'").unwrap();
     assert_eq!(
         db.execute("SELECT ratio,d FROM t").unwrap()[0].rows,
-        vec![vec![Value::Real(0.5), Value::Date("2024-02-29".into())]]
+        vec![vec![
+            Value::Real(0.5),
+            Value::Timestamp("2024-02-29T00:00:00.000000000Z".into())
+        ]]
     );
 }
 

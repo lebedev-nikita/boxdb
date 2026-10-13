@@ -19,18 +19,27 @@ fn original_litestream_replicates_wal_and_restores_typed_metadata() {
     let restored = temp.path().join("restored.db");
     let replica = format!("file://{}", temp.path().join("replica").display());
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,d DATE); INSERT INTO t VALUES(1,'2024-01-01')")
-        .unwrap();
+    db.execute(
+        "CREATE TABLE t(id INT64 PRIMARY KEY,d TIMESTAMP); INSERT INTO t VALUES(1,'2024-01-01T00:00:00.000000000Z')",
+    )
+    .unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);
-    db.execute("INSERT INTO t VALUES(2,'2024-02-29')").unwrap();
+    db.execute("INSERT INTO t VALUES(2,'2024-02-29T00:00:00.000000000Z')")
+        .unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);
     run(&["restore", "-o", restored.to_str().unwrap(), &replica]);
     let mut restored = Database::open(restored, Format::Binary).unwrap();
     assert_eq!(
         restored.execute("SELECT id,d FROM t ORDER BY id").unwrap()[0].rows,
         vec![
-            vec![Value::Integer(1), Value::Date("2024-01-01".into())],
-            vec![Value::Integer(2), Value::Date("2024-02-29".into())]
+            vec![
+                Value::Integer(1),
+                Value::Timestamp("2024-01-01T00:00:00.000000000Z".into())
+            ],
+            vec![
+                Value::Integer(2),
+                Value::Timestamp("2024-02-29T00:00:00.000000000Z".into())
+            ]
         ]
     );
     assert!(

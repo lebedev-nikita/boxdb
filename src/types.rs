@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use bigdecimal::BigDecimal;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat};
+use chrono::{DateTime, Datelike, SecondsFormat};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -16,10 +16,8 @@ pub enum Value {
     Bytea(Vec<u8>),
     Uuid(String),
     Json(serde_json::Value),
-    Date(String),
-    Time(String),
+    /// An RFC 3339 instant, normalized to UTC with nanosecond precision.
     Timestamp(String),
-    Timestamptz(String),
     Array(Vec<Value>),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,10 +41,7 @@ pub enum Type {
     Bytea,
     Uuid,
     Json,
-    Date,
-    Time,
     Timestamp,
-    Timestamptz,
     Array(Box<Type>),
 }
 
@@ -113,10 +108,7 @@ impl Type {
             "BYTEA" | "BLOB" => Self::Bytea,
             "UUID" => Self::Uuid,
             "JSON" | "JSONB" => Self::Json,
-            "DATE" => Self::Date,
-            "TIME" | "TIME WITHOUT TIME ZONE" => Self::Time,
-            "TIMESTAMP" | "TIMESTAMP WITHOUT TIME ZONE" => Self::Timestamp,
-            "TIMESTAMPTZ" | "TIMESTAMP WITH TIME ZONE" => Self::Timestamptz,
+            "TIMESTAMP" => Self::Timestamp,
             _ => return Err(Error(format!("unsupported or missing type: {input}"))),
         };
         if !args.is_empty() && !matches!(result, Self::Numeric(_) | Self::Varchar(_)) {
@@ -201,26 +193,25 @@ impl Type {
                 .map(|u| Value::Uuid(u.to_string()))
                 .map_err(|_| invalid()),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
-            (Self::Date, Value::Date(s)) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .map(|d| Value::Date(d.to_string()))
-                .map_err(|_| invalid()),
-            (Self::Time, Value::Time(s)) => NaiveTime::parse_from_str(s, "%H:%M:%S%.f")
-                .map(|t| Value::Time(t.to_string()))
-                .map_err(|_| invalid()),
             (Self::Timestamp, Value::Timestamp(s)) => {
-                NaiveDateTime::parse_from_str(&s.replace('T', " "), "%Y-%m-%d %H:%M:%S%.f")
-                    .map(|t| Value::Timestamp(t.to_string()))
-                    .map_err(|_| invalid())
-            }
-            (Self::Timestamptz, Value::Timestamptz(s)) => {
-                DateTime::parse_from_rfc3339(&s.replace(' ', "T"))
-                    .map(|t| {
-                        Value::Timestamptz(
-                            t.with_timezone(&chrono::Utc)
-                                .to_rfc3339_opts(SecondsFormat::AutoSi, true),
-                        )
-                    })
-                    .map_err(|_| invalid())
+                // Chrono accepts leap seconds and truncates extra fractional
+                // digits. Neither is part of this exact, nanosecond contract.
+                if s.split_once('.').is_some_and(|(_, fraction)| {
+                    fraction.chars().take_while(char::is_ascii_digit).count() > 9
+                }) {
+                    return Err(invalid());
+                }
+                let instant = DateTime::parse_from_rfc3339(&s.replace(' ', "T"))
+                    .map_err(|_| invalid())?
+                    .with_timezone(&chrono::Utc);
+                if !(0..=9999).contains(&instant.year())
+                    || instant.timestamp_subsec_nanos() >= 1_000_000_000
+                {
+                    return Err(invalid());
+                }
+                Ok(Value::Timestamp(
+                    instant.to_rfc3339_opts(SecondsFormat::Nanos, true),
+                ))
             }
             (Self::Array(ty), Value::Array(values)) => Ok(Value::Array(
                 values
@@ -260,10 +251,7 @@ impl Type {
             }),
             Self::Text | Self::Varchar(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
-            Self::Date => Value::Date(text),
-            Self::Time => Value::Time(text),
             Self::Timestamp => Value::Timestamp(text),
-            Self::Timestamptz => Value::Timestamptz(text),
             Self::Json => {
                 Value::Json(serde_json::from_str(&text).map_err(|e| Error(e.to_string()))?)
             }
@@ -281,13 +269,9 @@ impl std::fmt::Display for Value {
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),
-            Self::Numeric(s)
-            | Self::Text(s)
-            | Self::Uuid(s)
-            | Self::Date(s)
-            | Self::Time(s)
-            | Self::Timestamp(s)
-            | Self::Timestamptz(s) => write!(f, "{s}"),
+            Self::Numeric(s) | Self::Text(s) | Self::Uuid(s) | Self::Timestamp(s) => {
+                write!(f, "{s}")
+            }
             Self::Json(j) => write!(f, "{j}"),
             Self::Array(_) => write!(
                 f,

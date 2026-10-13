@@ -1,0 +1,327 @@
+use boxdb::{Database, Format, Type, Value};
+use rusqlite::Connection;
+
+const UTC: &str = "2026-10-13T12:00:00.123456789Z";
+const OFFSET: &str = "2026-10-13T16:00:00.123456789+04:00";
+
+fn raw(db: &mut Database, table: &str) -> Vec<Vec<Value>> {
+    db.execute(&format!("SELECT CAST(ts AS TEXT) FROM {table} ORDER BY ts"))
+        .unwrap()[0]
+        .rows
+        .clone()
+}
+
+#[test]
+fn timestamp_is_the_only_temporal_type() {
+    assert_eq!(Type::parse("timestamp").unwrap(), Type::Timestamp);
+    let mut db = Database::memory();
+    for ty in [
+        "DATE",
+        "TIME",
+        "TIMESTAMPTZ",
+        "TIME WITHOUT TIME ZONE",
+        "TIME WITH TIME ZONE",
+        "TIMESTAMP WITHOUT TIME ZONE",
+        "TIMESTAMP WITH TIME ZONE",
+        "DATE[]",
+        "TIME[]",
+        "TIMESTAMPTZ[]",
+    ] {
+        assert!(Type::parse(ty).is_err(), "{ty}");
+        assert!(
+            db.execute(&format!("CREATE TABLE t(ts {ty})")).is_err(),
+            "{ty}"
+        );
+    }
+    for value in [
+        r#"{"Date":"2026-10-13"}"#,
+        r#"{"Time":"12:00:00"}"#,
+        r#"{"Timestamptz":"2026-10-13T12:00:00Z"}"#,
+    ] {
+        assert!(serde_json::from_str::<Value>(value).is_err());
+    }
+}
+
+#[test]
+fn offsets_are_shifted_to_utc_without_losing_nanoseconds() {
+    for (input, expected) in [
+        (OFFSET, UTC),
+        ("2026-10-13 08:30:00.123456789-03:30", UTC),
+        ("2026-10-13T17:45:00.123456789+05:45", UTC),
+        (
+            "2024-03-01T00:30:00+01:00",
+            "2024-02-29T23:30:00.000000000Z",
+        ),
+        (
+            "2024-12-31T23:30:00-02:00",
+            "2025-01-01T01:30:00.000000000Z",
+        ),
+        (
+            "1969-12-31T23:59:59.999999999Z",
+            "1969-12-31T23:59:59.999999999Z",
+        ),
+        (
+            "2026-10-13T12:00:00+00:00",
+            "2026-10-13T12:00:00.000000000Z",
+        ),
+    ] {
+        assert_eq!(
+            Type::Timestamp
+                .validate(&Value::Timestamp(input.into()))
+                .unwrap(),
+            Value::Timestamp(expected.into()),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn every_boxdb_write_path_stores_utc_in_both_formats() {
+    for format in [Format::Binary, Format::Readable] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("timestamps");
+        let mut db = Database::open(&path, format).unwrap();
+        db.execute("CREATE TABLE events(id INT64 PRIMARY KEY,ts TIMESTAMP)")
+            .unwrap();
+        for (id, value) in [Value::Timestamp(OFFSET.into()), Value::Text(OFFSET.into())]
+            .into_iter()
+            .enumerate()
+        {
+            db.execute_params(
+                "INSERT INTO events VALUES(?,?)",
+                &[Value::Integer(id as i64), value],
+            )
+            .unwrap();
+        }
+        db.execute(&format!(
+            "INSERT INTO events VALUES(2,'{OFFSET}'); INSERT INTO events SELECT 3,'{OFFSET}'"
+        ))
+        .unwrap();
+        db.execute("CREATE TABLE source(id INT64 PRIMARY KEY); CREATE TRIGGER copy AFTER INSERT ON source BEGIN INSERT INTO events VALUES(NEW.id,'2026-10-13T08:30:00.123456789-03:30'); END; INSERT INTO source VALUES(4)").unwrap();
+        db.execute("UPDATE events SET ts='2026-10-13T16:00:00.123456789'||'+04:00' WHERE id=0")
+            .unwrap();
+        let expected = vec![vec![Value::Text(UTC.into())]; 5];
+        assert_eq!(raw(&mut db, "events"), expected);
+        for snapshot in [Format::Binary, Format::Readable] {
+            let mut restored = Database::from_snapshot(&db.export(snapshot).unwrap()).unwrap();
+            assert_eq!(raw(&mut restored, "events"), expected);
+        }
+        if format == Format::Binary {
+            let stored: String = Connection::open(&path)
+                .unwrap()
+                .query_row("SELECT ts FROM events WHERE id=0", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(stored, UTC);
+        } else {
+            let yaml = std::fs::read_to_string(&path).unwrap();
+            assert!(yaml.contains(UTC));
+            assert!(!yaml.contains(OFFSET));
+        }
+        drop(db);
+        assert_eq!(
+            raw(&mut Database::open(&path, format).unwrap(), "events"),
+            expected
+        );
+    }
+}
+
+#[test]
+fn timestamps_reject_ambiguous_or_lossy_inputs_atomically() {
+    let mut db = Database::memory();
+    db.execute(&format!(
+        "CREATE TABLE t(ts TIMESTAMP); INSERT INTO t VALUES('{UTC}')"
+    ))
+    .unwrap();
+    for input in [
+        "2026-10-13",
+        "12:00:00",
+        "2026-10-13T12:00:00",
+        "2026-10-13 12:00:00",
+        "2026-02-29T12:00:00Z",
+        "2026-10-13T25:00:00Z",
+        "2026-10-13T12:00:00+24:00",
+        "2026-10-13T12:00:00[Asia/Tbilisi]",
+        "2026-10-13T12:00:00.1234567891Z",
+        "2016-12-31T23:59:60Z",
+        "0000-01-01T00:00:00+01:00",
+        "9999-12-31T23:59:59-01:00",
+    ] {
+        assert!(
+            db.execute_params("INSERT INTO t VALUES(?)", &[Value::Timestamp(input.into())])
+                .is_err(),
+            "{input}"
+        );
+        assert!(
+            db.execute(&format!("INSERT INTO t VALUES('{OFFSET}'),('{input}')"))
+                .is_err(),
+            "{input}"
+        );
+        assert!(
+            db.execute(&format!("UPDATE t SET ts='{input}'")).is_err(),
+            "{input}"
+        );
+        assert_eq!(raw(&mut db, "t"), vec![vec![Value::Text(UTC.into())]]);
+    }
+    db.execute("INSERT INTO t VALUES(NULL)").unwrap();
+    assert_eq!(raw(&mut db, "t")[0], vec![Value::Null]);
+}
+
+#[test]
+fn timestamp_arrays_normalize_typed_parameters_and_sql_json() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(ts TIMESTAMP[][])").unwrap();
+    db.execute_params(
+        "INSERT INTO t VALUES(?)",
+        &[Value::Array(vec![
+            Value::Array(vec![Value::Timestamp(OFFSET.into()), Value::Null]),
+            Value::Array(vec![]),
+        ])],
+    )
+    .unwrap();
+    db.execute(&format!(
+        r#"INSERT INTO t VALUES('[ ["{OFFSET}", null], [] ]')"#
+    ))
+    .unwrap();
+    assert_eq!(
+        raw(&mut db, "t"),
+        vec![vec![Value::Text(format!(r#"[["{UTC}",null],[]]"#))]; 2]
+    );
+    let snapshot = db.export(Format::Readable).unwrap();
+    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    assert_eq!(
+        db.execute("SELECT ts FROM t").unwrap()[0].rows,
+        restored.execute("SELECT ts FROM t").unwrap()[0].rows
+    );
+    assert!(
+        db.execute(r#"UPDATE t SET ts='[["2026-10-13T12:00:00"]]'"#)
+            .is_err()
+    );
+}
+
+#[test]
+fn normalization_handles_keys_shadowed_rowids_and_recursive_triggers() {
+    let mut db = Database::memory();
+    db.execute("PRAGMA recursive_triggers=ON").unwrap();
+    for (table, declaration, insert) in [
+        (
+            "ordinary",
+            "id INT64 PRIMARY KEY,ts TIMESTAMP,other TIMESTAMP",
+            format!("1,'{OFFSET}','{OFFSET}'"),
+        ),
+        (
+            "keyed",
+            "ts TIMESTAMP PRIMARY KEY,other TIMESTAMP) WITHOUT ROWID --",
+            format!("'{OFFSET}','{OFFSET}'"),
+        ),
+        (
+            "shadowed",
+            "rowid TEXT,_rowid_ TEXT,oid TEXT,ts TIMESTAMP",
+            format!("'a','b','c','{OFFSET}'"),
+        ),
+        (
+            "quoted",
+            "\"odd column\" TEXT PRIMARY KEY,ts TIMESTAMP) WITHOUT ROWID --",
+            format!("'a','{OFFSET}'"),
+        ),
+    ] {
+        db.execute(&format!("CREATE TABLE {table}({declaration})"))
+            .unwrap();
+        db.execute(&format!("INSERT INTO {table} VALUES({insert})"))
+            .unwrap();
+        db.execute(&format!("UPDATE {table} SET ts='{OFFSET}'"))
+            .unwrap();
+        assert_eq!(
+            raw(&mut db, table),
+            vec![vec![Value::Text(UTC.into())]],
+            "{table}"
+        );
+    }
+    db.execute(
+        "CREATE TABLE composite(a TEXT,b INT64,ts TIMESTAMP,PRIMARY KEY(a,b)) WITHOUT ROWID",
+    )
+    .unwrap();
+    db.execute(&format!(
+        "INSERT INTO composite VALUES('x',1,'{OFFSET}'),('x',2,'2026-10-13T12:01:00Z')"
+    ))
+    .unwrap();
+    db.execute(&format!("UPDATE composite SET b=3,ts='{OFFSET}' WHERE b=2"))
+        .unwrap();
+    assert_eq!(
+        raw(&mut db, "composite"),
+        vec![vec![Value::Text(UTC.into())]; 2]
+    );
+}
+
+#[test]
+fn timestamp_defaults_are_stored_in_utc_and_invalid_ddl_rolls_back() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY); INSERT INTO t VALUES(1)")
+        .unwrap();
+    db.execute(&format!(
+        "ALTER TABLE t ADD COLUMN ts TIMESTAMP DEFAULT '{OFFSET}'"
+    ))
+    .unwrap();
+    db.execute("INSERT INTO t(id) VALUES(2)").unwrap();
+    assert_eq!(raw(&mut db, "t"), vec![vec![Value::Text(UTC.into())]; 2]);
+    assert!(
+        db.execute("ALTER TABLE t ADD COLUMN bad TIMESTAMP DEFAULT '2026-10-13T12:00:00'")
+            .is_err()
+    );
+    assert_eq!(
+        db.execute("SELECT * FROM t").unwrap()[0].columns,
+        vec!["id", "ts"]
+    );
+    db.execute(&format!("CREATE TABLE defaults(ts TIMESTAMP DEFAULT '{OFFSET}'); INSERT INTO defaults DEFAULT VALUES")).unwrap();
+    assert_eq!(
+        raw(&mut db, "defaults"),
+        vec![vec![Value::Text(UTC.into())]]
+    );
+}
+
+#[test]
+fn canonical_timestamps_sort_and_enforce_unique_instants() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(id INT64 PRIMARY KEY,ts TIMESTAMP UNIQUE); INSERT INTO t VALUES(1,'2026-10-13T12:00:00.1Z'),(2,'2026-10-13T16:00:00+04:00'),(3,'2026-10-13T12:00:00.000000001Z')").unwrap();
+    assert_eq!(
+        db.execute("SELECT id FROM t ORDER BY ts").unwrap()[0].rows,
+        vec![
+            vec![Value::Integer(2)],
+            vec![Value::Integer(3)],
+            vec![Value::Integer(1)]
+        ]
+    );
+    for sql in [
+        "INSERT INTO t VALUES(4,'2026-10-13T12:00:00Z')",
+        "INSERT OR IGNORE INTO t VALUES(4,'2026-10-13T07:00:00-05:00')",
+        "UPDATE OR IGNORE t SET ts='2026-10-13T12:00:00Z' WHERE id=1",
+    ] {
+        assert!(db.execute(sql).is_err(), "{sql}");
+        assert_eq!(raw(&mut db, "t").len(), 3);
+    }
+    assert_eq!(
+        db.execute_params(
+            "SELECT id FROM t WHERE ts=?",
+            &[Value::Timestamp("2026-10-13T16:00:00+04:00".into())]
+        )
+        .unwrap()[0]
+            .rows,
+        vec![vec![Value::Integer(2)]]
+    );
+}
+
+#[test]
+fn generated_timestamps_must_already_use_canonical_utc() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE t(input TEXT,ts TIMESTAMP GENERATED ALWAYS AS(input) STORED)")
+        .unwrap();
+    db.execute_params("INSERT INTO t(input) VALUES(?)", &[Value::Text(UTC.into())])
+        .unwrap();
+    assert!(
+        db.execute_params(
+            "INSERT INTO t(input) VALUES(?)",
+            &[Value::Text(OFFSET.into())]
+        )
+        .is_err()
+    );
+    assert_eq!(raw(&mut db, "t"), vec![vec![Value::Text(UTC.into())]]);
+}

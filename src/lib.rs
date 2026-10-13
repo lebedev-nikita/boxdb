@@ -447,6 +447,9 @@ impl Database {
                 }
                 schema::cleanup(&self.connection)?;
                 self.refresh(true)?;
+                if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
+                    schema::normalize_timestamps(&self.connection, &self.types.borrow())?;
+                }
             }
             if guarded {
                 // An internal savepoint nested inside a user transaction must
