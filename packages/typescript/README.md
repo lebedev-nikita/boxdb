@@ -201,3 +201,7 @@ Every connection includes decimal arithmetic, Unicode text functions, regular
 expressions, sqlite-vec, FTS5 and R*Tree; see the
 [SQL extension guide](../../docs/extensions.md). Virtual tables require memory
 or binary storage.
+
+Unsigned SQL values are returned as `bigint`. Parameters accept the combined
+INT64/UINT64 range (`-2^63` through `2^64 - 1`); positive values above INT64_MAX
+bind as UINT64. Use `CAST(? AS UINT8/16/32)` to select a narrower unsigned width.

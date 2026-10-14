@@ -10,7 +10,8 @@ use rusqlite::{
     types::{ToSql, ToSqlOutput, Value as SqlValue, ValueRef},
 };
 
-pub(crate) use libsqlite3_sys::decimal::{PREFIX, decode, escape_blob, unescape_blob};
+pub(crate) use libsqlite3_sys::decimal::{PREFIX, decode};
+pub(crate) use libsqlite3_sys::wire::{decode_blob, encode_blob};
 pub(crate) fn parse(text: &str) -> Result<BigDecimal> {
     libsqlite3_sys::decimal::parse(text).map_err(|error| Error::new(error.0))
 }

@@ -15,10 +15,13 @@ pub fn encode(kind: Kind, text: &str) -> Result<Vec<u8>> {
             .as_bytes()
             .to_vec(),
         Kind::Decimal => return crate::decimal::encode(text),
+        Kind::Uint8 | Kind::Uint16 | Kind::Uint32 | Kind::Uint64 => {
+            return crate::unsigned::encode(kind, text);
+        }
         _ => crate::temporal::encode(kind, text)?,
     };
     let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-    let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+    let mut bytes = vec![descriptor.tag];
     bytes.extend(payload);
     Ok(bytes)
 }
@@ -31,6 +34,9 @@ pub fn text(kind: Kind, bytes: &[u8]) -> Result<String> {
                 .map_err(|_| Error("invalid UUID storage".into()))?,
         )
         .to_string()),
+        Kind::Uint8 | Kind::Uint16 | Kind::Uint32 | Kind::Uint64 => {
+            Ok(crate::unsigned::read(bytes).to_string())
+        }
         Kind::Decimal => std::str::from_utf8(bytes)
             .map(str::to_owned)
             .map_err(|e| Error(e.to_string())),
@@ -39,29 +45,37 @@ pub fn text(kind: Kind, bytes: &[u8]) -> Result<String> {
 }
 
 pub fn decode(bytes: &[u8]) -> Option<(Kind, String)> {
-    if bytes.len() < 5 || &bytes[..3] != b"\0BD" || bytes[4] != b'1' {
+    if bytes.is_empty() {
         return None;
     }
     let descriptor = TYPES
         .iter()
-        .find(|d| d.tag == bytes[3] && d.kind != Kind::Decimal)?;
-    if bytes.len() != 5 + descriptor.payload_size {
+        .find(|d| d.tag == bytes[0] && d.kind != Kind::Decimal)?;
+    if bytes.len() != 1 + descriptor.payload_size {
         return None;
     }
-    Some((descriptor.kind, text(descriptor.kind, &bytes[5..]).ok()?))
+    Some((descriptor.kind, text(descriptor.kind, &bytes[1..]).ok()?))
 }
 
 pub fn canonical(kind: Kind, value: &str) -> Result<String> {
     let bytes = encode(kind, value)?;
-    text(kind, &bytes[5..])
+    text(kind, &bytes[1..])
 }
 
 pub fn cast(target: Kind, source: Kind, value: &str) -> Result<String> {
     let bytes = encode(source, value)?;
+    if crate::unsigned::is_unsigned(target as i32) {
+        let converted =
+            crate::unsigned::evaluate(0, target as i32, source as i32, &bytes[1..], -3, &[])?;
+        return text(target, &converted[1..]);
+    }
+    if target == Kind::Decimal && crate::unsigned::is_unsigned(source as i32) {
+        return canonical(target, &text(source, &bytes[1..])?);
+    }
     let payload = if target == source {
-        bytes[5..].to_vec()
+        bytes[1..].to_vec()
     } else {
-        crate::temporal::cast(target, source, &bytes[5..], false)?
+        crate::temporal::cast(target, source, &bytes[1..], false)?
     };
     text(target, &payload)
 }
@@ -94,7 +108,7 @@ unsafe extern "C" fn boxdb_native_function(
             .collect::<Vec<_>>();
         let (kind, payload) = crate::temporal_functions::evaluate(function, &args)?;
         let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-        let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+        let mut bytes = vec![descriptor.tag];
         bytes.extend(payload);
         Ok(bytes)
     })();
@@ -156,6 +170,11 @@ unsafe extern "C" fn boxdb_native_compare(
 #[unsafe(no_mangle)]
 unsafe extern "C" fn boxdb_native_hash(kind: i32, data: *const c_char, length: i32) -> u64 {
     let bytes = unsafe { input(data, length) };
+    if crate::unsigned::is_unsigned(kind) {
+        // SQLite's numeric Bloom hash saturates REAL/DECIMAL at INT64_MAX.
+        // Equal cross-type numbers must land in the same bucket.
+        return crate::unsigned::read(bytes).min(i64::MAX as u64);
+    }
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (if matches!(kind, 4 | 5) { 4 } else { kind }).hash(&mut hash);
     if matches!(kind, 4 | 5 | 6) {
@@ -214,6 +233,28 @@ unsafe extern "C" fn boxdb_native_eval(
     out_kind: *mut i32,
 ) -> i32 {
     let result = (|| {
+        if crate::unsigned::is_unsigned(target)
+            || crate::unsigned::is_unsigned(kind_a)
+            || crate::unsigned::is_unsigned(kind_b)
+        {
+            if target == 0 || crate::unsigned::is_unsigned(target) {
+                unsafe {
+                    *out_kind = if target == 0 {
+                        kind_a.max(kind_b)
+                    } else {
+                        target
+                    };
+                }
+                return crate::unsigned::evaluate(
+                    operation,
+                    target,
+                    kind_a,
+                    unsafe { input(data_a, len_a) },
+                    kind_b,
+                    unsafe { input(data_b, len_b) },
+                );
+            }
+        }
         if operation != 0 && operation != 8 {
             let (kind, payload) = crate::temporal::operation(
                 operation,
@@ -229,7 +270,7 @@ unsafe extern "C" fn boxdb_native_eval(
                 return Ok(payload);
             }
             let descriptor = TYPES.iter().find(|d| d.kind as i32 == kind).unwrap();
-            let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+            let mut bytes = vec![descriptor.tag];
             bytes.extend(payload);
             return Ok(bytes);
         }
@@ -255,7 +296,7 @@ unsafe extern "C" fn boxdb_native_eval(
                 crate::temporal::cast(kind, source, input, operation == 8)?
             };
             let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-            let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+            let mut bytes = vec![descriptor.tag];
             bytes.extend(payload);
             return Ok(bytes);
         }

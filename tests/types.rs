@@ -1,10 +1,77 @@
-use boxdb::{Database, Format, Value};
+use boxdb::{Database, Format, Type, Value};
 use rusqlite::Connection;
+
+#[test]
+fn removed_type_names_are_rejected_by_the_public_type_parser() {
+    for name in [
+        "DOUBLE PRECISION",
+        "CHARACTER VARYING",
+        "JSONB",
+        "FLOAT4",
+        "FLOAT",
+        "FLOAT8",
+    ] {
+        for declaration in [
+            name.to_owned(),
+            name.to_lowercase(),
+            format!("{name}[]"),
+            format!("ARRAY<{name}>"),
+        ] {
+            assert!(Type::parse(&declaration).is_err(), "{declaration}");
+        }
+    }
+    assert_eq!(Type::parse("REAL").unwrap(), Type::Double);
+    assert_eq!(Type::parse("DOUBLE").unwrap(), Type::Double);
+    assert!(Type::parse("VARCHAR(3)").is_ok());
+    assert!(Type::parse("JSON").is_ok());
+}
+
+#[test]
+fn removed_type_names_cannot_be_used_in_sql_declarations_or_casts() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE existing(n INT64); CREATE TEMP TABLE scratch(n INT64); ATTACH ':memory:' AS other; CREATE TABLE other.existing(n INT64)").unwrap();
+    for name in [
+        "DOUBLE PRECISION",
+        "CHARACTER VARYING",
+        "JSONB",
+        "FLOAT4",
+        "FLOAT",
+        "FLOAT8",
+        "FLOAT(24)",
+        "CHARACTER VARYING(3)",
+    ] {
+        for sql in [
+            format!("CREATE TABLE rejected(n {name})"),
+            format!("CREATE TABLE rejected(n {name}[])"),
+            format!("CREATE TEMP TABLE rejected(n {name})"),
+            format!("CREATE TABLE other.rejected(n {name})"),
+            format!("ALTER TABLE existing ADD COLUMN removed {name}"),
+            format!("ALTER TABLE temp.scratch ADD COLUMN removed {name}"),
+            format!("ALTER TABLE other.existing ADD COLUMN removed {name}"),
+            format!("SELECT CAST(1 AS {name})"),
+            format!("SELECT CAST(NULL AS {name}) WHERE 0"),
+        ] {
+            assert!(db.statement_info(&sql).is_err(), "prepare: {sql}");
+            assert!(db.execute(&sql).is_err(), "execute: {sql}");
+        }
+    }
+    assert_eq!(
+        db.execute("SELECT 'FLOAT', 'JSONB', CAST(0.5 AS REAL), CAST(0.5 AS DOUBLE)")
+            .unwrap()[0]
+            .rows,
+        vec![vec![
+            Value::Text("FLOAT".into()),
+            Value::Text("JSONB".into()),
+            Value::Real(0.5),
+            Value::Real(0.5)
+        ]]
+    );
+}
 
 #[test]
 fn rich_types_round_trip_through_sqlite_and_readable_storage() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n DECIMAL(20,4),u UUID,j JSON,ts INSTANT,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals DECIMAL(20,4)[],blobs BYTEA[])").unwrap();
+    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n DECIMAL(20,4),u UUID,j JSON,ts INSTANT,bytes BYTEA,tags TEXT[],matrix INT64[][],f DOUBLE,decimals DECIMAL(20,4)[],blobs BYTEA[])").unwrap();
     let values = vec![
         Value::Integer(1),
         Value::Integer(i16::MIN.into()),
@@ -25,7 +92,7 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
             Value::Array(vec![Value::Integer(i64::MAX), Value::Null]),
             Value::Array(vec![]),
         ]),
-        Value::Real(0.5),
+        Value::Real(1.23456789012345),
         Value::Array(vec![
             Value::Decimal("1234567890123456.1234".into()),
             Value::Null,
@@ -83,7 +150,7 @@ fn invalid_rich_values_fail_without_committing_other_rows() {
     for (ty, value) in [
         ("INT16", Value::Integer(32768)),
         ("INT32", Value::Integer(i64::MAX)),
-        ("FLOAT4", Value::Real(1e40)),
+        ("DOUBLE", Value::Real(f64::INFINITY)),
         ("BOOLEAN", Value::Integer(2)),
         ("VARCHAR(2)", Value::Text("abc".into())),
         ("DECIMAL(4,2)", Value::Decimal("1.234".into())),
@@ -92,10 +159,7 @@ fn invalid_rich_values_fail_without_committing_other_rows() {
         ("INSTANT", Value::Text("2024-02-30T00:00:00.000000Z".into())),
         ("INSTANT", Value::Text("2024-02-29T25:00:00Z".into())),
         ("TEXT[]", Value::Array(vec![Value::Integer(1)])),
-        (
-            "DOUBLE PRECISION[]",
-            Value::Array(vec![Value::Real(f64::NAN)]),
-        ),
+        ("DOUBLE[]", Value::Array(vec![Value::Real(f64::NAN)])),
     ] {
         let mut db = Database::memory();
         db.execute(&format!("CREATE TABLE t(n {ty})")).unwrap();

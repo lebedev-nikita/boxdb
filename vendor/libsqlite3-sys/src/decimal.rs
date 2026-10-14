@@ -10,25 +10,7 @@ use std::{ffi::c_char, str::FromStr};
 pub struct Error(pub String);
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub const PREFIX: &[u8] = b"\0BDd1";
-const BLOB_PREFIX: &[u8] = b"\0BDb1";
-
-pub fn escape_blob(bytes: &[u8]) -> Vec<u8> {
-    if bytes.starts_with(b"\0BD") {
-        [BLOB_PREFIX, bytes].concat()
-    } else {
-        bytes.to_vec()
-    }
-}
-
-pub fn unescape_blob(bytes: Vec<u8>) -> Vec<u8> {
-    if bytes.starts_with(BLOB_PREFIX) && bytes[BLOB_PREFIX.len()..].starts_with(b"\0BD") {
-        bytes[BLOB_PREFIX.len()..].to_vec()
-    } else {
-        bytes
-    }
-}
-
+pub const PREFIX: &[u8] = b"d";
 pub fn parse(text: &str) -> Result<BigDecimal> {
     if text.len() > 8194 {
         return Err(Error("DECIMAL exceeds size limit".into()));

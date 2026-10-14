@@ -38,11 +38,16 @@ fn input(value: Cell) -> napi::Result<Value> {
         Either5::A(_) => Value::Null,
         Either5::B(value) => Value::Real(value),
         Either5::C(value) => {
-            let (value, lossless) = value.get_i64();
-            if !lossless {
-                return Err(failure("bigint is outside the SQLite signed 64-bit range"));
+            let (signed, lossless) = value.get_i64();
+            if lossless {
+                Value::Integer(signed)
+            } else {
+                let (negative, unsigned, lossless) = value.get_u64();
+                if negative || !lossless {
+                    return Err(failure("bigint is outside the BoxDB 64-bit range"));
+                }
+                Value::UnsignedInteger(unsigned)
             }
-            Value::Integer(value)
         }
         Either5::D(value) => Value::Text(value),
         Either5::E(value) => Value::Bytea(value.to_vec()),
@@ -53,6 +58,7 @@ fn output(value: Value) -> napi::Result<Cell> {
     Ok(match value {
         Value::Null => Either5::A(Null),
         Value::Integer(value) => Either5::C(value.into()),
+        Value::UnsignedInteger(value) => Either5::C(value.into()),
         Value::Real(value) => Either5::B(value),
         Value::Text(value)
         | Value::Decimal(value)

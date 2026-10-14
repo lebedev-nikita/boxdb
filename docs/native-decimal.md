@@ -61,8 +61,9 @@ processing functions are disabled.
 ## Storage and clients
 
 The binary database keeps the standard SQLite page and record format. Decimals
-are ordinary BLOB records containing a versioned `\0BDd1` envelope followed by
-UTF-8 decimal text. The envelope is shared with other native types. Its tag survives stored columns, calculated values,
+are ordinary BLOB records containing the one-byte tag `d` followed by UTF-8
+decimal text. The database-wide codec version is stored in `__boxdb_codec` and
+readable snapshot headers. The tag survives stored columns, calculated values,
 temporary records, materialized CTEs, and sorting. No extra disk serial type or
 in-memory extension subtype is needed.
 [SQLite's record format](https://www.sqlite.org/fileformat2.html#record_format)
@@ -71,10 +72,10 @@ defines BLOB serial types independently of their payload.
 Standard file encoding does **not** promise the same SQL behavior in unmodified
 SQLite. Such clients see BLOB values and do not implement decimal affinity,
 numeric index ordering, operators, or the BoxDB constraint functions. Use the
-BoxDB engine for these databases. Ordinary BLOB payloads sharing the reserved
-`\0BD` prefix are escaped with a separate envelope; BoxDB's BYTEA transport
-restores the original bytes. Ordinary BLOB literals, casts, bind parameters, and
-function results are escaped at their API boundary. BoxDB uses a separate private
+BoxDB engine for these databases. Every ordinary BLOB has a `b` tag followed by
+the original bytes, so payloads beginning with `d` or any other native tag remain
+BYTEA. Ordinary BLOB literals, casts, bind parameters, and function results are
+tagged at their API boundary. BoxDB uses a separate private
 wire-cell transport for native values and readable imports.
 
 Rust exposes `Type::Decimal` and `Value::Decimal(String)`. Calculated results
@@ -87,8 +88,11 @@ as strings and cast them when an expression requires a native decimal value.
 The C API retains the five upstream fundamental type codes: decimal storage
 reports `SQLITE_BLOB`, while SQL `typeof` reports `decimal`. Decimal text views
 and explicit INTEGER/REAL conversions are handled by the patched value accessors.
-`sqlite3_column_blob` exposes wire cells
-for Rust decoding; scalar-function accessors expose logical payloads.
+Standard C column and scalar-function accessors expose logical payloads.
+`sqlite3_boxdb_column_blob` and its size accessors expose complete storage cells;
+the vendored Rust FFI routes column BLOB reads through these accessors for typed
+decoding. Incremental BYTEA reads and writes address payload bytes, preserving
+the stored tag.
 Generic extensions that gate inputs on `sqlite3_value_numeric_type` still see
 BLOB; cast to the representation their API expects. The public decimal SQL
 functions are `decimal_round` and `decimal_div`, both returning native decimals.
@@ -104,7 +108,8 @@ values and connect VDBE operations to
 [Aggregate helpers](../vendor/libsqlite3-sys/boxdb_aggregate.inc) keep exact
 accumulators. [The shared native type registry](../vendor/libsqlite3-sys/native_types.rs) also
 drives UUID and temporal affinities. The original record encoder continues to
-serialize BLOB payloads. Readable YAML uses typed mappings, such as
+serialize BLOB payloads. Readable YAML version 3 records the codec version once
+and uses typed mappings, such as
 `amount: {decimal: "12.50"}`, preserving requested display scale.
 
 Comparison patches cover in-memory values and serialized-record paths, including

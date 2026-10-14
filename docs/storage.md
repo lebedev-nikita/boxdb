@@ -22,6 +22,8 @@ validates its metadata against the current schema and installs TEMP validators
 for other logical types and native elements in typed arrays. Those
 triggers also validate writes caused by SQL expressions, INSERT SELECT and user
 triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
+The `__boxdb_codec` table stores the database-wide BLOB codec version. Unknown
+versions are rejected when opening or restoring a database.
 
 Ordinary CREATE TABLE statements are STRICT by default, including TEMP tables,
 WITHOUT ROWID and CREATE TABLE AS SELECT. An explicit STRICT suffix is accepted,
@@ -46,18 +48,47 @@ are translated into physical types and, where applicable, portable CHECKs:
 
 | Logical type | SQLite representation |
 | --- | --- |
-| INT8, INT16, INT32, UINT8, UINT16, UINT32 | INTEGER with a range CHECK |
+| INT8, INT16, INT32 | INTEGER with a range CHECK |
+| UINT8, UINT16, UINT32 | Native declarations; standard INTEGER cells in typed columns and indexes |
+| UINT64 | Native declaration; `Q` tag followed by eight unsigned big-endian bytes |
 | BOOLEAN | INTEGER with a 0/1 CHECK |
 | VARCHAR(n) | TEXT with a length CHECK |
-| FLOAT4 | REAL with BoxDB's float32 validation |
+| DOUBLE | REAL with 64-bit floating-point values |
 | BYTEA | BLOB with a storage-class CHECK |
-| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Versioned BLOB envelopes interpreted by the patched engine |
+| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
-Unsigned columns return `Value::UnsignedInteger`; signed columns return
-`Value::Integer`. Supported unsigned ranges fit in SQLite's signed INTEGER,
-so native comparisons and sorting retain their numeric meaning. Typed arrays
-preserve these logical element types.
+Unsigned columns and computed unsigned results return `Value::UnsignedInteger`;
+signed values return `Value::Integer`. All four unsigned widths are native SQL
+types. UINT8/16/32 column values use standard SQLite INTEGER serial types;
+reading a column or its covering index restores its unsigned width. UINT64 uses
+a typed BLOB for the full range from zero through 18446744073709551615.
+Expressions, ANY columns and materialized results retain tagged values where
+column declarations cannot reconstruct the type. Tags are `C`, `S`, `L`, and
+`Q` for UINT8/16/32/64, with 1/2/4/8-byte big-endian payloads. Typed arrays
+preserve unsigned values without passing through floating point.
+
+Comparisons, ordering and indexes compare unsigned values numerically, including
+mixed signed INTEGER, REAL and DECIMAL comparisons. Integer SQL literals above
+INT64_MAX are UINT64 values; values above UINT64_MAX are rejected.
+`Value::UnsignedInteger` parameters bind as UINT64. Use a SQL CAST to request a
+narrower parameter width. Values fitting INT64 may also be stored in INTEGER
+columns; larger unsigned values require UINT64 or ANY.
+
+Unsigned `+`, `-`, `*`, `/` and `%` retain the widest unsigned operand's width.
+Signed INTEGER operands participate exactly; a negative or out-of-range result
+is an error. Division truncates, and division by zero is an error. Mixing DECIMAL
+promotes the result to DECIMAL; arithmetic with REAL requires an explicit cast.
+Bitwise AND/OR/NOT and logical shifts operate within the unsigned width. Left
+shifts discard bits outside that width, and shifts of 64 or more produce zero.
+Negative bitwise operands and shift counts are rejected.
+
+SUM of unsigned inputs widens to UINT64, promoting to exact DECIMAL when its
+range is exceeded. AVG returns DECIMAL and follows native decimal division
+rules. Mixed signed or DECIMAL aggregates promote to DECIMAL. MIN/MAX retain
+the selected value's type. Unsigned CAST accepts finite integral REAL values in range and rejects
+fractional or overflowing values. CAST to INTEGER rejects values above INT64_MAX;
+CAST to REAL explicitly permits floating-point rounding.
 
 Typed parameter values are normalized before binding. Use `Value::Decimal` for
 native exact arithmetic.
@@ -65,8 +96,9 @@ Native values retain their types in computed results, materialization and sortin
 Other logical values use column-origin metadata for typed projections.
 
 The binary file retains SQLite's standard page and record encoding. Native
-values use versioned BLOB envelopes; ordinary BLOBs with the reserved prefix
-are escaped. Readable YAML uses typed mappings such as
+values use a one-byte type tag followed by their payload. Ordinary BLOBs always
+use the BYTEA tag `b`, including empty values and payloads starting with a type
+tag. No cell contains a signature or codec version. Readable YAML uses typed mappings such as
 `at: {instant: "2024-02-29T12:00:00.000000Z"}` and `amount: {decimal: "12.50"}`.
 UUID uses a 16-byte payload and canonical lowercase text at public interfaces.
 See [native decimals](native-decimal.md) and [temporal types](temporal.md).
@@ -102,7 +134,8 @@ documents. Each document starts with `---`. A small complete database looks like
 ```yaml
 ---
 kind: database
-version: 2
+version: 3
+codec_version: 1
 application_id: 0
 user_version: 0
 ---

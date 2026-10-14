@@ -223,7 +223,8 @@ impl SnapshotCache {
         write_document(
             &mut header,
             &Record::Database {
-                version: 2,
+                version: 3,
+                codec_version: libsqlite3_sys::wire::VERSION,
                 application_id: db.query_row("PRAGMA application_id", [], |r| r.get(0))?,
                 user_version: db.query_row("PRAGMA user_version", [], |r| r.get(0))?,
             },

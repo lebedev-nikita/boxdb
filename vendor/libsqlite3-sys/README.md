@@ -15,9 +15,11 @@ SQLite JSON1/JSONB is omitted at compile time; BoxDB validates opaque JSON in Ru
 ## Adding a native type
 
 Add a Kind and descriptor to [native_types.rs](native_types.rs): its SQL name,
-contiguous affinity, wire tag and fixed payload size. The build generates C
+affinity, wire tag and fixed payload size. The build generates C
 descriptors, affinity constants and SQLite's declaration/type-check tables from
-that registry. Affinities currently occupy 0x47 through 0x4f, including DECIMAL.
+that registry. Affinities occupy 0x47 through 0x4f and 0x60; the 0x6f comparison
+mask excludes SQLite's JUMPIFNULL and NULLEQ bits. Affinity lookup uses the
+registry rather than assuming contiguous assignments.
 
 Implement parsing, formatting, casts, operators, comparison keys and hashing in
 Rust behind [native.rs](src/native.rs). Comparison and hashing must agree with
@@ -27,8 +29,8 @@ cross-type comparison domains and special numeric behavior still need explicit
 rules. DECIMAL has a dedicated variable-length codec and numeric backend.
 
 Expose the type in BoxDB's Rust Type/Value enums, schema translation and client
-value mappings. Native parameters, results and snapshots use the common BLOB
-envelope, while the SQLite C API retains its five standard storage classes.
+value mappings. Native parameters, results and snapshots use a one-byte BLOB
+type tag, while the SQLite C API retains its five standard storage classes.
 Test behavior through Database, including scans versus indexes and both snapshot
 formats. Public Rust values and serialization form the other integration boundary.
 
@@ -42,16 +44,23 @@ bundled build. System SQLite, SQLCipher, Gecko, and loadable-extension builds ar
 rejected instead of silently dropping native decimal support.
 
 The standard SQLite page and record format is preserved. Native values and
-escaped ordinary BLOBs use versioned BLOB envelopes. Stock SQLite does not have
+ordinary BLOBs use single-byte type tags. UINT8/16/32 use INTEGER serial types
+when a column or index declaration supplies their width; OP_Column restores
+that width before evaluation. Runtime and untyped values keep their tag, while
+UINT64 always uses a tagged BLOB. `src/unsigned.rs` implements checked unsigned
+arithmetic and logical shifts. The database codec version is stored
+in `__boxdb_codec`, and readable headers also record it. Stock SQLite does not have
 compatible query or index semantics. See [the decimal contract](../../docs/native-decimal.md).
 
-Normal BLOB bind/result APIs escape reserved payloads. BoxDB transports already
+Normal BLOB bind/result APIs add the BYTEA tag. BoxDB transports already
 encoded cells through the pointer API with the private type `boxdb.wire-blob.v1`
 and a borrowed C descriptor `{ const char *data; int length; }`. The patched API
 copies the descriptor's bytes immediately and calls a supplied destructor once.
 This route is used for typed parameters, native decimal function results, and
-readable snapshot import. `sqlite3_column_blob` returns wire cells for BoxDB's
-Rust decoder; scalar-function value accessors expose logical payloads.
+readable snapshot import. Standard C column and scalar-function value accessors
+expose logical payloads. `sqlite3_boxdb_column_blob` and its size accessors expose
+wire cells; the Rust FFI uses these for column BLOB decoding. Incremental BLOB
+access skips the BYTEA tag and preserves it on writes.
 
 To upgrade SQLite, update the pinned upstream sources and crate build/bindings,
 then adapt the checked transformations. Run the complete Rust and TypeScript

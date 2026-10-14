@@ -76,7 +76,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
 #[test]
 fn strict_tables_support_native_aliases_any_temp_and_sqlite_constraints() {
     let mut db = Database::memory();
-    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INT64 PRIMARY KEY AUTOINCREMENT,n INT64,r DOUBLE PRECISION,v ANY,untyped,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
+    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INT64 PRIMARY KEY AUTOINCREMENT,n INT64,r DOUBLE,v ANY,untyped,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
     db.execute("INSERT INTO [quoted table](n,r,v,untyped,word) VALUES(9223372036854775807,0.5,'001',x'00ff','a')").unwrap();
     assert_eq!(
         db.execute("SELECT id,n,r,v,typeof(v),untyped FROM [quoted table]")
@@ -156,7 +156,7 @@ fn create_table_as_select_is_strict_and_preserves_inferred_cells() {
         );
         assert_eq!(
             reopened
-                .execute("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
+                .execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB '__boxdb_*' ORDER BY name")
                 .unwrap()[0]
                 .rows,
             vec![
@@ -206,7 +206,7 @@ fn added_columns_keep_strict_typing_and_ddl_returns_no_internal_results() {
         vec![vec![Value::Integer(2)]]
     );
     assert!(db.execute("UPDATE t SET score='wrong'").is_err());
-    db.execute("ALTER TABLE t ADD COLUMN ratio FLOAT8 DEFAULT 0.5; ALTER TABLE t ADD COLUMN d INSTANT DEFAULT '2024-02-29T00:00:00.000000Z'").unwrap();
+    db.execute("ALTER TABLE t ADD COLUMN ratio DOUBLE DEFAULT 0.5; ALTER TABLE t ADD COLUMN d INSTANT DEFAULT '2024-02-29T00:00:00.000000Z'").unwrap();
     assert_eq!(
         db.execute("SELECT ratio,d FROM t").unwrap()[0].rows,
         vec![vec![

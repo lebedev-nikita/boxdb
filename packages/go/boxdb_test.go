@@ -745,3 +745,26 @@ func TestPreparedStatementsAndNamedParameters(t *testing.T) {
 		t.Fatalf("empty row error = %v", err)
 	}
 }
+
+func TestUnsignedIntegersPreserveFullRange(t *testing.T) {
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec("CREATE TABLE unsigned_values(small UINT8,wide UINT64 UNIQUE)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("INSERT INTO unsigned_values VALUES(?,?)", uint8(255), uint64(math.MaxUint64)); err != nil {
+		t.Fatal(err)
+	}
+	var small uint8
+	var wide, previous uint64
+	var kind string
+	if err = db.QueryRow("SELECT small,wide,wide-1,typeof(small) FROM unsigned_values").Scan(&small, &wide, &previous, &kind); err != nil {
+		t.Fatal(err)
+	}
+	if small != 255 || wide != math.MaxUint64 || previous != math.MaxUint64-1 || kind != "uint8" {
+		t.Fatalf("unexpected values: %d %d %d %s", small, wide, previous, kind)
+	}
+}

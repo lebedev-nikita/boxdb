@@ -91,7 +91,7 @@ test("retains integer precision while preserving float and null storage values",
   expect(
     await db.query`SELECT ${9223372036854775807n} AS high, ${-9223372036854775808n} AS low, 1.0 AS f,NULL AS n`.get(),
   ).toEqual({ high: 9223372036854775807n, low: -9223372036854775808n, f: 1, n: null });
-  await expect(db.query`SELECT ${9223372036854775808n}`.execute()).rejects.toThrow("64-bit range");
+  await expect(db.query`SELECT ${18446744073709551616n}`.execute()).rejects.toThrow("64-bit range");
   await expect(db.query`SELECT ${Number.MAX_SAFE_INTEGER + 1}`.execute()).rejects.toBeInstanceOf(
     RangeError,
   );
@@ -206,4 +206,22 @@ test("native decimals retain exact arithmetic, numeric ordering and rounded resu
   await expect(db.query`INSERT INTO prices VALUES(${"2.0"})`.execute()).rejects.toMatchObject({
     code: "BOXDB_CONSTRAINT_UNIQUE",
   });
+});
+
+test("unsigned integers use bigint across the full UINT64 range", async () => {
+  await using db = await Database.open();
+  await db.exec("CREATE TABLE unsigned_values(small UINT8,wide UINT64 UNIQUE)");
+  await db.query`INSERT INTO unsigned_values VALUES(${255},${18446744073709551615n})`.run();
+  expect(
+    await db.query`SELECT small,wide,wide-1 AS previous,typeof(small) AS kind FROM unsigned_values`.get(),
+  ).toEqual({
+    small: 255n,
+    wide: 18446744073709551615n,
+    previous: 18446744073709551614n,
+    kind: "uint8",
+  });
+  expect(
+    await db.query`SELECT wide FROM unsigned_values WHERE wide>${9223372036854775807n}`.get(),
+  ).toEqual({ wide: 18446744073709551615n });
+  await expect(db.query`SELECT ${18446744073709551616n}`.execute()).rejects.toThrow("64-bit range");
 });
