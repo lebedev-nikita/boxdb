@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { Database } from "../dist/index.js";
 import { drizzle } from "../dist/drizzle.js";
+import { adapter } from "../dist/adapters/postgres.js";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Kysely, SqliteDialect } from "kysely";
 
@@ -12,6 +13,11 @@ try {
   orm.insert(users).values({ name: "Ada" }).run();
   assert.deepEqual(client.query("SELECT * FROM users").rows, [{ id: 1, name: "Ada" }]);
   assert.deepEqual(orm.select().from(users).all(), [{ id: 1, name: "Ada" }]);
+  const sql = adapter(client);
+  const rows = await sql`SELECT name FROM users WHERE id = ${1}`;
+  assert.deepEqual(rows, [{ name: "Ada" }]);
+  assert.equal(rows.count, 1);
+  assert.deepEqual(await sql`SELECT ${1} AS x, ${2} AS x`.values(), [[1, 2]]);
   const queryBuilder = new Kysely<{ users: { id: number; name: string } }>({
     dialect: new SqliteDialect({ database: client }),
   });

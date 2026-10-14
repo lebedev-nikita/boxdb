@@ -48,6 +48,43 @@ runtime support or TypeScript compilation).
 For readable storage, pass `{ format: "readable" }` to the constructor. Existing
 file contents determine the format when reopening, just as in Rust.
 
+## Postgres.js-style adapter
+
+```ts
+import { Database } from "@boxdb/client";
+import { adapter } from "@boxdb/client/adapters/postgres";
+
+using db = new Database("data.db");
+const sql = adapter(db);
+const name = "Ada";
+
+const users = await sql<{ id: number; name: string }[]>`
+  SELECT id, name FROM users WHERE name = ${name}
+`;
+```
+
+Interpolated values are bound parameters. Write `${name}` without SQL quotes.
+For dynamic identifiers, use `sql("users")` or `sql("users.name")`; each dotted
+component is quoted separately. Compose queries with nested tagged fragments:
+
+```ts
+const condition = sql`WHERE name = ${name}`;
+const rows = await sql`SELECT * FROM ${sql("users")} ${condition}`;
+console.log(rows.count, rows.columns);
+```
+
+Queries are lazy: `await`, `.then()`, `.catch()` or `.finally()` starts execution;
+`.execute()` starts it immediately and returns a Promise. Reusing a query object
+reuses its result or error. `.values()` returns a lazy view with positional array
+rows, preserving column order and duplicate column names, without repeating the
+query. Results are arrays with nonenumerable `count` and `columns` properties;
+`count` is the returned row count for queries or affected row count for writes,
+and `columns` contains `{ name }` objects.
+
+This adapter uses BoxDB's SQLite SQL and value representations. Execution still
+runs synchronously on the calling thread when the query starts. The supplied
+`db` owns the connection and its synchronous transaction interface.
+
 ## Values and errors
 
 Results use SQLite storage values: `null`, `number`, `string`, `Buffer`, and
