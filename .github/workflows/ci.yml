@@ -58,9 +58,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install SQLite binding build dependency
         run: sudo apt-get update && sudo apt-get install --yes libclang-dev
+      - name: Check out baseline revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.BOXDB_BASE_REVISION }}
+          path: boxdb-baseline
+          persist-credentials: false
       - name: Prepare base revision with the same benchmark harness
         run: |
-          git worktree add --detach "$RUNNER_TEMP/boxdb-baseline" "$BOXDB_BASE_REVISION"
+          mv "$GITHUB_WORKSPACE/boxdb-baseline" "$RUNNER_TEMP/boxdb-baseline"
           cp benches/sqlite_vs_boxdb.rs "$RUNNER_TEMP/boxdb-baseline/benches/sqlite_vs_boxdb.rs"
           mkdir -p target/performance
           git rev-parse HEAD > target/performance/current-revision.txt
