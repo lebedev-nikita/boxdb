@@ -9,6 +9,7 @@ repository = "https://github.com/lebedev-nikita/boxdb"
 [workspace]
 members = ["packages/typescript/native", "packages/go/native"]
 default-members = ["."]
+exclude = ["vendor/libsqlite3-sys"]
 resolver = "3"
 
 [dependencies]
@@ -18,6 +19,9 @@ serde_json = "1"
 serde-saphyr = "1.3"
 thiserror = "2"
 bigdecimal = { version = "0.4", features = ["serde"] }
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde"] }
 hex = "0.4"
@@ -25,12 +29,15 @@ sha2 = "0.10"
 fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
-rusqlite = { version = "0.40.2", features = ["bundled", "functions", "backup", "column_metadata", "hooks", "preupdate_hook"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "functions", "pointer", "backup", "column_metadata", "hooks", "preupdate_hook"] }
 libsqlite3-sys = "0.38.2"
 sqlite-vec = "=0.1.9"
 
 [build-dependencies]
 cc = "1"
+
+[patch.crates-io]
+libsqlite3-sys = { path = "vendor/libsqlite3-sys" }
 
 [[bench]]
 name = "sqlite_vs_boxdb"

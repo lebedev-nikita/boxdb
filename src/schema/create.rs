@@ -103,7 +103,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         options: vec![],
     };
     let logical = translate_column(&mut definition)?;
-    if !["INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY"]
+    if !["INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY", "DECIMAL"]
         .iter()
         .any(|native| {
             definition
@@ -226,10 +226,14 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         }
         position += 1;
     }
-    if !schema.eq_ignore_ascii_case("main") && !columns.is_empty() {
-        return Err(Error::new(
-            "extended types require main database tables".into(),
-        ));
+    if !schema.eq_ignore_ascii_case("main") {
+        // Native decimals carry their identity and constraints in SQLite.
+        columns.retain(|(_, ty)| !matches!(ty, Type::Decimal(_)));
+        if !columns.is_empty() {
+            return Err(Error::new(
+                "extended types require main database tables".into(),
+            ));
+        }
     }
     let mut without_rowid = false;
     while position < tokens.len() {
@@ -309,6 +313,7 @@ impl Declaration {
                     "REAL" => "REAL",
                     "TEXT" => "TEXT",
                     "BLOB" => "BLOB",
+                    "DECIMAL" => "DECIMAL",
                     _ => "ANY",
                 };
                 format!("{} {datatype}", super::quote(name))

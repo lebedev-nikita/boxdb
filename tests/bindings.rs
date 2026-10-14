@@ -17,7 +17,7 @@ fn native_values_keep_validation_and_sqlite_storage_types() {
         vec![vec![
             Value::Integer(1),
             Value::Text("{\"x\":1}".into()),
-            Value::Text("12.50".into())
+            Value::Decimal("12.5".into())
         ]]
     );
     assert!(
@@ -67,13 +67,13 @@ fn preparation_reports_parameters_and_columns_without_executing_sql() {
 #[test]
 fn drizzle_serial_primary_keys_use_sqlite_rowids() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE __drizzle_migrations(id SERIAL PRIMARY KEY,hash TEXT NOT NULL,created_at DECIMAL); INSERT INTO __drizzle_migrations(hash,created_at) VALUES('hash',123)").unwrap();
+    db.execute("CREATE TABLE __drizzle_migrations(id SERIAL PRIMARY KEY,hash TEXT NOT NULL,created_at INTEGER); INSERT INTO __drizzle_migrations(hash,created_at) VALUES('hash',123)").unwrap();
     assert_eq!(db.last_insert_rowid(), 1);
     assert_eq!(
         db.execute_native("SELECT id,created_at FROM __drizzle_migrations", &[])
             .unwrap()
             .rows,
-        vec![vec![Value::Integer(1), Value::Text("123".into())]]
+        vec![vec![Value::Integer(1), Value::Integer(123)]]
     );
     assert_eq!(Type::parse("INTEGER").unwrap(), Type::Int64);
 }

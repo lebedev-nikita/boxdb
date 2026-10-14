@@ -12,11 +12,6 @@ type ExtensionInit = unsafe extern "C" fn(
 unsafe extern "C" {
     fn text_init(db: *mut ffi::sqlite3) -> c_int;
     fn regexp_init(db: *mut ffi::sqlite3) -> c_int;
-    fn sqlite3_decimal_init(
-        db: *mut ffi::sqlite3,
-        error: *mut *mut c_char,
-        api: *const ffi::sqlite3_api_routines,
-    ) -> c_int;
 }
 
 pub(crate) fn register(db: &Connection) -> Result<()> {
@@ -33,7 +28,7 @@ pub(crate) fn register(db: &Connection) -> Result<()> {
             ));
         }
     }
-    register_api(db, "decimal", sqlite3_decimal_init)?;
+    crate::decimal::register(db)?;
     // SAFETY: sqlite-vec's C entry point has ExtensionInit's signature; its
     // Rust crate declares an untyped entry point for callers to cast.
     let vector_init = unsafe {

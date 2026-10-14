@@ -1,8 +1,8 @@
 use crate::{Error, Result};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Datelike, SecondsFormat};
+use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
@@ -85,7 +85,7 @@ impl Type {
             "UINT32" => Self::Uint32,
             "FLOAT4" => Self::Real,
             "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
-            "DECIMAL" | "NUMERIC" => {
+            "DECIMAL" => {
                 if args.is_empty() {
                     Self::Decimal(None)
                 } else {
@@ -163,12 +163,7 @@ impl Type {
                 Ok(Value::Real(n))
             }
             (Self::Decimal(limits), Value::Integer(_) | Value::Decimal(_)) => {
-                let decimal = BigDecimal::from_str(&value.to_string())
-                    .map_err(|error| invalid().with_source(error))?;
-                let (coefficient, exponent) = decimal.as_bigint_and_exponent();
-                if coefficient.to_string().len() > 4096 || exponent.unsigned_abs() > 4096 {
-                    return Err(Error::new("DECIMAL exceeds 4096-digit limit".into()));
-                }
+                let decimal = crate::decimal::parse(&value.to_string())?;
                 let text = decimal.normalized().to_plain_string();
                 let unsigned = text.trim_start_matches('-');
                 let (whole, frac) = unsigned.split_once('.').unwrap_or((unsigned, ""));
@@ -178,9 +173,8 @@ impl Type {
                     {
                         return Err(Error::new("DECIMAL precision or scale overflow".into()));
                     }
-                    Ok(Value::Decimal(
-                        decimal.with_scale(*scale as i64).to_plain_string(),
-                    ))
+                    let text = decimal.with_scale(*scale as i64).to_plain_string();
+                    Ok(Value::Decimal(text))
                 } else {
                     Ok(Value::Decimal(text))
                 }
@@ -230,7 +224,13 @@ impl Type {
         if matches!(value, Value::Null) {
             return Ok(value);
         }
-        let text = value.to_string();
+        let text = if let (Self::Decimal(_), Value::Real(number)) = (self, &value) {
+            BigDecimal::from_f64(*number)
+                .ok_or_else(|| Error::new("non-finite REAL cannot be DECIMAL".into()))?
+                .to_plain_string()
+        } else {
+            value.to_string()
+        };
         let parsed = match self {
             Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 => {
                 Value::Integer(text.parse().map_err(|error| {
@@ -245,12 +245,7 @@ impl Type {
             Self::Real | Self::Double => Value::Real(text.parse().map_err(|error| {
                 Error::new("invalid floating-point cast".into()).with_source(error)
             })?),
-            Self::Decimal(_) => {
-                BigDecimal::from_str(&text).map_err(|error| {
-                    Error::new("invalid decimal cast".into()).with_source(error)
-                })?;
-                Value::Decimal(text)
-            }
+            Self::Decimal(_) => Value::Decimal(text),
             Self::Boolean => Value::Boolean(match text.to_lowercase().as_str() {
                 "true" => true,
                 "false" => false,

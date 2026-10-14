@@ -146,17 +146,35 @@ describe("query interface", () => {
     );
   });
 
+  it("keeps native decimal arithmetic and ordering exact without JavaScript numbers", () => {
+    const db = open();
+    db.exec(
+      "CREATE TABLE prices(amount DECIMAL(20,2) UNIQUE); INSERT INTO prices VALUES('10'),('2.00')",
+    );
+    expect(db.all("SELECT amount FROM prices ORDER BY amount")).toEqual([
+      { amount: "2" },
+      { amount: "10" },
+    ]);
+    expect(
+      db.get("SELECT CAST(? AS DECIMAL)+? AS amount", ["9007199254740992.01", "0.02"]),
+    ).toEqual({ amount: "9007199254740992.03" });
+    expect(db.get("SELECT decimal_div('1','3',2,'half_even') AS amount")).toEqual({
+      amount: "0.33",
+    });
+    expect(() => db.run("INSERT INTO prices VALUES(?)", ["2.0"])).toThrow(BoxDBError);
+  });
+
   it("provides decimal, Unicode, regexp, vector, full-text and spatial extensions", () => {
     const db = open();
     expect(
       db.get(
-        "SELECT decimal_add(?,?) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits",
+        "SELECT CAST(? AS DECIMAL)+CAST(? AS DECIMAL) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits",
         ["9007199254740992.01", "0.02", "ПРИВЕТ", "order #123"],
       ),
     ).toEqual({ amount: "9007199254740992.03", word: "привет", digits: "123" });
-    db.exec("CREATE TABLE prices(n NUMERIC(12,2),d DECIMAL(12,2))");
-    db.run("INSERT INTO prices VALUES(?,?)", ["12.5", "12.5"]);
-    expect(db.get("SELECT * FROM prices")).toEqual({ n: "12.5", d: "12.5" });
+    db.exec("CREATE TABLE prices(n DECIMAL(12,2))");
+    db.run("INSERT INTO prices VALUES(?)", ["12.5"]);
+    expect(db.get("SELECT * FROM prices")).toEqual({ n: "12.5" });
     db.exec(
       "CREATE VIRTUAL TABLE vectors USING vec0(embedding float[2]); INSERT INTO vectors(rowid,embedding) VALUES(1,'[1,0]'),(2,'[0,1]')",
     );
@@ -285,7 +303,7 @@ describe("query interface", () => {
     expect(db.get("SELECT * FROM t")).toEqual({
       active: 1n,
       payload: '{"x":1}',
-      amount: "12.50",
+      amount: "12.5",
       at: "2024-02-29T12:00:00.000000000Z",
       small: 255n,
     });

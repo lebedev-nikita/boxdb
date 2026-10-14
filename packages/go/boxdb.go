@@ -415,7 +415,7 @@ func (r *rows) Next(dest []driver.Value) error {
 					return err
 				}
 				dest[i] = v
-			case "Text":
+			case "Text", "Decimal":
 				var v string
 				if err := json.Unmarshal(data, &v); err != nil {
 					return err

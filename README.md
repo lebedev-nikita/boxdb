@@ -49,7 +49,9 @@ YAML uses the readable database stream. See [migration and restoration usage](do
 
 SQLite executes queries directly. Tables created through BoxDB are STRICT by
 default; extended types include bounded integers, exact decimals, UUID, JSON,
-UTC instants and typed arrays. Bind decimal strings for exact numeric values.
+UTC instants and typed arrays. Native `DECIMAL` supports exact operators,
+aggregates, indexes, and numeric `ORDER BY`.
+Bind decimal strings for exact input. See [native decimals](docs/native-decimal.md).
 See [type declarations](src/types.rs) and the
 [storage and validation contract](docs/storage.md).
 
@@ -57,8 +59,9 @@ FTS5, R*Tree, exact decimal SQL functions, Unicode text functions, regular
 expressions and vector search are built in for every client. No shared-library
 loading is needed. See [extension examples and storage limits](docs/extensions.md).
 
-Binary files use SQLite's standard format. External writers receive
-SQLite constraints but can bypass BoxDB's additional validation. Readable YAML
+Binary files use SQLite's standard page and record format. Native decimal queries
+and indexes require BoxDB's patched engine. External writers can bypass BoxDB's
+additional validation for other extended types. Readable YAML
 storage executes in memory and publishes a complete snapshot on commit, with
 one writer per file. See [storage formats](docs/storage.md) and
 [Litestream replication](docs/replication.md).

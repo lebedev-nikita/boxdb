@@ -9,7 +9,7 @@ const client = new Database();
 try {
   assert.deepEqual(
     client.get(
-      "SELECT decimal_add(?,?) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance",
+      "SELECT CAST(? AS DECIMAL)+CAST(? AS DECIMAL) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance",
       ["0.1", "0.2", "ПРИВЕТ", "order #123"],
     ),
     { amount: "0.3", word: "привет", digits: "123", distance: 1 },

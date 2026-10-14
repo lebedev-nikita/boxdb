@@ -1,13 +1,54 @@
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
-fn decimal_is_canonical_and_numeric_is_an_identical_sql_alias() {
-    let ty = Type::parse("DECIMAL(12,2)").unwrap();
-    assert_eq!(format!("{ty:?}"), "Decimal(Some((12, 2)))");
-    assert_eq!(serde_json::to_string(&ty).unwrap(), r#"{"Decimal":[12,2]}"#);
-    assert_eq!(Type::parse("NUMERIC(12,2)").unwrap(), ty);
+fn decimal_is_the_only_public_exact_decimal_type_and_serialized_tag() {
+    assert!(Type::parse("NUMERIC").is_err());
     assert!(serde_json::from_str::<Type>(r#"{"Numeric":[12,2]}"#).is_err());
     assert!(serde_json::from_str::<Value>(r#"{"Numeric":"12.50"}"#).is_err());
+    let ty = Type::Decimal(Some((12, 2)));
+    let value = Value::Decimal("12.50".into());
+    assert_eq!(serde_json::to_string(&ty).unwrap(), r#"{"Decimal":[12,2]}"#);
+    assert_eq!(
+        serde_json::to_string(&value).unwrap(),
+        r#"{"Decimal":"12.50"}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<Type>(r#"{"Decimal":[12,2]}"#).unwrap(),
+        ty
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(r#"{"Decimal":"12.50"}"#).unwrap(),
+        value
+    );
+}
+
+#[test]
+fn numeric_declarations_are_rejected_while_decimal_remains_native() {
+    let mut db = Database::memory();
+    for sql in [
+        "CREATE TABLE rejected(v NUMERIC)",
+        "CREATE TABLE rejected(v NUMERIC(12,2))",
+        "CREATE TABLE rejected(v NUMERIC(12,2)[])",
+        "CREATE TABLE rejected(v NUMERIC PRECISION)",
+    ] {
+        assert!(db.execute(sql).is_err(), "{sql}");
+    }
+    db.execute("CREATE TABLE prices(amount DECIMAL(12,2)); INSERT INTO prices VALUES('12.50')")
+        .unwrap();
+    assert_eq!(
+        db.execute("SELECT amount,typeof(amount),amount+CAST('0.25' AS DECIMAL) FROM prices")
+            .unwrap()[0]
+            .rows,
+        vec![vec![
+            Value::Decimal("12.50".into()),
+            Value::Text("decimal".into()),
+            Value::Decimal("12.75".into())
+        ]]
+    );
+    assert!(
+        db.execute("ALTER TABLE prices ADD COLUMN obsolete NUMERIC")
+            .is_err()
+    );
 }
 
 #[test]
@@ -44,9 +85,9 @@ fn decimal_values_and_arrays_survive_reopening_and_snapshots() {
 }
 
 #[test]
-fn numeric_and_decimal_declarations_share_storage_and_validation() {
+fn decimal_declarations_preserve_storage_and_validation() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE prices(n NUMERIC(12,2), d DECIMAL(12,2), history NUMERIC(12,2)[]); ALTER TABLE prices ADD COLUMN added NUMERIC(12,2)").unwrap();
+    db.execute("CREATE TABLE prices(n DECIMAL(12,2), d DECIMAL(12,2), history DECIMAL(12,2)[]); ALTER TABLE prices ADD COLUMN added DECIMAL(12,2)").unwrap();
     db.execute("INSERT INTO prices VALUES('12.5','12.5','[\"12.5\"]','12.5')")
         .unwrap();
     assert_eq!(

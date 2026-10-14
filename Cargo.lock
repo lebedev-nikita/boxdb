@@ -157,6 +157,9 @@ dependencies = [
  "fs2",
  "hex",
  "libsqlite3-sys",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "rusqlite",
  "serde",
  "serde-saphyr",
@@ -680,11 +683,13 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 [[package]]
 name = "libsqlite3-sys"
 version = "0.38.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
 dependencies = [
+ "bigdecimal",
  "bindgen",
  "cc",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "pkg-config",
  "vcpkg",
 ]

@@ -9,30 +9,32 @@ connections and does not change other SQLite connections in the process.
 | --- | --- | --- |
 | Full-text search | SQLite FTS5, including Unicode and trigram tokenizers | [FTS5](https://www.sqlite.org/fts5.html) |
 | Spatial indexing | SQLite R*Tree | [R*Tree](https://www.sqlite.org/rtree.html) |
-| Exact decimal arithmetic | SQLite `decimal.c` | [Decimal extension](https://www.sqlite.org/floatingpoint.html#decext) |
+| Exact decimal arithmetic | BoxDB's patched SQLite engine | [Native decimals](native-decimal.md) |
 | Unicode text functions and collation | sqlean-text | [Text functions](https://github.com/nalgeon/sqlean/blob/0.28.4/docs/text.md) |
 | Regular expressions | sqlean-regexp with PCRE2 | [Regexp functions](https://github.com/nalgeon/sqlean/blob/0.28.4/docs/regexp.md) |
 | Vector search | sqlite-vec 0.1.9 | [sqlite-vec](https://github.com/asg017/sqlite-vec/tree/v0.1.9) |
 
-## Exact decimals
+## Native decimals
 
-`DECIMAL(p,s)` and `NUMERIC(p,s)` are identical SQL type names. Rust uses
-`Type::Decimal` and `Value::Decimal`; serialized type/value tags are `Decimal`.
-Bind decimal values as strings to avoid floating-point conversion before SQL
-receives them.
+`DECIMAL(p,s)` is a native type in BoxDB's patched SQLite. Operators, comparison,
+indexes, `ORDER BY`, grouping, and aggregates use exact decimal values. Rust uses
+`Type::Decimal` and `Value::Decimal(String)`; TypeScript returns strings.
 
 ```sql
 CREATE TABLE prices(amount DECIMAL(12,2));
 INSERT INTO prices VALUES('10.00'),('2.00'),('0.10'),('0.20');
-SELECT decimal_sum(amount) FROM prices; -- text: 12.30
-SELECT amount FROM prices ORDER BY amount COLLATE decimal;
-SELECT decimal_add('0.1','0.2'), decimal_mul('0.1','0.2'); -- 0.3, 0.02
+SELECT SUM(amount) FROM prices; -- decimal: 12.3
+SELECT amount FROM prices ORDER BY amount;
+SELECT CAST('0.1' AS DECIMAL) + CAST('0.2' AS DECIMAL); -- decimal: 0.3
+SELECT decimal_div('1','3',2,'half_even'); -- decimal: 0.33
+SELECT decimal_round('123.456',2,'half_even'); -- decimal: 123.46
 ```
 
-These functions return SQLite text. Ordinary `+`, `*`, `SUM`, comparison and
-ordering retain SQLite's storage semantics; declaring DECIMAL does not replace
-them. The extension provides no decimal division function. Division would need
-an explicit precision and rounding policy.
+Use decimal strings for exact input. REAL mixing requires explicit conversion.
+Native `/` and `AVG` require terminating results; use `decimal_div` with an
+explicit scale and rounding mode for other divisions. Column precision and scale
+are checked without implicit rounding. See [native decimals](native-decimal.md)
+for conversions, limits, windows, and storage semantics.
 
 ## Text and regular expressions
 

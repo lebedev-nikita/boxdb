@@ -35,7 +35,7 @@ fn default_sql_dump_restores_types_and_objects_without_application_rows() {
             "--format",
             format,
             "-e",
-            "CREATE TABLE rich(id INT64 PRIMARY KEY AUTOINCREMENT,b BOOLEAN DEFAULT TRUE,d INSTANT,n NUMERIC(12,2),tags TEXT[],body TEXT CHECK(length(body)>0),twice INT64 GENERATED ALWAYS AS(id*2) VIRTUAL); CREATE TABLE audit(body TEXT); CREATE UNIQUE INDEX unique_body ON rich(body); CREATE VIEW projection AS SELECT b,d,n,tags,twice FROM rich; CREATE TRIGGER record AFTER INSERT ON rich BEGIN INSERT INTO audit VALUES(NEW.body); END; INSERT INTO rich(id,body) VALUES(100,'private-row-must-not-be-exported');",
+            "CREATE TABLE rich(id INT64 PRIMARY KEY AUTOINCREMENT,b BOOLEAN DEFAULT TRUE,d INSTANT,n DECIMAL(12,2),tags TEXT[],body TEXT CHECK(length(body)>0),twice INT64 GENERATED ALWAYS AS(id*2) VIRTUAL); CREATE TABLE audit(body TEXT); CREATE UNIQUE INDEX unique_body ON rich(body); CREATE VIEW projection AS SELECT b,d,n,tags,twice FROM rich; CREATE TRIGGER record AFTER INSERT ON rich BEGIN INSERT INTO audit VALUES(NEW.body); END; INSERT INTO rich(id,body) VALUES(100,'private-row-must-not-be-exported');",
         ]));
         let before = std::fs::read(&source).unwrap();
         let dump = success(cli(&["schema", "dump", source.to_str().unwrap()]));
@@ -99,7 +99,7 @@ fn yaml_dump_is_a_readable_schema_snapshot_that_restores_through_convert() {
     success(cli(&[
         source.to_str().unwrap(),
         "-e",
-        "CREATE TABLE \"odd' table\"(id INT64 PRIMARY KEY AUTOINCREMENT,\"odd' column\" INSTANT,n NUMERIC(12,2),tags UINT8[],b BOOLEAN); INSERT INTO \"odd' table\" VALUES(100,'2024-01-01T00:00:00Z','12.50','[255]',1);",
+        "CREATE TABLE \"odd' table\"(id INT64 PRIMARY KEY AUTOINCREMENT,\"odd' column\" INSTANT,n DECIMAL(12,2),tags UINT8[],b BOOLEAN); INSERT INTO \"odd' table\" VALUES(100,'2024-01-01T00:00:00Z','12.50','[255]',1);",
     ]));
     let dump = success(cli(&[
         "schema",
