@@ -10,6 +10,50 @@ use sqlparser::{ast::*, dialect::GenericDialect, parser::Parser};
 use std::collections::BTreeMap;
 
 pub(crate) const META: &str = "__boxdb_columns";
+pub(crate) const CODEC_META: &str = "__boxdb_codec";
+pub(crate) fn configure_codec(db: &Connection, read_only: bool) -> Result<()> {
+    let exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE name=?1 AND type='table')",
+        [CODEC_META],
+        |row| row.get(0),
+    )?;
+    if exists {
+        check_codec(db)?;
+    } else if !read_only
+        && db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='table')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?
+    {
+        // Keep a new database empty so PRAGMA encoding can precede its first
+        // user table. Inside DDL, the caller's savepoint owns this metadata.
+        let transaction = db
+            .is_autocommit()
+            .then(|| db.unchecked_transaction())
+            .transpose()?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS main.__boxdb_codec(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL) STRICT, WITHOUT ROWID")?;
+        db.execute(
+            "INSERT OR IGNORE INTO main.__boxdb_codec VALUES(1,?1)",
+            [libsqlite3_sys::wire::VERSION],
+        )?;
+        check_codec(db)?;
+        if let Some(transaction) = transaction {
+            transaction.commit()?;
+        }
+    }
+    Ok(())
+}
+fn check_codec(db: &Connection) -> Result<()> {
+    let versions = db
+        .prepare("SELECT id,version FROM main.__boxdb_codec")?
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if versions != [(1, libsqlite3_sys::wire::VERSION)] {
+        return Err(Error::new("unsupported BoxDB BLOB codec version".into()));
+    }
+    Ok(())
+}
 const META_SQL: &str = "CREATE TABLE IF NOT EXISTS __boxdb_columns(table_name TEXT NOT NULL,column_name TEXT NOT NULL,logical_type TEXT NOT NULL,table_sql TEXT NOT NULL,version INTEGER NOT NULL CHECK(version=1),PRIMARY KEY(table_name,column_name)) STRICT";
 pub(crate) type Types = BTreeMap<(String, String), Type>;
 pub(crate) fn quote(s: &str) -> String {
@@ -280,6 +324,7 @@ pub(crate) fn save_alteration(db: &Connection, change: &Alteration) -> Result<()
     Ok(())
 }
 pub(crate) fn save(db: &Connection, declaration: &Declaration) -> Result<()> {
+    configure_codec(db, false)?;
     if declaration.columns.is_empty() {
         return Ok(());
     }
@@ -301,6 +346,14 @@ pub(crate) fn save(db: &Connection, declaration: &Declaration) -> Result<()> {
     Ok(())
 }
 pub(crate) fn load(db: &Connection) -> Result<Types> {
+    let codec_exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE name=?1 AND type='table')",
+        [CODEC_META],
+        |row| row.get(0),
+    )?;
+    if codec_exists {
+        check_codec(db)?;
+    }
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1 AND type='table')",
         [META],
@@ -441,7 +494,7 @@ pub(crate) fn native(value: SqlValue) -> Value {
             Some(text) => Value::Decimal(text.into()),
             None => match libsqlite3_sys::native::decode(&b) {
                 Some((kind, text)) => native_value(kind, text),
-                None => Value::Bytea(decimal::unescape_blob(b)),
+                None => Value::Bytea(decimal::decode_blob(b)),
             },
         },
     }
@@ -479,7 +532,7 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
-        Value::Bytea(b) => SqlValue::Blob(decimal::escape_blob(b)),
+        Value::Bytea(b) => SqlValue::Blob(decimal::encode_blob(b)),
         Value::Json(j) => SqlValue::Text(j.to_string()),
         Value::Array(a) => SqlValue::Text(array_json(a, 0)?.to_string()),
         _ => SqlValue::Text(value.to_string()),
@@ -581,7 +634,7 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
                 .ok_or_else(|| Error::new("invalid DECIMAL encoding".into()))?;
             ty.validate(&Value::Decimal(text.into()))
         }
-        (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(decimal::unescape_blob(bytes))),
+        (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(decimal::decode_blob(bytes))),
         (Type::Varchar(limit), SqlValue::Text(text)) => {
             if limit.is_some_and(|n| text.chars().count() > n) {
                 return Err(Error::new("VARCHAR length exceeded".into()));

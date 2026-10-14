@@ -27,8 +27,8 @@ cross-type comparison domains and special numeric behavior still need explicit
 rules. DECIMAL has a dedicated variable-length codec and numeric backend.
 
 Expose the type in BoxDB's Rust Type/Value enums, schema translation and client
-value mappings. Native parameters, results and snapshots use the common BLOB
-envelope, while the SQLite C API retains its five standard storage classes.
+value mappings. Native parameters, results and snapshots use a one-byte BLOB
+type tag, while the SQLite C API retains its five standard storage classes.
 Test behavior through Database, including scans versus indexes and both snapshot
 formats. Public Rust values and serialization form the other integration boundary.
 
@@ -42,16 +42,19 @@ bundled build. System SQLite, SQLCipher, Gecko, and loadable-extension builds ar
 rejected instead of silently dropping native decimal support.
 
 The standard SQLite page and record format is preserved. Native values and
-escaped ordinary BLOBs use versioned BLOB envelopes. Stock SQLite does not have
+ordinary BLOBs use single-byte type tags. The database codec version is stored
+in `__boxdb_codec`, and readable headers also record it. Stock SQLite does not have
 compatible query or index semantics. See [the decimal contract](../../docs/native-decimal.md).
 
-Normal BLOB bind/result APIs escape reserved payloads. BoxDB transports already
+Normal BLOB bind/result APIs add the BYTEA tag. BoxDB transports already
 encoded cells through the pointer API with the private type `boxdb.wire-blob.v1`
 and a borrowed C descriptor `{ const char *data; int length; }`. The patched API
 copies the descriptor's bytes immediately and calls a supplied destructor once.
 This route is used for typed parameters, native decimal function results, and
-readable snapshot import. `sqlite3_column_blob` returns wire cells for BoxDB's
-Rust decoder; scalar-function value accessors expose logical payloads.
+readable snapshot import. Standard C column and scalar-function value accessors
+expose logical payloads. `sqlite3_boxdb_column_blob` and its size accessors expose
+wire cells; the Rust FFI uses these for column BLOB decoding. Incremental BLOB
+access skips the BYTEA tag and preserves it on writes.
 
 To upgrade SQLite, update the pinned upstream sources and crate build/bindings,
 then adapt the checked transformations. Run the complete Rust and TypeScript

@@ -22,6 +22,8 @@ validates its metadata against the current schema and installs TEMP validators
 for other logical types and native elements in typed arrays. Those
 triggers also validate writes caused by SQL expressions, INSERT SELECT and user
 triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
+The `__boxdb_codec` table stores the database-wide BLOB codec version. Unknown
+versions are rejected when opening or restoring a database.
 
 Ordinary CREATE TABLE statements are STRICT by default, including TEMP tables,
 WITHOUT ROWID and CREATE TABLE AS SELECT. An explicit STRICT suffix is accepted,
@@ -51,7 +53,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | VARCHAR(n) | TEXT with a length CHECK |
 | DOUBLE | REAL with 64-bit floating-point values |
 | BYTEA | BLOB with a storage-class CHECK |
-| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Versioned BLOB envelopes interpreted by the patched engine |
+| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
 Unsigned columns return `Value::UnsignedInteger`; signed columns return
@@ -65,8 +67,9 @@ Native values retain their types in computed results, materialization and sortin
 Other logical values use column-origin metadata for typed projections.
 
 The binary file retains SQLite's standard page and record encoding. Native
-values use versioned BLOB envelopes; ordinary BLOBs with the reserved prefix
-are escaped. Readable YAML uses typed mappings such as
+values use a one-byte type tag followed by their payload. Ordinary BLOBs always
+use the BYTEA tag `b`, including empty values and payloads starting with a type
+tag. No cell contains a signature or codec version. Readable YAML uses typed mappings such as
 `at: {instant: "2024-02-29T12:00:00.000000Z"}` and `amount: {decimal: "12.50"}`.
 UUID uses a 16-byte payload and canonical lowercase text at public interfaces.
 See [native decimals](native-decimal.md) and [temporal types](temporal.md).
@@ -102,7 +105,8 @@ documents. Each document starts with `---`. A small complete database looks like
 ```yaml
 ---
 kind: database
-version: 2
+version: 3
+codec_version: 1
 application_id: 0
 user_version: 0
 ---

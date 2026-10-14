@@ -54,15 +54,15 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem*);",
-        "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem*);\nstatic int boxdbIsDecimal(const Mem*);\nstatic int boxdbNativeKind(const Mem*);\nstatic i64 boxdbDecimalInt(const Mem*);\nstatic double boxdbDecimalReal(Mem*);\nstatic int boxdbDecimalBoolean(const Mem*);",
+        "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem*);\nstatic int boxdbIsDecimal(const Mem*);\nstatic int boxdbIsBytea(const Mem*);\nstatic int boxdbNativeKind(const Mem*);\nstatic i64 boxdbDecimalInt(const Mem*);\nstatic double boxdbDecimalReal(Mem*);\nstatic int boxdbDecimalBoolean(const Mem*);\nstatic i64 boxdbByteaInt(const Mem*);\nstatic double boxdbByteaReal(Mem*);",
     );
     replace(
         "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem *pMem){\n  int flags;",
-        "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem *pMem){\n  int flags;\n  if( boxdbIsDecimal(pMem) ) return boxdbDecimalInt(pMem);",
+        "SQLITE_PRIVATE i64 sqlite3VdbeIntValue(const Mem *pMem){\n  int flags;\n  if( boxdbIsDecimal(pMem) ) return boxdbDecimalInt(pMem);\n  if( boxdbIsBytea(pMem) ) return boxdbByteaInt(pMem);",
     );
     replace(
         "SQLITE_PRIVATE double sqlite3VdbeRealValue(Mem *pMem){",
-        "SQLITE_PRIVATE double sqlite3VdbeRealValue(Mem *pMem){\n  if( boxdbIsDecimal(pMem) ) return boxdbDecimalReal(pMem);",
+        "SQLITE_PRIVATE double sqlite3VdbeRealValue(Mem *pMem){\n  if( boxdbIsDecimal(pMem) ) return boxdbDecimalReal(pMem);\n  if( boxdbIsBytea(pMem) ) return boxdbByteaReal(pMem);",
     );
     replace(
         "SQLITE_PRIVATE int sqlite3VdbeBooleanValue(Mem *pMem, int ifNull){",
@@ -159,39 +159,51 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "  switch( aff ){\n    case SQLITE_AFF_BLOB:",
-        "  if( boxdbNativeAffinityKind(aff) ) return (pMem->flags&MEM_Null) ? SQLITE_OK : boxdbNativeOp(pMem,0,boxdbNativeAffinityKind(aff),pMem,0,0);\n  if( aff==SQLITE_AFF_DECIMAL ){\n    if( pMem->flags & MEM_Real ) return boxdbDecimalOp(pMem,8,pMem,0,0);\n    return boxdbDecimalCoerce(pMem);\n  }\n  if( aff==SQLITE_AFF_BLOB && boxdbIsEscapedBlob(pMem) ) return SQLITE_OK;\n  if( boxdbIsEscapedBlob(pMem) ){\n    int rc=boxdbBlobText(pMem,encoding);\n    if( rc ) return rc;\n  }\n  if( boxdbNativeKind(pMem) && aff>=SQLITE_AFF_NUMERIC ) return SQLITE_ERROR;\n  if( boxdbKind(pMem) ){\n    int rc = boxdbNativeKind(pMem) ? boxdbNativeText(pMem) : boxdbDecimalText(pMem);\n    if( rc==SQLITE_OK ) rc=sqlite3VdbeChangeEncoding(pMem,encoding);\n    if( rc ) return rc;\n  }\n  switch( aff ){\n    case SQLITE_AFF_BLOB:",
+        "  if( boxdbNativeAffinityKind(aff) ) return (pMem->flags&MEM_Null) ? SQLITE_OK : boxdbNativeOp(pMem,0,boxdbNativeAffinityKind(aff),pMem,0,0);\n  if( aff==SQLITE_AFF_DECIMAL ){\n    if( pMem->flags & MEM_Real ) return boxdbDecimalOp(pMem,8,pMem,0,0);\n    return boxdbDecimalCoerce(pMem);\n  }\n  if( aff==SQLITE_AFF_BLOB && boxdbIsBytea(pMem) ) return SQLITE_OK;\n  if( boxdbIsBytea(pMem) ){\n    int rc=boxdbBlobText(pMem,encoding);\n    if( rc ) return rc;\n  }\n  if( boxdbNativeKind(pMem) && aff>=SQLITE_AFF_NUMERIC ) return SQLITE_ERROR;\n  if( boxdbKind(pMem) ){\n    int rc = boxdbNativeKind(pMem) ? boxdbNativeText(pMem) : boxdbDecimalText(pMem);\n    if( rc==SQLITE_OK ) rc=sqlite3VdbeChangeEncoding(pMem,encoding);\n    if( rc ) return rc;\n  }\n  switch( aff ){\n    case SQLITE_AFF_BLOB:",
     );
     replace(
         "        pMem->flags &= ~(MEM_TypeMask&~MEM_Blob);\n      }\n      break;",
-        "        pMem->flags &= ~(MEM_TypeMask&~MEM_Blob);\n      }\n      return boxdbEscapeBlob(pMem);",
+        "        pMem->flags &= ~(MEM_TypeMask&~MEM_Blob);\n      }\n      return boxdbEncodeBytea(pMem);",
     );
     replace(
         "    sqlite3VdbeMemSetStr(pOut, pOp->p4.z, pOp->p1, 0, 0);\n  }\n  pOut->enc = encoding;",
-        "    sqlite3VdbeMemSetStr(pOut, pOp->p4.z, pOp->p1, 0, 0);\n    if( boxdbEscapeBlob(pOut) ) goto no_mem;\n  }\n  pOut->enc = encoding;",
+        "    sqlite3VdbeMemSetStr(pOut, pOp->p4.z, pOp->p1, 0, 0);\n    if( boxdbEncodeBytea(pOut) ) goto no_mem;\n  }\n  pOut->enc = encoding;",
     );
     replace(
         "  /* Both values must be blobs.  Compare using memcmp().  */\n  return sqlite3BlobCompare(pMem1, pMem2);",
-        "  /* Both values must be blobs.  Compare their unescaped payloads. */\n  if( boxdbIsEscapedBlob(pMem1) || boxdbIsEscapedBlob(pMem2) ){\n    Mem a=*pMem1, b=*pMem2;\n    if( boxdbIsEscapedBlob(&a) ){ a.z+=5; a.n-=5; }\n    if( boxdbIsEscapedBlob(&b) ){ b.z+=5; b.n-=5; }\n    return sqlite3BlobCompare(&a,&b);\n  }\n  return sqlite3BlobCompare(pMem1, pMem2);",
+        "  /* Both values must be blobs.  Compare their unescaped payloads. */\n  if( boxdbIsBytea(pMem1) || boxdbIsBytea(pMem2) ){\n    Mem a=*pMem1, b=*pMem2;\n    if( boxdbIsBytea(&a) ){ a.z+=1; a.n-=1; }\n    if( boxdbIsBytea(&b) ){ b.z+=1; b.n-=1; }\n    return sqlite3BlobCompare(&a,&b);\n  }\n  return sqlite3BlobCompare(pMem1, pMem2);",
     );
     replace(
         "  assert( (pVal->flags & (MEM_Null))==0 );\n  if( pVal->flags & (MEM_Blob|MEM_Str) ){",
-        "  assert( (pVal->flags & (MEM_Null))==0 );\n  if( boxdbKind(pVal) || boxdbIsEscapedBlob(pVal) ) return boxdbValueText(pVal,enc);\n  if( pVal->flags & (MEM_Blob|MEM_Str) ){",
+        "  assert( (pVal->flags & (MEM_Null))==0 );\n  if( boxdbKind(pVal) || boxdbIsBytea(pVal) ) return boxdbValueText(pVal,enc);\n  if( pVal->flags & (MEM_Blob|MEM_Str) ){",
     );
     replace(
         "SQLITE_API const void *sqlite3_value_blob(sqlite3_value *pVal){\n  Mem *p = (Mem*)pVal;",
-        "SQLITE_API const void *sqlite3_value_blob(sqlite3_value *pVal){\n  Mem *p = (Mem*)pVal;\n  if( boxdbKind(p) || boxdbIsEscapedBlob(p) ){\n    p->flags |= MEM_BoxdbText;\n    p->u.nZero=p->n-5;\n    return p->z+5;\n  }",
+        "SQLITE_API const void *sqlite3_value_blob(sqlite3_value *pVal){\n  Mem *p = (Mem*)pVal;\n  if( boxdbKind(p) || boxdbIsBytea(p) ){\n    if( (p->flags & MEM_Zero) && sqlite3VdbeMemExpandBlob(p) ) return 0;\n    p->flags |= MEM_BoxdbText;\n    p->u.nZero=p->n-1;\n    return p->z+1;\n  }",
     );
     replace(
         "SQLITE_API int sqlite3_value_bytes(sqlite3_value *pVal){",
-        "SQLITE_API int sqlite3_value_bytes(sqlite3_value *pVal){\n  if( boxdbKind((Mem*)pVal) || boxdbIsEscapedBlob((Mem*)pVal) ){\n    if( (pVal->flags & MEM_BoxdbText)!=0 && pVal->u.nZero>=0 ) return pVal->u.nZero;\n    if( !boxdbValueText(pVal,SQLITE_UTF8) ) return 0;\n    return pVal->u.nZero;\n  }",
+        "SQLITE_API int sqlite3_value_bytes(sqlite3_value *pVal){\n  if( boxdbKind((Mem*)pVal) || boxdbIsBytea((Mem*)pVal) ){\n    if( boxdbIsBytea(pVal) && !(pVal->flags & MEM_BoxdbText) ) return pVal->n-1+((pVal->flags & MEM_Zero) ? pVal->u.nZero : 0);\n    if( (pVal->flags & MEM_BoxdbText)!=0 && pVal->u.nZero>=0 ) return pVal->u.nZero;\n    if( !boxdbValueText(pVal,SQLITE_UTF8) ) return 0;\n    return pVal->u.nZero;\n  }",
     );
     replace(
-        "  val = sqlite3_value_blob( columnMem(pStmt,i) );",
-        "  { Mem *m=columnMem(pStmt,i);\n    if( boxdbKind(m) || boxdbIsEscapedBlob(m) ){ m->flags &= ~MEM_BoxdbText; val=m->z; } else val=sqlite3_value_blob(m);\n  }",
+        "SQLITE_API const void *sqlite3_column_blob(sqlite3_stmt *pStmt, int i){",
+        "SQLITE_API const void *sqlite3_boxdb_column_blob(sqlite3_stmt *pStmt, int i){\n  Mem *m=columnMem(pStmt,i); const void *val;\n  if( boxdbKind(m) || boxdbIsBytea(m) ){\n    if( (m->flags & MEM_Zero) && sqlite3VdbeMemExpandBlob(m) ) val=0;\n    else { m->flags &= ~MEM_BoxdbText; val=m->z; }\n  }else val=sqlite3_value_blob(m);\n  columnMallocFailure(pStmt); return val;\n}\nSQLITE_API int sqlite3_boxdb_column_bytes(sqlite3_stmt *pStmt, int i){\n  Mem *m=columnMem(pStmt,i);\n  int val=(boxdbKind(m) || boxdbIsBytea(m)) && !(m->flags & MEM_BoxdbText) ? m->n+((m->flags & MEM_Zero) ? m->u.nZero : 0) : sqlite3_value_bytes(m);\n  columnMallocFailure(pStmt); return val;\n}\nSQLITE_API int sqlite3_boxdb_column_bytes16(sqlite3_stmt *pStmt, int i){\n  Mem *m=columnMem(pStmt,i);\n  int val=(boxdbKind(m) || boxdbIsBytea(m)) && !(m->flags & MEM_BoxdbText) ? m->n+((m->flags & MEM_Zero) ? m->u.nZero : 0) : sqlite3_value_bytes16(m);\n  columnMallocFailure(pStmt); return val;\n}\nSQLITE_API const void *sqlite3_column_blob(sqlite3_stmt *pStmt, int i){",
     );
     replace(
-        "  int val = sqlite3_value_bytes( columnMem(pStmt,i) );",
-        "  Mem *m=columnMem(pStmt,i);\n  int val = (boxdbKind(m) || boxdbIsEscapedBlob(m)) && !(m->flags & MEM_BoxdbText) ? m->n : sqlite3_value_bytes(m);",
+        "  pMem->flags = MEM_Blob|MEM_Zero;\n  pMem->n = 0;\n  if( n<0 ) n = 0;\n  pMem->u.nZero = n;\n  pMem->enc = SQLITE_UTF8;\n  pMem->z = 0;",
+        "  pMem->flags = MEM_Blob|MEM_Zero|MEM_Static;\n  pMem->n = 1;\n  if( n<0 ) n = 0;\n  pMem->u.nZero = n;\n  pMem->enc = SQLITE_UTF8;\n  pMem->z = (char*)\"b\";",
+    );
+    replace(
+        "      sqlite3BtreeIncrblobCursor(p->pCsr);",
+        "      sqlite3BtreeIncrblobCursor(p->pCsr);\n      if( (type&1)==0 && p->nByte>0 ){\n        unsigned char tag; int readRc;\n        sqlite3BtreeEnterCursor(p->pCsr);\n        readRc=sqlite3BtreePayloadChecked(p->pCsr,p->iOffset,1,&tag);\n        sqlite3BtreeLeaveCursor(p->pCsr);\n        if( readRc==SQLITE_OK ){\n          if( tag=='b' ){ p->iOffset++; p->nByte--; }\n        }else{\n          rc=readRc; zErr=sqlite3MPrintf(p->db,\"%s\",sqlite3_errstr(readRc));\n          sqlite3_finalize(p->pStmt); p->pStmt=0;\n        }\n      }",
+    );
+    replace(
+        "    if( ((p5 = (pOp->p5 & OPFLAG_BYTELENARG))!=0",
+        "    if( ((p5 = (pOp->p5 & OPFLAG_BYTELENARG))!=0 && (t<12 || (t&1)!=0)",
+    );
+    replace(
+        "  return computeNumericType(pMem);",
+        "  if( boxdbIsBytea(pMem) ){\n    Mem text; u16 type;\n    if( ExpandBlob(pMem) ){ pMem->u.i=0; return MEM_Int; }\n    text=*pMem; text.z++; text.n--; text.flags=MEM_Str|MEM_Ephem;\n    type=computeNumericType(&text); pMem->u=text.u; pMem->flags &= ~MEM_BoxdbText;\n    return type;\n  }\n  return computeNumericType(pMem);",
     );
     replace(
         "  if( affinity>=SQLITE_AFF_NUMERIC ){\n    assert( affinity==SQLITE_AFF_INTEGER",
@@ -219,7 +231,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "    /* RHS is an integer */\n    if( pRhs->flags & (MEM_Int|MEM_IntReal) ){",
-        "    getVarint32(aKey1+idx1, serial_type);\n    if( boxdbKind(pRhs) || boxdbIsEscapedBlob(pRhs) || (serial_type>=12 && (serial_type&1)==0 && sqlite3VdbeSerialTypeLen(serial_type)>BOXDB_DECIMAL_PREFIX_LEN && (u64)d1+sqlite3VdbeSerialTypeLen(serial_type)<=(u64)nKey1 && memcmp(aKey1+d1, \"\\000BD\", 3)==0) ){\n      if( (u64)d1+sqlite3VdbeSerialTypeLen(serial_type)>(u64)nKey1 ){ pPKey2->errCode=SQLITE_CORRUPT; return 0; }\n      mem1.db = pPKey2->pKeyInfo->db;\n      mem1.enc = pPKey2->pKeyInfo->enc;\n      sqlite3VdbeSerialGet(aKey1+d1, serial_type, &mem1);\n      rc = sqlite3MemCompare(&mem1, pRhs, pPKey2->pKeyInfo->aColl[i]);\n    }else\n    /* RHS is an integer */\n    if( pRhs->flags & (MEM_Int|MEM_IntReal) ){",
+        "    getVarint32(aKey1+idx1, serial_type);\n    if( boxdbKind(pRhs) || boxdbIsBytea(pRhs) || (serial_type>=12 && (serial_type&1)==0 && sqlite3VdbeSerialTypeLen(serial_type)>0) ){\n      if( (u64)d1+sqlite3VdbeSerialTypeLen(serial_type)>(u64)nKey1 ){ pPKey2->errCode=SQLITE_CORRUPT; return 0; }\n      mem1.db = pPKey2->pKeyInfo->db;\n      mem1.enc = pPKey2->pKeyInfo->enc;\n      sqlite3VdbeSerialGet(aKey1+d1, serial_type, &mem1);\n      rc = sqlite3MemCompare(&mem1, pRhs, pPKey2->pKeyInfo->aColl[i]);\n    }else\n    /* RHS is an integer */\n    if( pRhs->flags & (MEM_Int|MEM_IntReal) ){",
     );
     replace(
         "    affinity = pOp->p5 & SQLITE_AFF_MASK;\n    if( affinity>=SQLITE_AFF_NUMERIC ){",
@@ -231,7 +243,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "    res = pPKey2->r2;      /* (pKey1/nKey1) is a blob */",
-        "    if( (serial_type-12)/2>5 && (u64)aKey1[0]+(serial_type-12)/2<=(u64)nKey1 && memcmp(aKey1+aKey1[0],\"\\000BD\",3)==0 ) return sqlite3VdbeRecordCompare(nKey1,pKey1,pPKey2);\n    res = pPKey2->r2;      /* (pKey1/nKey1) is a blob */",
+        "    if( (serial_type-12)/2>0 ) return sqlite3VdbeRecordCompare(nKey1,pKey1,pPKey2);\n    res = pPKey2->r2;      /* (pKey1/nKey1) is a blob */",
     );
     replace(
         "  u8 ovrfl;         /* Integer overflow seen */\n};",
@@ -283,27 +295,23 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "  if( (flags1 & (MEM_Str|MEM_Blob))==0 ){",
-        "  if( boxdbKind(pIn1) || boxdbKind(pIn2) || boxdbIsEscapedBlob(pIn1) || boxdbIsEscapedBlob(pIn2) ){\n    rc=boxdbConcat(pOut,pIn2,pIn1,encoding);\n    if( rc ) goto abort_due_to_error;\n    break;\n  }\n  if( (flags1 & (MEM_Str|MEM_Blob))==0 ){",
+        "  if( boxdbKind(pIn1) || boxdbKind(pIn2) || boxdbIsBytea(pIn1) || boxdbIsBytea(pIn2) ){\n    rc=boxdbConcat(pOut,pIn2,pIn1,encoding);\n    if( rc ) goto abort_due_to_error;\n    break;\n  }\n  if( (flags1 & (MEM_Str|MEM_Blob))==0 ){",
     );
     replace(
         "SQLITE_API int sqlite3_value_bytes16(sqlite3_value *pVal){",
-        "SQLITE_API int sqlite3_value_bytes16(sqlite3_value *pVal){\n  if( boxdbKind(pVal) || boxdbIsEscapedBlob(pVal) ){\n    if( !boxdbValueText(pVal,SQLITE_UTF16NATIVE) ) return 0;\n    return -pVal->u.nZero-1;\n  }",
-    );
-    replace(
-        "  int val = sqlite3_value_bytes16( columnMem(pStmt,i) );",
-        "  Mem *m=columnMem(pStmt,i);\n  int val=(boxdbKind(m) || boxdbIsEscapedBlob(m)) && !(m->flags & MEM_BoxdbText) ? m->n : sqlite3_value_bytes16(m);",
+        "SQLITE_API int sqlite3_value_bytes16(sqlite3_value *pVal){\n  if( boxdbKind(pVal) || boxdbIsBytea(pVal) ){\n    if( !boxdbValueText(pVal,SQLITE_UTF16NATIVE) ) return 0;\n    return -pVal->u.nZero-1;\n  }",
     );
     replace(
         "  setResultStrOrError(pCtx, z, n, 0, xDel);",
-        "  setResultStrOrError(pCtx, z, n, 0, xDel);\n  if( !(pCtx->pOut->flags & MEM_Null) && boxdbEscapeBlob(pCtx->pOut) ) sqlite3_result_error_nomem(pCtx);",
+        "  setResultStrOrError(pCtx, z, n, 0, xDel);\n  if( !(pCtx->pOut->flags & MEM_Null) && boxdbEncodeBytea(pCtx->pOut) ) sqlite3_result_error_nomem(pCtx);",
     );
     replace(
         "    setResultStrOrError(pCtx, z, (int)n, 0, xDel);",
-        "    setResultStrOrError(pCtx, z, (int)n, 0, xDel);\n    if( !(pCtx->pOut->flags & MEM_Null) && boxdbEscapeBlob(pCtx->pOut) ) sqlite3_result_error_nomem(pCtx);",
+        "    setResultStrOrError(pCtx, z, (int)n, 0, xDel);\n    if( !(pCtx->pOut->flags & MEM_Null) && boxdbEncodeBytea(pCtx->pOut) ) sqlite3_result_error_nomem(pCtx);",
     );
     replace(
         "        if( encoding==0 ) pVar->enc = ENC(p->db);",
-        "        if( encoding==0 ){ pVar->enc=ENC(p->db); if( rc==SQLITE_OK ) rc=boxdbEscapeBlob(pVar); }",
+        "        if( encoding==0 ){ pVar->enc=ENC(p->db); if( rc==SQLITE_OK ) rc=boxdbEncodeBytea(pVar); }",
     );
     replace(
         "    sqlite3VdbeMemSetPointer(&p->aVar[i-1], pPtr, zPTtype, xDestructor);",
@@ -315,7 +323,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "        rc = sqlite3_bind_blob(pStmt, i, pValue->z, pValue->n,SQLITE_TRANSIENT);",
-        "        if( boxdbKind(pValue) || boxdbIsEscapedBlob(pValue) ){\n          BoxdbWireBlob wire={pValue->z,pValue->n};\n          rc=sqlite3_bind_pointer(pStmt,i,&wire,\"boxdb.wire-blob.v1\",0);\n        }else rc = sqlite3_bind_blob(pStmt, i, pValue->z, pValue->n,SQLITE_TRANSIENT);",
+        "        if( boxdbKind(pValue) || boxdbIsBytea(pValue) ){\n          BoxdbWireBlob wire={pValue->z,pValue->n};\n          rc=sqlite3_bind_pointer(pStmt,i,&wire,\"boxdb.wire-blob.v1\",0);\n        }else rc = sqlite3_bind_blob(pStmt, i, pValue->z, pValue->n,SQLITE_TRANSIENT);",
     );
     replace(
         "    res = sqlite3MemCompare(pIn3, pIn1, pOp->p4.pColl);",
@@ -339,7 +347,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "    const Mem *p = &aMem[i];\n    if( p->flags & (MEM_Int|MEM_IntReal) ){",
-        "    const Mem *p = &aMem[i];\n    if( boxdbNativeKind(p) ){\n      h+=boxdb_native_hash(boxdbNativeKind(p),p->z+5,p->n-5);\n    }else if( boxdbIsDecimal(p) ){\n      h+=boxdbDecimalInt(p);\n    }else if( p->flags & (MEM_Int|MEM_IntReal) ){",
+        "    const Mem *p = &aMem[i];\n    if( boxdbNativeKind(p) ){\n      h+=boxdb_native_hash(boxdbNativeKind(p),p->z+1,p->n-1);\n    }else if( boxdbIsDecimal(p) ){\n      h+=boxdbDecimalInt(p);\n    }else if( p->flags & (MEM_Int|MEM_IntReal) ){",
     );
     replace(
         "  static FuncDef aBuiltinFunc[] = {",

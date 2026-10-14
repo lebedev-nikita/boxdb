@@ -108,10 +108,10 @@ for id in [f'check-1.{i}' for i in range(1,18)]:
     if imported['error'] is None: base += c['sql']
 index = tests('index.test'); groups['index'] = []; base = ''
 for id in [f'index-4.{i}' for i in range(1,14)]:
-    c = index[id]; sql = c['sql']
+    c = index[id]; sql = c['sql'].replace("WHERE type!='meta'", "WHERE type!='meta' AND name NOT GLOB '__boxdb_*'")
     if id == 'index-4.1':
         sql = sql.replace('CREATE TABLE test1(cnt int, power int);', 'CREATE TABLE test1(cnt int, power int);' + ''.join(f'INSERT INTO test1 VALUES({i},{1<<i});' for i in range(1,20)))
-    groups['index'].append(case(c,base,sql,adaptations=['Tcl loop expanded to its nineteen INSERTs'])); base += sql
+    groups['index'].append(case(c,base,sql,adaptations=['Tcl loop expanded to its nineteen INSERTs'] + (['Internal BoxDB metadata excluded from schema listings'] if "type!='meta'" in c['sql'] else []))); base += sql
 null8 = 'CREATE TABLE t4(x INTEGER,y INTEGER); INSERT INTO t4 VALUES(1,11),(2,NULL);'
 for id in ['null-8.1','null-8.2','null-8.3','null-8.4','null-8.5','null-8.11','null-8.12','null-8.13','null-8.14','null-8.15']:
     c = null[id]; sql = c['sql'].replace('t4(x,y)','t4(x INTEGER,y INTEGER)')

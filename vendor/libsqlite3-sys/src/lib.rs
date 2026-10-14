@@ -11,6 +11,7 @@ use core::mem;
 mod error;
 pub mod decimal;
 pub mod native;
+pub mod wire;
 mod temporal;
 mod temporal_functions;
 #[path = "../native_types.rs"]
@@ -31,6 +32,17 @@ mod bindings {
     include!(concat!(env!("OUT_DIR"), "/bindgen.rs"));
 }
 pub use bindings::*;
+
+// Rust clients read storage cells for typed decoding. C extensions use the
+// standard column accessors, which expose logical BLOB payloads.
+unsafe extern "C" {
+    #[link_name = "sqlite3_boxdb_column_blob"]
+    pub fn sqlite3_column_blob(statement: *mut sqlite3_stmt, column: i32) -> *const core::ffi::c_void;
+    #[link_name = "sqlite3_boxdb_column_bytes"]
+    pub fn sqlite3_column_bytes(statement: *mut sqlite3_stmt, column: i32) -> i32;
+    #[link_name = "sqlite3_boxdb_column_bytes16"]
+    pub fn sqlite3_column_bytes16(statement: *mut sqlite3_stmt, column: i32) -> i32;
+}
 
 impl Default for sqlite3_vtab {
     fn default() -> Self {

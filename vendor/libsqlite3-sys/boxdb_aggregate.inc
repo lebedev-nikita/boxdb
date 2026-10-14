@@ -33,9 +33,9 @@ static int boxdbSumStep(sqlite3_context *ctx, SumCtx *p, Mem *value, int type){
       sqlite3_result_error(ctx,"aggregate requires numeric inputs or homogeneous INTERVAL values",-1); return 1;
     }
     if( p->decimalMode!=6 ){
-      static const char zero[21]="\000BDv1";
+      static const char zero[17]="v";
       p->decimalSum.db=sqlite3_context_db_handle(ctx);
-      if( sqlite3VdbeMemSetStr(&p->decimalSum,zero,21,0,SQLITE_STATIC) ){ sqlite3_result_error_nomem(ctx);return 1; }
+      if( sqlite3VdbeMemSetStr(&p->decimalSum,zero,17,0,SQLITE_STATIC) ){ sqlite3_result_error_nomem(ctx);return 1; }
       p->decimalMode=6;
     }
     if( boxdbSumUpdate(ctx,p,value,1)==SQLITE_OK ) p->cnt++;

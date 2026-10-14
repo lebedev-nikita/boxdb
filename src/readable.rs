@@ -42,7 +42,10 @@ impl Serialize for Cell {
                     };
                     map.serialize_entry(name, &text)?;
                 } else {
-                    map.serialize_entry("blob", &hex::encode(bytes))?;
+                    map.serialize_entry(
+                        "blob",
+                        &hex::encode(libsqlite3_sys::wire::blob_payload(bytes)),
+                    )?;
                 }
                 map.end()
             }
@@ -101,7 +104,7 @@ impl<'de> Deserialize<'de> for Cell {
                 let (kind, text) = match cell {
                     WireCell::Blob(blob) => {
                         return hex::decode(blob)
-                            .map(|bytes| Cell(SqlValue::Blob(bytes)))
+                            .map(|bytes| Cell(SqlValue::Blob(crate::decimal::encode_blob(&bytes))))
                             .map_err(de::Error::custom);
                     }
                     WireCell::Decimal(text) => {
@@ -129,6 +132,7 @@ impl<'de> Deserialize<'de> for Cell {
 enum Record {
     Database {
         version: u32,
+        codec_version: i64,
         application_id: i64,
         user_version: i64,
     },
@@ -173,6 +177,8 @@ impl<'de> Deserialize<'de> for Record {
             #[serde(default, deserialize_with = "present")]
             version: Option<u32>,
             #[serde(default, deserialize_with = "present")]
+            codec_version: Option<i64>,
+            #[serde(default, deserialize_with = "present")]
             application_id: Option<i64>,
             #[serde(default, deserialize_with = "present")]
             user_version: Option<i64>,
@@ -193,13 +199,14 @@ impl<'de> Deserialize<'de> for Record {
         }
         let fields = Fields::deserialize(deserializer)?;
         let allowed: &[&str] = match fields.kind {
-            Kind::Database => &["version", "application_id", "user_version"],
+            Kind::Database => &["version", "codec_version", "application_id", "user_version"],
             Kind::Schema => &["object_type", "name", "table", "sql"],
             Kind::Row => &["table", "rowid", "values"],
             Kind::Sequence => &["table", "value"],
         };
         for (name, exists) in [
             ("version", fields.version.is_some()),
+            ("codec_version", fields.codec_version.is_some()),
             ("application_id", fields.application_id.is_some()),
             ("user_version", fields.user_version.is_some()),
             ("object_type", fields.object_type.is_some()),
@@ -223,6 +230,7 @@ impl<'de> Deserialize<'de> for Record {
         Ok(match fields.kind {
             Kind::Database => Self::Database {
                 version: required(fields.version, "version")?,
+                codec_version: required(fields.codec_version, "codec_version")?,
                 application_id: required(fields.application_id, "application_id")?,
                 user_version: required(fields.user_version, "user_version")?,
             },
@@ -371,7 +379,7 @@ impl TablePlan {
                     }
                     writer.write_all(b"\n    blob: '")?;
                     let mut hex = [0u8; 8192];
-                    for chunk in bytes.chunks(4096) {
+                    for chunk in libsqlite3_sys::wire::blob_payload(bytes).chunks(4096) {
                         let output = &mut hex[..chunk.len() * 2];
                         hex::encode_to_slice(chunk, output)
                             .expect("hex buffer has twice the input length");
@@ -417,7 +425,8 @@ fn write_document(writer: &mut impl std::io::Write, record: &Record) -> Result<(
 }
 fn schema_records(db: &Connection) -> Result<Vec<Record>> {
     let mut records = vec![Record::Database {
-        version: 2,
+        version: 3,
+        codec_version: libsqlite3_sys::wire::VERSION,
         application_id: db.query_row("PRAGMA application_id", [], |r| r.get(0))?,
         user_version: db.query_row("PRAGMA user_version", [], |r| r.get(0))?,
     }];
@@ -495,7 +504,10 @@ fn encode_tables(db: &Connection, schema_only: bool) -> Result<Vec<u8>> {
             object_type, name, ..
         } = record
             && object_type == "table"
-            && (!schema_only || name == schema::META || name == crate::migrations::TABLE)
+            && (!schema_only
+                || name == schema::CODEC_META
+                || name == schema::META
+                || name == crate::migrations::TABLE)
         {
             let table = TablePlan::new(db, name)?;
             let mut statement = db.prepare(&table.select)?;
@@ -531,13 +543,17 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
         },
     )?;
     let Some(Record::Database {
-        version: 2,
+        version: 3,
+        codec_version,
         application_id,
         user_version,
     }) = records.first()
     else {
         return Err(Error::new("invalid readable format version".into()));
     };
+    if *codec_version != libsqlite3_sys::wire::VERSION {
+        return Err(Error::new("unsupported BoxDB BLOB codec version".into()));
+    }
     if records
         .iter()
         .skip(1)

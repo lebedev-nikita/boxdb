@@ -31,9 +31,9 @@ static const BoxdbType *boxdbType(int kind){
 }
 static int boxdbNativeKind(const Mem *p){
   unsigned i;
-  if( !(p->flags&MEM_Blob) || p->n<5 || !p->z || memcmp(p->z,"\000BD",3)!=0 || p->z[4]!='1' ) return 0;
+  if( (p->flags&(MEM_Blob|MEM_Str))!=MEM_Blob || p->n<1 || !p->z ) return 0;
   for(i=1; i<ArraySize(boxdbTypes); i++){
-    if( p->z[3]==boxdbTypes[i].tag && p->n==5+boxdbTypes[i].size ) return boxdbTypes[i].kind;
+    if( p->z[0]==boxdbTypes[i].tag && p->n==1+boxdbTypes[i].size ) return boxdbTypes[i].kind;
   }
   return 0;
 }
@@ -49,13 +49,13 @@ static int boxdbNativeAffinityKind(u8 affinity){
 }
 static int boxdbNativeText(Mem *p){
   char *text=0; int length=0;
-  int rc=boxdb_native_text(boxdbNativeKind(p),p->z+5,p->n-5,&text,&length);
+  int rc=boxdb_native_text(boxdbNativeKind(p),p->z+1,p->n-1,&text,&length);
   if( rc ){ sqlite3_free(text); return rc; }
   return sqlite3VdbeMemSetStr(p,text,length,SQLITE_UTF8,sqlite3_free);
 }
 static int boxdbNativeOperand(Mem *p, const char **data, int *length){
   int kind=boxdbKind(p);
-  if( kind ){ *data=p->z+5; *length=p->n-5; return kind; }
+  if( kind ){ *data=p->z+1; *length=p->n-1; return kind; }
   if( p->flags&(MEM_Int|MEM_IntReal) ){ *data=(const char*)&p->u.i; *length=8; return -1; }
   if( p->flags&MEM_Real ){ *data=(const char*)&p->u.r; *length=8; return -2; }
   if( p->flags&MEM_Str ){ *data=(const char*)sqlite3_value_text(p); *length=sqlite3_value_bytes(p); return 0; }
@@ -106,7 +106,7 @@ static int boxdbNativeCoerce(Mem *p, int kind){
   return boxdbNativeOp(p,8,kind,p,0,0);
 }
 static int boxdbNativeCompare(const Mem *a, const Mem *b){
-  return boxdb_native_compare(boxdbNativeKind(a),a->z+5,a->n-5,boxdbNativeKind(b),b->z+5,b->n-5);
+  return boxdb_native_compare(boxdbNativeKind(a),a->z+1,a->n-1,boxdbNativeKind(b),b->z+1,b->n-1);
 }
 static int boxdbRank(const Mem *p){
   int kind=boxdbKind(p);

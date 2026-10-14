@@ -18,7 +18,7 @@ pub fn encode(kind: Kind, text: &str) -> Result<Vec<u8>> {
         _ => crate::temporal::encode(kind, text)?,
     };
     let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-    let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+    let mut bytes = vec![descriptor.tag];
     bytes.extend(payload);
     Ok(bytes)
 }
@@ -39,29 +39,29 @@ pub fn text(kind: Kind, bytes: &[u8]) -> Result<String> {
 }
 
 pub fn decode(bytes: &[u8]) -> Option<(Kind, String)> {
-    if bytes.len() < 5 || &bytes[..3] != b"\0BD" || bytes[4] != b'1' {
+    if bytes.is_empty() {
         return None;
     }
     let descriptor = TYPES
         .iter()
-        .find(|d| d.tag == bytes[3] && d.kind != Kind::Decimal)?;
-    if bytes.len() != 5 + descriptor.payload_size {
+        .find(|d| d.tag == bytes[0] && d.kind != Kind::Decimal)?;
+    if bytes.len() != 1 + descriptor.payload_size {
         return None;
     }
-    Some((descriptor.kind, text(descriptor.kind, &bytes[5..]).ok()?))
+    Some((descriptor.kind, text(descriptor.kind, &bytes[1..]).ok()?))
 }
 
 pub fn canonical(kind: Kind, value: &str) -> Result<String> {
     let bytes = encode(kind, value)?;
-    text(kind, &bytes[5..])
+    text(kind, &bytes[1..])
 }
 
 pub fn cast(target: Kind, source: Kind, value: &str) -> Result<String> {
     let bytes = encode(source, value)?;
     let payload = if target == source {
-        bytes[5..].to_vec()
+        bytes[1..].to_vec()
     } else {
-        crate::temporal::cast(target, source, &bytes[5..], false)?
+        crate::temporal::cast(target, source, &bytes[1..], false)?
     };
     text(target, &payload)
 }
@@ -94,7 +94,7 @@ unsafe extern "C" fn boxdb_native_function(
             .collect::<Vec<_>>();
         let (kind, payload) = crate::temporal_functions::evaluate(function, &args)?;
         let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-        let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+        let mut bytes = vec![descriptor.tag];
         bytes.extend(payload);
         Ok(bytes)
     })();
@@ -229,7 +229,7 @@ unsafe extern "C" fn boxdb_native_eval(
                 return Ok(payload);
             }
             let descriptor = TYPES.iter().find(|d| d.kind as i32 == kind).unwrap();
-            let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+            let mut bytes = vec![descriptor.tag];
             bytes.extend(payload);
             return Ok(bytes);
         }
@@ -255,7 +255,7 @@ unsafe extern "C" fn boxdb_native_eval(
                 crate::temporal::cast(kind, source, input, operation == 8)?
             };
             let descriptor = TYPES.iter().find(|d| d.kind == kind).unwrap();
-            let mut bytes = vec![0, b'B', b'D', descriptor.tag, b'1'];
+            let mut bytes = vec![descriptor.tag];
             bytes.extend(payload);
             return Ok(bytes);
         }

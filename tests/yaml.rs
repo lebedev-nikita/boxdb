@@ -64,7 +64,7 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     let before = db.execute(query).unwrap();
     let bytes = db.export(Format::Readable).unwrap();
     let yaml = std::str::from_utf8(&bytes).unwrap();
-    assert!(yaml.starts_with("---\nkind: database\nversion: 2\n"));
+    assert!(yaml.starts_with("---\nkind: database\nversion: 3\n"));
     assert!(yaml.contains("values:\n  id:"));
     assert!(
         yaml.contains("|"),
@@ -98,7 +98,8 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
 const MANUAL: &str = r#"# Documents and row fields may be edited by hand.
 ---
 kind: database
-version: 2
+version: 3
+codec_version: 1
 application_id: 0
 user_version: 0
 ---
@@ -170,10 +171,10 @@ fn yaml_stream_handles_more_than_a_thousand_documents() {
 #[test]
 fn invalid_yaml_cannot_publish_a_database() {
     let invalid = [
-        MANUAL.replace("version: 2", "version: 1"),
-        MANUAL.replace("version: 2", "version: 2\nversion: 2"),
-        MANUAL.replace("version: 2", "version: 2\nvalues: null"),
-        MANUAL.replace("  id: 7", "  id: 7\nversion: 2"),
+        MANUAL.replace("version: 3", "version: 1"),
+        MANUAL.replace("version: 3", "version: 3\nversion: 3"),
+        MANUAL.replace("version: 3", "version: 3\nvalues: null"),
+        MANUAL.replace("  id: 7", "  id: 7\nversion: 3"),
         MANUAL.replace("  id: 7", "  id: 7\n  id: 8"),
         MANUAL.replace("  id: 7", "  wrong: 7"),
         MANUAL.replace("  id: 7\n", ""),
@@ -185,7 +186,9 @@ fn invalid_yaml_cannot_publish_a_database() {
         MANUAL.replace("  id: 7", "  id: 9223372036854775808"),
         MANUAL.replace("weight: 1.0", "weight: !custom 1.0"),
         MANUAL.replace("weight: 1.0", "weight: [unterminated"),
-        format!("{MANUAL}---\nkind: database\nversion: 2\napplication_id: 0\nuser_version: 0\n"),
+        format!(
+            "{MANUAL}---\nkind: database\nversion: 3\ncodec_version: 1\napplication_id: 0\nuser_version: 0\n"
+        ),
     ];
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("invalid.yaml");

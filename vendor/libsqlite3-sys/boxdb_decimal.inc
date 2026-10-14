@@ -1,9 +1,9 @@
 /* Native BoxDB decimals retain SQLite's BLOB record encoding and C type ABI. */
 #include <float.h>
 typedef struct BoxdbWireBlob { const char *data; int length; } BoxdbWireBlob;
-#define BOXDB_DECIMAL_PREFIX "\000BDd1"
-#define BOXDB_DECIMAL_PREFIX_LEN 5
-#define BOXDB_BLOB_PREFIX "\000BDb1"
+#define BOXDB_DECIMAL_PREFIX "d"
+#define BOXDB_DECIMAL_PREFIX_LEN 1
+#define BOXDB_BLOB_PREFIX "b"
 /* The spare Mem bit records an API text view without changing the wire value.
 ** u.nZero caches its byte length (negative for UTF-16); MEM_Zero is absent. */
 #define MEM_BoxdbText 0x0080
@@ -15,9 +15,9 @@ extern int boxdb_decimal_compare(int,const char*,int,int,const char*,int);
 
 static int boxdbIsDecimal(const Mem *p){
   int i, digits=0, fraction=0, dot=0, first=-1, last=-1, scale;
-  if( !(p->flags & MEM_Blob) || p->n<=5 || p->n>8199 || !p->z
-      || memcmp(p->z,BOXDB_DECIMAL_PREFIX,5)!=0 ) return 0;
-  i=5;
+  if( (p->flags & (MEM_Blob|MEM_Str))!=MEM_Blob || p->n<=1 || p->n>8195 || !p->z
+      || p->z[0]!='d' ) return 0;
+  i=1;
   if( p->z[i]=='-' || p->z[i]=='+' ) i++;
   for(; i<p->n; i++){
     char c=p->z[i];
@@ -33,20 +33,32 @@ static int boxdbIsDecimal(const Mem *p){
   return last-first+1<=4096 && scale>=-4096 && scale<=4096;
 }
 
-static int boxdbIsEscapedBlob(const Mem *p){
-  return (p->flags & MEM_Blob)!=0 && p->n>=8 && p->z!=0
-      && memcmp(p->z, BOXDB_BLOB_PREFIX, 5)==0 && memcmp(p->z+5, "\000BD",3)==0;
+static int boxdbIsBytea(const Mem *p){
+  return (p->flags & (MEM_Blob|MEM_Str))==MEM_Blob && p->n>=1 && p->z!=0 && p->z[0]=='b';
 }
 
-static int boxdbEscapeBlob(Mem *p){
+static i64 boxdbByteaInt(const Mem *p){
+  Mem text=*p;
+  if( p->flags & MEM_Zero ) return 0;
+  text.z++; text.n--; text.flags=MEM_Str|MEM_Ephem;
+  return sqlite3VdbeIntValue(&text);
+}
+
+static double boxdbByteaReal(Mem *p){
+  Mem text=*p;
+  if( p->flags & MEM_Zero ) return 0.0;
+  text.z++; text.n--; text.flags=MEM_Str|MEM_Ephem;
+  return sqlite3VdbeRealValue(&text);
+}
+
+static int boxdbEncodeBytea(Mem *p){
   char *bytes;
   int n = p->n;
-  if( n<3 || memcmp(p->z,"\000BD",3)!=0 ) return SQLITE_OK;
-  bytes = sqlite3_malloc64((sqlite3_uint64)n+5);
+  bytes = sqlite3_malloc64((sqlite3_uint64)n+1);
   if( !bytes ) return SQLITE_NOMEM;
-  memcpy(bytes,BOXDB_BLOB_PREFIX,5);
-  memcpy(bytes+5,p->z,n);
-  return sqlite3VdbeMemSetStr(p,bytes,n+5,0,sqlite3_free);
+  bytes[0]='b';
+  if( n ) memcpy(bytes+1,p->z,n);
+  return sqlite3VdbeMemSetStr(p,bytes,n+1,0,sqlite3_free);
 }
 
 static const void *boxdbValueText(Mem *p, u8 enc){
@@ -56,14 +68,15 @@ static const void *boxdbValueText(Mem *p, u8 enc){
   int n;
   memset(&text,0,sizeof(text));
   text.db=p->db;
+  if( (p->flags & MEM_Zero) && sqlite3VdbeMemExpandBlob(p) ) return 0;
   if( boxdbNativeKind(p) ){
     char *formatted=0; int length=0;
-    if( boxdb_native_text(boxdbNativeKind(p),p->z+5,p->n-5,&formatted,&length) ){
+    if( boxdb_native_text(boxdbNativeKind(p),p->z+1,p->n-1,&formatted,&length) ){
       sqlite3_free(formatted); return 0;
     }
     sqlite3VdbeMemSetStr(&text,formatted,length,SQLITE_UTF8,sqlite3_free);
   }else{
-    text.z=p->z+5; text.n=p->n-5;
+    text.z=p->z+1; text.n=p->n-1;
     text.enc=boxdbIsDecimal(p) ? SQLITE_UTF8 : p->enc;
     text.flags=MEM_Str|MEM_Ephem;
   }
@@ -148,11 +161,11 @@ static int boxdbDecimalText(Mem *p){
 
 static int boxdbBlobText(Mem *p, u8 enc){
   int rc;
-  char *text=sqlite3_malloc64((sqlite3_uint64)p->n-5+2);
+  char *text=sqlite3_malloc64((sqlite3_uint64)p->n-1+2);
   if( !text ) return SQLITE_NOMEM;
-  memcpy(text,p->z+5,p->n-5);
-  text[p->n-5]=text[p->n-4]=0;
-  rc=sqlite3VdbeMemSetStr(p,text,p->n-5,p->enc,sqlite3_free);
+  memcpy(text,p->z+1,p->n-1);
+  text[p->n-1]=text[p->n]=0;
+  rc=sqlite3VdbeMemSetStr(p,text,p->n-1,p->enc,sqlite3_free);
   if( rc==SQLITE_OK ) rc=sqlite3VdbeChangeEncoding(p,enc);
   return rc;
 }
@@ -267,7 +280,7 @@ static void boxdbDecimalValidFunc(sqlite3_context *ctx, int argc, sqlite3_value 
     sqlite3_result_error(ctx,"invalid DECIMAL value",-1);
     return;
   }
-  i=5;
+  i=1;
   if( value->z[i]=='-' || value->z[i]=='+' ) i++;
   for(; i<value->n; i++){
     char c=value->z[i];

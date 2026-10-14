@@ -140,6 +140,7 @@ fn configure(db: &Connection, binary: bool, options: OpenOptions) -> Result<()> 
         db.pragma_update(None, "locking_mode", "NORMAL")?;
     }
     db.set_prepared_statement_cache_capacity(512);
+    schema::configure_codec(db, options.read_only)?;
     Ok(())
 }
 impl Database {
@@ -638,6 +639,7 @@ impl Database {
                     }
                 }
                 schema::cleanup(&self.connection)?;
+                schema::configure_codec(&self.connection, false)?;
                 self.refresh(true)?;
                 if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
                     schema::normalize_arrays(&self.connection, &self.types.borrow())?;

@@ -100,7 +100,7 @@ fn decimal_text_and_blob_transports_report_the_size_of_the_returned_representati
         );
         let blob = ffi::sqlite3_column_blob(statement.0, 0).cast::<u8>();
         let length = ffi::sqlite3_column_bytes(statement.0, 0);
-        assert_eq!(length, 12);
+        assert_eq!(length, 8);
         assert_eq!(
             libsqlite3_sys::decimal::decode(std::slice::from_raw_parts(blob, length as usize)),
             Some("123.456")

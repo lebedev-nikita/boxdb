@@ -156,7 +156,7 @@ fn create_table_as_select_is_strict_and_preserves_inferred_cells() {
         );
         assert_eq!(
             reopened
-                .execute("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
+                .execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB '__boxdb_*' ORDER BY name")
                 .unwrap()[0]
                 .rows,
             vec![

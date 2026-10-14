@@ -147,5 +147,6 @@ columns normalize and validate through the engine. Standard SQLite date,
 datetime and strftime functions retain their existing text contracts.
 Use casts when an expression needs a native result.
 
-Binary storage retains SQLite's standard record encoding using versioned BLOB
-envelopes. Readable YAML uses typed mappings. See the [storage contract](storage.md).
+Binary storage retains SQLite's standard record encoding using single-byte BLOB
+type tags. Codec versions belong to database metadata. Readable YAML uses typed
+mappings. See the [storage contract](storage.md).

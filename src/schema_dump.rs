@@ -48,17 +48,17 @@ fn sql(db: &Connection) -> Result<Vec<u8>> {
         output.push_str(sql);
         output.push_str(";\n");
     }
-    for table in [schema::META, migrations::TABLE] {
+    for table in [schema::CODEC_META, schema::META, migrations::TABLE] {
         if !objects
             .iter()
             .any(|(kind, name, _)| kind == "table" && name == table)
         {
             continue;
         }
-        let order = if table == schema::META {
-            "table_name,column_name"
-        } else {
-            "version"
+        let order = match table {
+            schema::CODEC_META => "id",
+            schema::META => "table_name,column_name",
+            _ => "version",
         };
         let mut statement = db.prepare(&format!(
             "SELECT * FROM {} ORDER BY {order}",
