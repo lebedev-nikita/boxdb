@@ -30,7 +30,7 @@ including either ordering with WITHOUT ROWID. Standard types follow SQLite's
 conversions such as text `'42'` into an integer are allowed; incompatible values
 are rejected. ANY preserves each value's storage class. A column without a
 declared type becomes ANY. Integer declarations accept SQLite INTEGER or an
-explicit bit width (see [supported types](../README.md#sql-and-types));
+explicit bit width (see [type declarations](../src/types.rs));
 floating-point aliases map to REAL. INT64 and the SQL alias SERIAL map to
 INTEGER, including SQLite's rowid alias and AUTOINCREMENT behavior.
 
