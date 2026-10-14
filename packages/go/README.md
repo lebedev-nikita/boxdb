@@ -1,0 +1,128 @@
+# BoxDB for Go
+
+A `database/sql` driver backed by the BoxDB Rust core through cgo. It uses the
+same type validation, SQLite extensions and binary/readable storage as the Rust
+and TypeScript clients. Its API follows the standard SQL interfaces used by
+[go-sqlite3](https://github.com/mattn/go-sqlite3) and
+[go-sql-driver/mysql](https://github.com/go-sql-driver/mysql).
+
+## Build and install from this checkout
+
+Requires Go 1.23+, Rust, a C compiler, libclang and Just on macOS or Linux.
+See the [repository prerequisites](../../README.md). Keep `CGO_ENABLED=1`;
+the native library must be built for the same OS and architecture as Go.
+No prebuilt Go native libraries are published yet.
+
+From the repository root:
+
+```sh
+just go-build
+just go-check go-test
+```
+
+In your application's Go module, point the dependency at this built checkout:
+
+```sh
+go mod edit -replace github.com/lebedev-nikita/boxdb/packages/go=/absolute/path/to/boxdb/packages/go
+go get github.com/lebedev-nikita/boxdb/packages/go
+```
+
+Rebuild the native library after changing Rust code or moving to another platform.
+The Go module has no third-party Go dependencies.
+For an optimized native library, run `go run packages/go/build.go -release`
+from the repository root. The build also updates a generated Go fingerprint so
+Go's cgo cache cannot silently reuse a previous native library.
+
+## Queries
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    boxdb "github.com/lebedev-nikita/boxdb/packages/go"
+)
+
+func main() {
+    db, err := boxdb.Open("data.db")
+    if err != nil { log.Fatal(err) }
+    defer db.Close()
+
+    ctx := context.Background()
+    if _, err := db.ExecContext(ctx,
+        "CREATE TABLE IF NOT EXISTS users(id INT64 PRIMARY KEY, name TEXT NOT NULL)"); err != nil {
+        log.Fatal(err)
+    }
+    result, err := db.ExecContext(ctx, "INSERT INTO users(name) VALUES(?)", "Ada")
+    if err != nil { log.Fatal(err) }
+    id, err := result.LastInsertId()
+    if err != nil { log.Fatal(err) }
+    var name string
+    if err := db.QueryRowContext(ctx, "SELECT name FROM users WHERE id=?", id).Scan(&name); err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(name)
+}
+```
+
+`Open` eagerly opens the database and returns `*sql.DB`, safe to share across
+goroutines. It defaults to one persistent connection so `:memory:` stays isolated
+and readable files retain their single writer. Do not increase the pool size for
+these modes. Binary files can use additional connections via `SetMaxOpenConns`.
+Do not expire the only connection of an in-memory database.
+
+The package also registers the `boxdb` driver for `sql.Open("boxdb", path)`.
+That standard constructor opens lazily and uses Go's default pool settings;
+set `SetMaxOpenConns(1)` and `SetMaxIdleConns(1)` yourself for memory/readable storage.
+
+For new readable files, use `boxdb.Open("data.yaml", boxdb.WithFormat(boxdb.Readable))`.
+Existing contents determine the format when reopening. `Binary` is the default.
+
+## Standard SQL interfaces
+
+Use `QueryContext` with `Rows.Next`, `Rows.Scan`, `Rows.Err` and `Rows.Close`;
+`QueryRowContext().Scan()` returns `sql.ErrNoRows` when no row matches.
+Column order and duplicate column names are preserved. Write results implement
+`LastInsertId` and `RowsAffected`.
+
+`PrepareContext` returns a standard `*sql.Stmt`. Parameters support positional
+`?`/`?NNN` and named `:name`, `@name`, `$name` placeholders:
+
+```go
+err := db.QueryRowContext(ctx, "SELECT name FROM users WHERE id=:id",
+    sql.Named("id", id)).Scan(&name)
+```
+
+Values are bound separately from SQL. Missing, extra and unknown named parameters
+return errors. Queries and prepared statements require one SQL statement.
+`ExecContext` without parameters also accepts SQL scripts; `RowsAffected` refers
+to the last statement. Scripts stop on the first error and are not automatically
+atomic. Use `BeginTx`, execute through `*sql.Tx`, then `Commit` or `Rollback` for
+atomic work. Default and serializable isolation and read-only transactions are
+supported; other isolation levels return an error.
+
+Contexts interrupt active SQLite queries and lock waits. The default lock wait is
+up to five seconds; setting `PRAGMA busy_timeout` replaces the cancellable lock
+handler. Opening native databases is synchronous. Results are currently fully
+materialized by the Rust core before `Rows` iteration.
+
+## Values and errors
+
+Use ordinary Go integers, floats, strings, booleans, `[]byte`, `nil`, `time.Time`,
+`sql.Null*` and `driver.Valuer` for parameters. Integers preserve the signed 64-bit
+range; non-finite floats and larger unsigned integers return errors.
+`time.Time` binds as a UTC INSTANT with nanosecond precision.
+
+Results use SQLite storage values: `int64`, `float64`, `string`, `[]byte` and `nil`.
+DECIMAL/NUMERIC remains exact text: bind decimal strings, never floats for exact
+amounts. JSON and arrays remain JSON strings, UUID remains text, INSTANT remains
+canonical UTC text, and BOOLEAN returns integer 0/1 (which `Scan` accepts into
+`bool`). Serialize JSON and arrays explicitly. Use `sql.Scanner` for application
+types. BoxDB validates logical values on both reads and writes.
+
+Core failures are `*boxdb.Error`, available through `errors.As`; SQLite extended
+error codes are not exposed by this Go driver yet. Context cancellation returns
+`context.Canceled` or `context.DeadlineExceeded` through `errors.Is`.
