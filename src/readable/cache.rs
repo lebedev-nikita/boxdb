@@ -37,7 +37,7 @@ impl CachedTable {
                 let bytes = Self::row_document(&plan, row)?;
                 size = size.saturating_add(bytes.len());
                 if size > super::MAX_SNAPSHOT {
-                    return Err(Error("snapshot exceeds 256 MiB limit".into()));
+                    return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
                 }
                 rows.insert(row.get(0)?, bytes);
             }
@@ -251,7 +251,7 @@ impl SnapshotCache {
             |sum, table| sum.saturating_add(table.bytes),
         );
         if size > super::MAX_SNAPSHOT {
-            return Err(Error("snapshot exceeds 256 MiB limit".into()));
+            return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
         }
         Ok(snapshot.unpublished)
     }

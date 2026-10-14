@@ -102,9 +102,12 @@ accepts signed 64-bit integers. A large `lastInsertRowid` is always preserved as
 `bigint`, even outside safe-integer mode. SQLite REAL values remain numbers.
 
 Result generics, such as `db.all<User>(sql)`, describe the expected row shape;
-they do not validate that shape. Native failures throw `BoxDBError` with
-`code: "BOXDB_ERROR"` and the original `cause`. Argument and precision errors
-throw `TypeError` or `RangeError`. SQLite extended error codes are not exposed yet.
+they do not validate that shape. Native failures throw `BoxDBError` with the
+original `cause`. SQLite failures preserve their symbolic `code` (for example,
+`SQLITE_CONSTRAINT_UNIQUE`), primary `sqliteCode` (`19`), and full
+`sqliteExtendedCode` (`2067`). Other BoxDB failures use `code: "BOXDB_ERROR"`
+with undefined SQLite codes. Argument and precision errors throw `TypeError`
+or `RangeError`.
 
 ## Prepared statements and transactions
 

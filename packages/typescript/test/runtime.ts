@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Database } from "../dist/index.js";
+import { BoxDBError, Database } from "../dist/index.js";
 import { drizzle } from "../dist/drizzle.js";
 import { adapter } from "../dist/adapters/postgres.js";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
@@ -15,6 +15,17 @@ try {
     { amount: "0.3", word: "привет", digits: "123", distance: 1 },
   );
   client.exec("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)");
+  assert.throws(
+    () => client.get("SELECT * FROM missing"),
+    (error: unknown) => {
+      assert.ok(error instanceof BoxDBError);
+      assert.equal(error.code, "SQLITE_ERROR");
+      assert.equal(error.sqliteCode, 1);
+      assert.equal(error.sqliteExtendedCode, 1);
+      assert.ok(error.cause instanceof Error);
+      return true;
+    },
+  );
   const users = sqliteTable("users", { id: integer().primaryKey(), name: text() });
   const orm = drizzle(client);
   orm.insert(users).values({ name: "Ada" }).run();

@@ -185,7 +185,7 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
     let table = name
         .0
         .last()
-        .ok_or_else(|| Error("missing table name".into()))?
+        .ok_or_else(|| Error::new("missing table name".into()))?
         .value
         .clone();
     let mut columns = vec![];
@@ -195,7 +195,9 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
             let original = column_def.data_type.clone();
             if let Some(ty) = translate_column(column_def)? {
                 if !main {
-                    return Err(Error("extended types require main database tables".into()));
+                    return Err(Error::new(
+                        "extended types require main database tables".into(),
+                    ));
                 }
                 columns.push((column_def.name.value.clone(), ty));
             }
@@ -306,7 +308,7 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
         let expected: String = row.get(4)?;
         let actual: Option<String> = row.get(5)?;
         if row.get::<_, i64>(3)? != 1 || actual.as_deref() != Some(&expected) {
-            return Err(Error(format!(
+            return Err(Error::new(format!(
                 "BoxDB metadata does not match schema: {table}; change typed schemas through BoxDB"
             )));
         }
@@ -316,7 +318,9 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
             |r| r.get(0),
         )?;
         if !exists {
-            return Err(Error("BoxDB metadata references a missing column".into()));
+            return Err(Error::new(
+                "BoxDB metadata references a missing column".into(),
+            ));
         }
         let ty: Type = serde_json::from_str(&text)?;
         ty.validate(&Value::Null)?;
@@ -407,10 +411,10 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
         Value::Integer(n) => SqlValue::Integer(*n),
         Value::UnsignedInteger(n) => SqlValue::Integer(
             i64::try_from(*n)
-                .map_err(|_| Error("unsigned value exceeds SQLite INTEGER range".into()))?,
+                .map_err(|_| Error::new("unsigned value exceeds SQLite INTEGER range".into()))?,
         ),
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
-        Value::Real(_) => return Err(Error("non-finite floating point value".into())),
+        Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
         Value::Bytea(b) => SqlValue::Blob(b.clone()),
         Value::Json(j) => SqlValue::Text(j.to_string()),
@@ -421,7 +425,7 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
 fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
     use serde_json::Value as J;
     if depth > 32 {
-        return Err(Error("array nesting exceeds limit".into()));
+        return Err(Error::new("array nesting exceeds limit".into()));
     }
     Ok(J::Array(
         values
@@ -432,7 +436,7 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                     Value::Integer(n) => J::from(*n),
                     Value::UnsignedInteger(n) => J::from(*n),
                     Value::Real(n) if n.is_finite() => J::from(*n),
-                    Value::Real(_) => return Err(Error("non-finite array element".into())),
+                    Value::Real(_) => return Err(Error::new("non-finite array element".into())),
                     Value::Boolean(b) => J::from(*b),
                     Value::Array(a) => array_json(a, depth + 1)?,
                     Value::Json(j) => j.clone(),
@@ -453,7 +457,7 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
     }
     if let Type::Array(inner) = ty {
         let J::Array(values) = json else {
-            return Err(Error("type mismatch: expected array".into()));
+            return Err(Error::new("type mismatch: expected array".into()));
         };
         return Ok(Value::Array(
             values
@@ -471,14 +475,14 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
             .as_i64()
             .map(Value::Integer)
             .or_else(|| n.as_f64().map(Value::Real))
-            .ok_or_else(|| Error("invalid array number".into()))?,
+            .ok_or_else(|| Error::new("invalid array number".into()))?,
         J::String(s) if matches!(ty, Type::Bytea) => {
             return Ok(Value::Bytea(
-                hex::decode(s).map_err(|e| Error(e.to_string()))?,
+                hex::decode(s).map_err(|e| Error::new(e.to_string()))?,
             ));
         }
         J::String(s) => return decode(ty, SqlValue::Text(s)),
-        _ => return Err(Error("invalid array cell".into())),
+        _ => return Err(Error::new("invalid array cell".into())),
     };
     ty.validate(&value)
 }
@@ -496,7 +500,7 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
         (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(bytes)),
         (Type::Varchar(limit), SqlValue::Text(text)) => {
             if limit.is_some_and(|n| text.chars().count() > n) {
-                return Err(Error("VARCHAR length exceeded".into()));
+                return Err(Error::new("VARCHAR length exceeded".into()));
             }
             Ok(Value::Text(text))
         }

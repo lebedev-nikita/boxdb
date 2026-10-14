@@ -23,19 +23,9 @@ use std::{
     },
     time::Duration,
 };
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct Error(pub String);
+mod error;
+pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
-macro_rules! convert_error {($($ty:ty),*)=>{$(impl From<$ty> for Error {fn from(e:$ty)->Self {Self(e.to_string())}})*};}
-convert_error!(
-    rusqlite::Error,
-    std::io::Error,
-    serde_json::Error,
-    serde_saphyr::DeserializeError,
-    serde_saphyr::SerializeError,
-    sqlparser::parser::ParserError
-);
 pub mod migrations;
 pub mod types;
 pub use types::{Type, Value};
@@ -188,7 +178,9 @@ impl Database {
             let mut file = std::fs::File::open(path)?;
             let count = file.read(&mut header)?;
             if header.starts_with(b"BOXDB\0") {
-                return Err(Error("obsolete BoxDB binary format is unsupported".into()));
+                return Err(Error::new(
+                    "obsolete BoxDB binary format is unsupported".into(),
+                ));
             }
             if count == 16 && header == storage::SQLITE_HEADER {
                 Format::Binary
@@ -231,12 +223,12 @@ impl Database {
     /// Export a consistent snapshot. Finish the current transaction first.
     pub fn export(&self, format: Format) -> Result<Vec<u8>> {
         if self.poisoned {
-            return Err(Error(
+            return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
             ));
         }
         if self.in_transaction() {
-            return Err(Error("export requires no active transaction".into()));
+            return Err(Error::new("export requires no active transaction".into()));
         }
         match format {
             Format::Binary => storage::snapshot(&self.connection),
@@ -261,7 +253,9 @@ impl Database {
             .next()?
             .is_some()
         {
-            return Err(Error("FOREIGN KEY constraint failed in snapshot".into()));
+            return Err(Error::new(
+                "FOREIGN KEY constraint failed in snapshot".into(),
+            ));
         }
         Self::new(connection, false)
     }
@@ -357,13 +351,13 @@ impl Database {
     /// Execution uses the same connection's SQLite prepared statement cache.
     pub fn statement_info(&mut self, sql: &str) -> Result<StatementInfo> {
         if self.poisoned {
-            return Err(Error(
+            return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
             ));
         }
         let statements = split(sql)?;
         let [sql] = statements.as_slice() else {
-            return Err(Error("preparation requires one statement".into()));
+            return Err(Error::new("preparation requires one statement".into()));
         };
         self.refresh(false)?;
         let declaration = schema::declaration(sql)?;
@@ -393,7 +387,7 @@ impl Database {
     fn execute_bound(&mut self, sql: &str, params: &[Value], typed: bool) -> Result<QueryResult> {
         let statements = split(sql)?;
         let [sql] = statements.as_slice() else {
-            return Err(Error(
+            return Err(Error::new(
                 "parameterized execution requires one statement".into(),
             ));
         };
@@ -405,7 +399,7 @@ impl Database {
     }
     fn execute_one(&mut self, sql: &str, params: &[SqlValue], typed: bool) -> Result<QueryResult> {
         if self.poisoned {
-            return Err(Error(
+            return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
             ));
         }
@@ -421,11 +415,11 @@ impl Database {
                 .to_ascii_lowercase()
                 .starts_with("__boxdb_")
             {
-                return Err(Error("__boxdb_ names are reserved".into()));
+                return Err(Error::new("__boxdb_ names are reserved".into()));
             }
             let _guard = InternalGuard::enter(&self.internal);
             if !params.is_empty() {
-                return Err(Error("DDL parameters are unsupported".into()));
+                return Err(Error::new("DDL parameters are unsupported".into()));
             }
             if self.connection.query_row(
                 &format!(
@@ -525,7 +519,7 @@ impl Database {
                         |row| row.get::<_, bool>(0),
                     )?
                 {
-                    return Err(Error("virtual tables require binary storage; readable storage does not support them".into()));
+                    return Err(Error::new("virtual tables require binary storage; readable storage does not support them".into()));
                 }
                 if let Some(change) = &alteration {
                     schema::save_alteration(&self.connection, change)?;
@@ -696,7 +690,7 @@ fn split(sql: &str) -> Result<Vec<&str>> {
     for (i, byte) in sql.bytes().enumerate() {
         if byte == b';' {
             let prefix = &sql[start..=i];
-            let text = CString::new(prefix).map_err(|_| Error("SQL contains NUL".into()))?;
+            let text = CString::new(prefix).map_err(|_| Error::new("SQL contains NUL".into()))?;
             // SAFETY: CString provides a valid NUL-terminated string for this call.
             if unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) } != 0 {
                 if !schema::keyword(prefix).is_empty() {

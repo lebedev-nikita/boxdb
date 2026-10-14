@@ -271,7 +271,7 @@ impl TablePlan {
             let yaml = serde_saphyr::to_string(&BTreeMap::from([(&columns[index], None::<()>)]))?;
             let key = yaml
                 .strip_suffix(" null\n")
-                .ok_or_else(|| Error("invalid YAML key serialization".into()))?;
+                .ok_or_else(|| Error::new("invalid YAML key serialization".into()))?;
             let mut indented = vec![];
             for line in key.split_inclusive('\n') {
                 indented.extend_from_slice(b"  ");
@@ -304,12 +304,12 @@ impl TablePlan {
                     write_scalar(writer, &serde_saphyr::to_string(&n)?)?
                 }
                 ValueRef::Real(_) => {
-                    return Err(Error(
+                    return Err(Error::new(
                         "readable storage cannot represent non-finite SQLite values".into(),
                     ));
                 }
                 ValueRef::Text(bytes) => {
-                    let text = std::str::from_utf8(bytes).map_err(|e| Error(e.to_string()))?;
+                    let text = std::str::from_utf8(bytes).map_err(|e| Error::new(e.to_string()))?;
                     if plain_text(text) {
                         writer.write_all(b" ")?;
                         writer.write_all(bytes)?;
@@ -376,7 +376,7 @@ fn schema_records(db: &Connection) -> Result<Vec<Record>> {
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (object_type, name, table, sql) in objects {
         if sql.to_ascii_uppercase().starts_with("CREATE VIRTUAL TABLE") {
-            return Err(Error(
+            return Err(Error::new(
                 "readable export of virtual tables is unsupported".into(),
             ));
         }
@@ -486,14 +486,14 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
         user_version,
     }) = records.first()
     else {
-        return Err(Error("invalid readable format version".into()));
+        return Err(Error::new("invalid readable format version".into()));
     };
     if records
         .iter()
         .skip(1)
         .any(|r| matches!(r, Record::Database { .. }))
     {
-        return Err(Error("duplicate readable header".into()));
+        return Err(Error::new("duplicate readable header".into()));
     }
     let db = Connection::open_in_memory()?;
     crate::extensions::register(&db)?;
@@ -513,7 +513,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 .to_ascii_uppercase()
                 .starts_with("CREATE TABLE")
             {
-                return Err(Error("invalid table declaration".into()));
+                return Err(Error::new("invalid table declaration".into()));
             }
             db.prepare(sql)?.execute([])?;
             if !db.query_row(
@@ -521,7 +521,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 [name],
                 |r| r.get::<_, bool>(0),
             )? {
-                return Err(Error("mismatched schema record".into()));
+                return Err(Error::new("mismatched schema record".into()));
             }
         }
     }
@@ -565,10 +565,12 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
             if plan.columns.len() != values.len()
                 || plan.columns.iter().any(|name| !values.contains_key(name))
             {
-                return Err(Error(format!("row columns do not match table: {table}")));
+                return Err(Error::new(format!(
+                    "row columns do not match table: {table}"
+                )));
             }
             if id.is_some() && plan.rowid.is_none() {
-                return Err(Error("unexpected rowid".into()));
+                return Err(Error::new("unexpected rowid".into()));
             }
             let rowid = id.map(SqlValue::Integer).unwrap_or(SqlValue::Null);
             let parameters = plan
@@ -597,7 +599,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 if !["index", "view", "trigger"].contains(&object_type.as_str())
                     || !sql.trim_start().to_ascii_uppercase().starts_with("CREATE ")
                 {
-                    return Err(Error("invalid schema record".into()));
+                    return Err(Error::new("invalid schema record".into()));
                 }
                 db.prepare(sql)?.execute([])?;
                 if !db.query_row(
@@ -605,7 +607,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                     rusqlite::params![object_type, name],
                     |r| r.get::<_, bool>(0),
                 )? {
-                    return Err(Error("mismatched schema record".into()));
+                    return Err(Error::new("mismatched schema record".into()));
                 }
             }
             Record::Sequence { table, value } => {

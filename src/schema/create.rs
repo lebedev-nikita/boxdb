@@ -16,7 +16,7 @@ fn identifier(token: &Token) -> Result<String> {
     match token {
         Token::Word(w) => Ok(w.value.clone()),
         Token::SingleQuotedString(s) => Ok(s.clone()),
-        _ => Err(Error("expected table or column name".into())),
+        _ => Err(Error::new("expected table or column name".into())),
     }
 }
 fn render(tokens: &[Token]) -> String {
@@ -53,7 +53,7 @@ fn constraint(token: &Token) -> bool {
 }
 fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
     let Some(first) = tokens.first() else {
-        return Err(Error("empty column definition".into()));
+        return Err(Error::new("empty column definition".into()));
     };
     if ["CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"]
         .iter()
@@ -112,7 +112,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
                 .eq_ignore_ascii_case(native)
         })
     {
-        return Err(Error(format!(
+        return Err(Error::new(format!(
             "unsupported column type for {name}: {}",
             definition.data_type
         )));
@@ -131,7 +131,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
 pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     let tokens = Tokenizer::new(&SQLiteDialect {}, sql)
         .tokenize()
-        .map_err(|e| Error(e.to_string()))?
+        .map_err(|e| Error::new(e.to_string()))?
         .into_iter()
         .filter(|t| !matches!(t, Token::Whitespace(_) | Token::SemiColon))
         .collect::<Vec<_>>();
@@ -152,12 +152,12 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         return Ok(None);
     }
     if take("IF") && !(take("NOT") && take("EXISTS")) {
-        return Err(Error("expected IF NOT EXISTS".into()));
+        return Err(Error::new("expected IF NOT EXISTS".into()));
     }
     let first = identifier(
         tokens
             .get(position)
-            .ok_or_else(|| Error("missing table name".into()))?,
+            .ok_or_else(|| Error::new("missing table name".into()))?,
     )?;
     position += 1;
     let (schema, table) = if tokens.get(position) == Some(&Token::Period) {
@@ -165,7 +165,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         let table = identifier(
             tokens
                 .get(position)
-                .ok_or_else(|| Error("missing table name".into()))?,
+                .ok_or_else(|| Error::new("missing table name".into()))?,
         )?;
         position += 1;
         (first, table)
@@ -180,7 +180,9 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         )
     };
     if temporary && !schema.eq_ignore_ascii_case("temp") {
-        return Err(Error("temporary tables must use the temp schema".into()));
+        return Err(Error::new(
+            "temporary tables must use the temp schema".into(),
+        ));
     }
     let header = render(&tokens[..position]);
     if tokens.get(position).is_some_and(|t| word(t, "AS")) {
@@ -193,7 +195,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         }));
     }
     if tokens.get(position) != Some(&Token::LParen) {
-        return Err(Error("CREATE TABLE requires a column list".into()));
+        return Err(Error::new("CREATE TABLE requires a column list".into()));
     }
     position += 1;
     let mut start = position;
@@ -203,7 +205,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     loop {
         let token = tokens
             .get(position)
-            .ok_or_else(|| Error("unclosed table definition".into()))?;
+            .ok_or_else(|| Error::new("unclosed table definition".into()))?;
         if depth == 0 && matches!(token, Token::Comma | Token::RParen) {
             let (definition, logical) = column(&tokens[start..position])?;
             definitions.push(definition);
@@ -225,7 +227,9 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         position += 1;
     }
     if !schema.eq_ignore_ascii_case("main") && !columns.is_empty() {
-        return Err(Error("extended types require main database tables".into()));
+        return Err(Error::new(
+            "extended types require main database tables".into(),
+        ));
     }
     let mut without_rowid = false;
     while position < tokens.len() {
@@ -237,15 +241,15 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
             without_rowid = true;
             position += 2;
         } else {
-            return Err(Error("unsupported SQLite table option".into()));
+            return Err(Error::new("unsupported SQLite table option".into()));
         }
         if position < tokens.len() {
             if tokens[position] != Token::Comma {
-                return Err(Error("table options must be comma-separated".into()));
+                return Err(Error::new("table options must be comma-separated".into()));
             }
             position += 1;
             if position == tokens.len() {
-                return Err(Error("missing table option".into()));
+                return Err(Error::new("missing table option".into()));
             }
         }
     }

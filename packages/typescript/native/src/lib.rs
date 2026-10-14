@@ -1,11 +1,27 @@
 use boxdb::{Database, Format, Value};
-use napi::bindgen_prelude::{BigInt, Buffer, Either5, Null};
+use napi::Env;
+use napi::bindgen_prelude::{BigInt, Buffer, Either5, JsObjectValue, Null, ToNapiValue};
 use napi_derive::napi;
 
 type Cell = Either5<Null, f64, BigInt, String, Buffer>;
 
 fn failure(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
+}
+
+fn database_failure(env: Env, error: boxdb::Error) -> napi::Error {
+    let result = (|| -> napi::Result<napi::Error> {
+        let mut object = env.create_error(failure(&error))?;
+        object.set_named_property("code", error.code())?;
+        if let Some(code) = error.sqlite_code() {
+            object.set_named_property("sqliteCode", code)?;
+        }
+        if let Some(code) = error.sqlite_extended_code() {
+            object.set_named_property("sqliteExtendedCode", code)?;
+        }
+        Ok(napi::Error::from(object.into_unknown(&env)?))
+    })();
+    result.unwrap_or_else(|error| error)
 }
 
 fn input(value: Cell) -> napi::Result<Value> {
@@ -67,7 +83,7 @@ impl NativeDatabase {
 #[napi]
 impl NativeDatabase {
     #[napi(constructor)]
-    pub fn new(path: String, format: String) -> napi::Result<Self> {
+    pub fn new(env: Env, path: String, format: String) -> napi::Result<Self> {
         let format = match format.as_str() {
             "binary" => Format::Binary,
             "readable" => Format::Readable,
@@ -76,7 +92,7 @@ impl NativeDatabase {
         let database = if path == ":memory:" {
             Database::memory()
         } else {
-            Database::open(path, format).map_err(failure)?
+            Database::open(path, format).map_err(|error| database_failure(env, error))?
         };
         Ok(Self {
             database: Some(database),
@@ -84,8 +100,11 @@ impl NativeDatabase {
     }
 
     #[napi]
-    pub fn prepare(&mut self, sql: String) -> napi::Result<NativeInfo> {
-        let info = self.database()?.statement_info(&sql).map_err(failure)?;
+    pub fn prepare(&mut self, env: Env, sql: String) -> napi::Result<NativeInfo> {
+        let info = self
+            .database()?
+            .statement_info(&sql)
+            .map_err(|error| database_failure(env, error))?;
         Ok(NativeInfo {
             columns: info.columns,
             parameters: info.parameters,
@@ -94,7 +113,12 @@ impl NativeDatabase {
     }
 
     #[napi]
-    pub fn execute(&mut self, sql: String, parameters: Vec<Cell>) -> napi::Result<NativeResult> {
+    pub fn execute(
+        &mut self,
+        env: Env,
+        sql: String,
+        parameters: Vec<Cell>,
+    ) -> napi::Result<NativeResult> {
         let parameters = parameters
             .into_iter()
             .map(input)
@@ -102,7 +126,7 @@ impl NativeDatabase {
         let database = self.database()?;
         let result = database
             .execute_native(&sql, &parameters)
-            .map_err(failure)?;
+            .map_err(|error| database_failure(env, error))?;
         Ok(NativeResult {
             columns: result.columns,
             rows: result
@@ -116,8 +140,10 @@ impl NativeDatabase {
     }
 
     #[napi]
-    pub fn exec(&mut self, sql: String) -> napi::Result<()> {
-        self.database()?.execute(&sql).map_err(failure)?;
+    pub fn exec(&mut self, env: Env, sql: String) -> napi::Result<()> {
+        self.database()?
+            .execute(&sql)
+            .map_err(|error| database_failure(env, error))?;
         Ok(())
     }
 

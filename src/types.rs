@@ -50,7 +50,7 @@ impl Type {
         if input.len() > 4096
             || input.matches("[]").count() + input.to_uppercase().matches("ARRAY<").count() > 32
         {
-            return Err(Error("type nesting or length exceeds limit".into()));
+            return Err(Error::new("type nesting or length exceeds limit".into()));
         }
         let ty = input.trim().to_uppercase();
         if let Some(inner) = ty.strip_suffix("[]") {
@@ -62,13 +62,13 @@ impl Type {
         let (base, args) = if let Some((base, tail)) = ty.split_once('(') {
             let tail = tail
                 .strip_suffix(')')
-                .ok_or_else(|| Error("invalid type parameters".into()))?;
+                .ok_or_else(|| Error::new("invalid type parameters".into()))?;
             let args = tail
                 .split(',')
                 .map(|s| {
                     s.trim()
                         .parse::<u32>()
-                        .map_err(|_| Error("invalid type parameter".into()))
+                        .map_err(|_| Error::new("invalid type parameter".into()))
                 })
                 .collect::<Result<Vec<_>>>()?;
             (base.trim(), args)
@@ -92,7 +92,7 @@ impl Type {
                     let p = args[0];
                     let s = *args.get(1).unwrap_or(&0);
                     if args.len() > 2 || p == 0 || p > 1000 || s > p {
-                        return Err(Error("invalid DECIMAL precision/scale".into()));
+                        return Err(Error::new("invalid DECIMAL precision/scale".into()));
                     }
                     Self::Decimal(Some((p, s)))
                 }
@@ -101,7 +101,7 @@ impl Type {
             "TEXT" => Self::Text,
             "VARCHAR" | "CHARACTER VARYING" => {
                 if args.len() > 1 || args.first() == Some(&0) {
-                    return Err(Error("invalid VARCHAR length".into()));
+                    return Err(Error::new("invalid VARCHAR length".into()));
                 }
                 Self::Varchar(args.first().map(|n| *n as usize))
             }
@@ -109,10 +109,10 @@ impl Type {
             "UUID" => Self::Uuid,
             "JSON" | "JSONB" => Self::Json,
             "INSTANT" => Self::Instant,
-            _ => return Err(Error(format!("unsupported or missing type: {input}"))),
+            _ => return Err(Error::new(format!("unsupported or missing type: {input}"))),
         };
         if !args.is_empty() && !matches!(result, Self::Decimal(_) | Self::Varchar(_)) {
-            return Err(Error("type does not accept parameters".into()));
+            return Err(Error::new("type does not accept parameters".into()));
         }
         Ok(result)
     }
@@ -120,7 +120,7 @@ impl Type {
         if matches!(self,Self::Decimal(Some((p,s))) if *p==0 || *p>1000 || s>p)
             || matches!(self, Self::Varchar(Some(0)))
         {
-            return Err(Error("invalid type parameters".into()));
+            return Err(Error::new("invalid type parameters".into()));
         }
         if let Self::Array(inner) = self {
             inner.validate(&Value::Null)?;
@@ -128,7 +128,7 @@ impl Type {
         if matches!(value, Value::Null) {
             return Ok(Value::Null);
         }
-        let invalid = || Error(format!("type mismatch: expected {self:?}, got {value:?}"));
+        let invalid = || Error::new(format!("type mismatch: expected {self:?}, got {value:?}"));
         match (self, value) {
             (Self::Int8, Value::Integer(n)) if i8::try_from(*n).is_ok() => Ok(value.clone()),
             (Self::Int16, Value::Integer(n)) if i16::try_from(*n).is_ok() => Ok(value.clone()),
@@ -163,7 +163,7 @@ impl Type {
                 let decimal = BigDecimal::from_str(&value.to_string()).map_err(|_| invalid())?;
                 let (coefficient, exponent) = decimal.as_bigint_and_exponent();
                 if coefficient.to_string().len() > 4096 || exponent.unsigned_abs() > 4096 {
-                    return Err(Error("DECIMAL exceeds 4096-digit limit".into()));
+                    return Err(Error::new("DECIMAL exceeds 4096-digit limit".into()));
                 }
                 let text = decimal.normalized().to_plain_string();
                 let unsigned = text.trim_start_matches('-');
@@ -172,7 +172,7 @@ impl Type {
                     if frac.len() > *scale as usize
                         || whole.trim_start_matches('0').len() > (precision - scale) as usize
                     {
-                        return Err(Error("DECIMAL precision or scale overflow".into()));
+                        return Err(Error::new("DECIMAL precision or scale overflow".into()));
                     }
                     Ok(Value::Decimal(
                         decimal.with_scale(*scale as i64).to_plain_string(),
@@ -230,30 +230,31 @@ impl Type {
         let parsed = match self {
             Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 => Value::Integer(
                 text.parse()
-                    .map_err(|_| Error("invalid integer cast".into()))?,
+                    .map_err(|_| Error::new("invalid integer cast".into()))?,
             ),
             Self::Uint8 | Self::Uint16 | Self::Uint32 => Value::UnsignedInteger(
                 text.parse()
-                    .map_err(|_| Error("invalid unsigned integer cast".into()))?,
+                    .map_err(|_| Error::new("invalid unsigned integer cast".into()))?,
             ),
             Self::Real | Self::Double => Value::Real(
                 text.parse()
-                    .map_err(|_| Error("invalid floating-point cast".into()))?,
+                    .map_err(|_| Error::new("invalid floating-point cast".into()))?,
             ),
             Self::Decimal(_) => {
-                BigDecimal::from_str(&text).map_err(|_| Error("invalid decimal cast".into()))?;
+                BigDecimal::from_str(&text)
+                    .map_err(|_| Error::new("invalid decimal cast".into()))?;
                 Value::Decimal(text)
             }
             Self::Boolean => Value::Boolean(match text.to_lowercase().as_str() {
                 "true" => true,
                 "false" => false,
-                _ => return Err(Error("invalid boolean cast".into())),
+                _ => return Err(Error::new("invalid boolean cast".into())),
             }),
             Self::Text | Self::Varchar(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
             Self::Instant => Value::Instant(text),
             Self::Json => {
-                Value::Json(serde_json::from_str(&text).map_err(|e| Error(e.to_string()))?)
+                Value::Json(serde_json::from_str(&text).map_err(|e| Error::new(e.to_string()))?)
             }
             Self::Bytea | Self::Array(_) => value,
         };
