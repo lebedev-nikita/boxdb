@@ -66,9 +66,9 @@ impl Type {
             let args = tail
                 .split(',')
                 .map(|s| {
-                    s.trim()
-                        .parse::<u32>()
-                        .map_err(|_| Error::new("invalid type parameter".into()))
+                    s.trim().parse::<u32>().map_err(|error| {
+                        Error::new("invalid type parameter".into()).with_source(error)
+                    })
                 })
                 .collect::<Result<Vec<_>>>()?;
             (base.trim(), args)
@@ -135,7 +135,7 @@ impl Type {
             (Self::Int32, Value::Integer(n)) if i32::try_from(*n).is_ok() => Ok(value.clone()),
             (Self::Int64, Value::Integer(_)) => Ok(value.clone()),
             (Self::Uint8 | Self::Uint16 | Self::Uint32, Value::Integer(n)) => {
-                let n = u64::try_from(*n).map_err(|_| invalid())?;
+                let n = u64::try_from(*n).map_err(|error| invalid().with_source(error))?;
                 self.validate(&Value::UnsignedInteger(n))
             }
             (Self::Uint8, Value::UnsignedInteger(n)) if u8::try_from(*n).is_ok() => {
@@ -148,7 +148,10 @@ impl Type {
                 Ok(value.clone())
             }
             (Self::Real | Self::Double, Value::Integer(_) | Value::Decimal(_) | Value::Real(_)) => {
-                let n: f64 = value.to_string().parse().map_err(|_| invalid())?;
+                let n: f64 = value
+                    .to_string()
+                    .parse()
+                    .map_err(|error| invalid().with_source(error))?;
                 let n = if matches!(self, Self::Real) {
                     (n as f32) as f64
                 } else {
@@ -160,7 +163,8 @@ impl Type {
                 Ok(Value::Real(n))
             }
             (Self::Decimal(limits), Value::Integer(_) | Value::Decimal(_)) => {
-                let decimal = BigDecimal::from_str(&value.to_string()).map_err(|_| invalid())?;
+                let decimal = BigDecimal::from_str(&value.to_string())
+                    .map_err(|error| invalid().with_source(error))?;
                 let (coefficient, exponent) = decimal.as_bigint_and_exponent();
                 if coefficient.to_string().len() > 4096 || exponent.unsigned_abs() > 4096 {
                     return Err(Error::new("DECIMAL exceeds 4096-digit limit".into()));
@@ -191,7 +195,7 @@ impl Type {
             }
             (Self::Uuid, Value::Uuid(s)) => uuid::Uuid::parse_str(s)
                 .map(|u| Value::Uuid(u.to_string()))
-                .map_err(|_| invalid()),
+                .map_err(|error| invalid().with_source(error)),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
             (Self::Instant, Value::Instant(s)) => {
                 // Chrono accepts leap seconds and truncates extra fractional
@@ -202,7 +206,7 @@ impl Type {
                     return Err(invalid());
                 }
                 let instant = DateTime::parse_from_rfc3339(&s.replace(' ', "T"))
-                    .map_err(|_| invalid())?
+                    .map_err(|error| invalid().with_source(error))?
                     .with_timezone(&chrono::Utc);
                 if !(0..=9999).contains(&instant.year())
                     || instant.timestamp_subsec_nanos() >= 1_000_000_000
@@ -228,21 +232,23 @@ impl Type {
         }
         let text = value.to_string();
         let parsed = match self {
-            Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 => Value::Integer(
-                text.parse()
-                    .map_err(|_| Error::new("invalid integer cast".into()))?,
-            ),
-            Self::Uint8 | Self::Uint16 | Self::Uint32 => Value::UnsignedInteger(
-                text.parse()
-                    .map_err(|_| Error::new("invalid unsigned integer cast".into()))?,
-            ),
-            Self::Real | Self::Double => Value::Real(
-                text.parse()
-                    .map_err(|_| Error::new("invalid floating-point cast".into()))?,
-            ),
+            Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 => {
+                Value::Integer(text.parse().map_err(|error| {
+                    Error::new("invalid integer cast".into()).with_source(error)
+                })?)
+            }
+            Self::Uint8 | Self::Uint16 | Self::Uint32 => {
+                Value::UnsignedInteger(text.parse().map_err(|error| {
+                    Error::new("invalid unsigned integer cast".into()).with_source(error)
+                })?)
+            }
+            Self::Real | Self::Double => Value::Real(text.parse().map_err(|error| {
+                Error::new("invalid floating-point cast".into()).with_source(error)
+            })?),
             Self::Decimal(_) => {
-                BigDecimal::from_str(&text)
-                    .map_err(|_| Error::new("invalid decimal cast".into()))?;
+                BigDecimal::from_str(&text).map_err(|error| {
+                    Error::new("invalid decimal cast".into()).with_source(error)
+                })?;
                 Value::Decimal(text)
             }
             Self::Boolean => Value::Boolean(match text.to_lowercase().as_str() {
@@ -253,9 +259,7 @@ impl Type {
             Self::Text | Self::Varchar(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
             Self::Instant => Value::Instant(text),
-            Self::Json => {
-                Value::Json(serde_json::from_str(&text).map_err(|e| Error::new(e.to_string()))?)
-            }
+            Self::Json => Value::Json(serde_json::from_str(&text).map_err(Error::validation)?),
             Self::Bytea | Self::Array(_) => value,
         };
         self.validate(&parsed)

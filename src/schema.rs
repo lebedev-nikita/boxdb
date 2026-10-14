@@ -409,10 +409,9 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     Ok(match value {
         Value::Null => SqlValue::Null,
         Value::Integer(n) => SqlValue::Integer(*n),
-        Value::UnsignedInteger(n) => SqlValue::Integer(
-            i64::try_from(*n)
-                .map_err(|_| Error::new("unsigned value exceeds SQLite INTEGER range".into()))?,
-        ),
+        Value::UnsignedInteger(n) => SqlValue::Integer(i64::try_from(*n).map_err(|error| {
+            Error::new("unsigned value exceeds SQLite INTEGER range".into()).with_source(error)
+        })?),
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
@@ -477,9 +476,7 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
             .or_else(|| n.as_f64().map(Value::Real))
             .ok_or_else(|| Error::new("invalid array number".into()))?,
         J::String(s) if matches!(ty, Type::Bytea) => {
-            return Ok(Value::Bytea(
-                hex::decode(s).map_err(|e| Error::new(e.to_string()))?,
-            ));
+            return Ok(Value::Bytea(hex::decode(s).map_err(Error::validation)?));
         }
         J::String(s) => return decode(ty, SqlValue::Text(s)),
         _ => return Err(Error::new("invalid array cell".into())),

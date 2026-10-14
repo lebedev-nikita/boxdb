@@ -1,7 +1,7 @@
 import type { Database, QueryResult, Row, SQLParameter, SQLValue } from "../index.js";
 
 export type RowList<T extends object[]> = T & {
-  readonly count: number;
+  readonly count: bigint;
   readonly columns: readonly { readonly name: string }[];
 };
 
@@ -48,7 +48,7 @@ export class PendingQuery<T extends object[] = Row[]>
             Object.fromEntries(result.columns.map((name, index) => [name, row[index]])),
           );
       return Object.defineProperties(output, {
-        count: { value: result.columns.length > 0 ? result.rows.length : result.changes },
+        count: { value: result.columns.length > 0 ? BigInt(result.rows.length) : result.changes },
         columns: { value: result.columns.map((name) => ({ name })) },
       }) as RowList<T>;
     });

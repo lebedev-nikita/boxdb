@@ -123,6 +123,13 @@ canonical UTC text, and BOOLEAN returns integer 0/1 (which `Scan` accepts into
 `bool`). Serialize JSON and arrays explicitly. Use `sql.Scanner` for application
 types. BoxDB validates logical values on both reads and writes.
 
-Core failures are `*boxdb.Error`, available through `errors.As`; SQLite extended
-error codes are not exposed by this Go driver yet. Context cancellation returns
-`context.Canceled` or `context.DeadlineExceeded` through `errors.Is`.
+BoxDB failures are `*boxdb.Error`, available through `errors.As`. They expose
+`Message`, a symbolic `Code` such as `BOXDB_CONSTRAINT_UNIQUE`, and optional
+`*int` fields `ResultCode` and `ExtendedCode`. Errors outside the engine have
+nil numeric codes. Codes do not depend on parsing the message.
+
+Context cancellation matches `context.Canceled` or `context.DeadlineExceeded`
+through `errors.Is`; an interrupted native call also retains its BoxDB error
+through `errors.As`. A completed unrelated failure is not replaced by a racing
+cancellation. Transaction completion and cleanup can return joined errors.
+See the [error contract](../../docs/client-errors.md).

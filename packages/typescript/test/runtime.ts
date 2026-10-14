@@ -19,28 +19,28 @@ try {
     () => client.get("SELECT * FROM missing"),
     (error: unknown) => {
       assert.ok(error instanceof BoxDBError);
-      assert.equal(error.code, "SQLITE_ERROR");
-      assert.equal(error.sqliteCode, 1);
-      assert.equal(error.sqliteExtendedCode, 1);
+      assert.equal(error.code, "BOXDB_ERROR");
+      assert.equal(error.resultCode, 1);
+      assert.equal(error.extendedCode, 1);
       assert.ok(error.cause instanceof Error);
       return true;
     },
   );
-  const users = sqliteTable("users", { id: integer().primaryKey(), name: text() });
+  const users = sqliteTable("users", { id: integer().$type<bigint>().primaryKey(), name: text() });
   const orm = drizzle(client);
   orm.insert(users).values({ name: "Ada" }).run();
-  assert.deepEqual(client.query("SELECT * FROM users").rows, [{ id: 1, name: "Ada" }]);
-  assert.deepEqual(orm.select().from(users).all(), [{ id: 1, name: "Ada" }]);
+  assert.deepEqual(client.query("SELECT * FROM users").rows, [{ id: 1n, name: "Ada" }]);
+  assert.deepEqual(orm.select().from(users).all(), [{ id: 1n, name: "Ada" }]);
   const sql = adapter(client);
   const rows = await sql`SELECT name FROM users WHERE id = ${1}`;
   assert.deepEqual(rows, [{ name: "Ada" }]);
-  assert.equal(rows.count, 1);
-  assert.deepEqual(await sql`SELECT ${1} AS x, ${2} AS x`.values(), [[1, 2]]);
-  const queryBuilder = new Kysely<{ users: { id: number; name: string } }>({
+  assert.equal(rows.count, 1n);
+  assert.deepEqual(await sql`SELECT ${1} AS x, ${2} AS x`.values(), [[1n, 2n]]);
+  const queryBuilder = new Kysely<{ users: { id: bigint; name: string } }>({
     dialect: new SqliteDialect({ database: client }),
   });
   assert.deepEqual(await queryBuilder.selectFrom("users").selectAll().execute(), [
-    { id: 1, name: "Ada" },
+    { id: 1n, name: "Ada" },
   ]);
   await queryBuilder.destroy();
   console.log("BoxDB runtime smoke passed");

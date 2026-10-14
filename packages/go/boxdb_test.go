@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"math"
 	"os"
@@ -15,6 +16,137 @@ import (
 
 	boxdb "github.com/lebedev-nikita/boxdb/packages/go"
 )
+
+func TestStructuredConstraintErrors(t *testing.T) {
+	for _, format := range []boxdb.Format{boxdb.Binary, boxdb.Readable} {
+		t.Run(string(format), func(t *testing.T) {
+			db, err := boxdb.Open(filepath.Join(t.TempDir(), "data.db"), boxdb.WithFormat(format))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec("CREATE TABLE users(name TEXT UNIQUE); INSERT INTO users VALUES('Ada')"); err != nil {
+				t.Fatal(err)
+			}
+			_, err = db.Exec("INSERT INTO users VALUES(?)", "Ada")
+			var failure *boxdb.Error
+			if !errors.As(err, &failure) {
+				t.Fatalf("expected BoxDB error, got %v", err)
+			}
+			if failure.Code != "BOXDB_CONSTRAINT_UNIQUE" || failure.ResultCode == nil || *failure.ResultCode != 19 || failure.ExtendedCode == nil || *failure.ExtendedCode != 2067 {
+				t.Fatalf("unexpected structured error: %+v", failure)
+			}
+			if _, err := db.Exec("CREATE TABLE parents(id INTEGER PRIMARY KEY); CREATE TABLE children(id INTEGER PRIMARY KEY, parent INTEGER REFERENCES parents(id), name TEXT NOT NULL, n INTEGER CHECK(n>0)); INSERT INTO children VALUES(1,NULL,'Ada',1)"); err != nil {
+				t.Fatal(err)
+			}
+			for _, test := range []struct {
+				sql, code         string
+				primary, extended int
+			}{
+				{"INSERT INTO children VALUES(1,NULL,'Grace',1)", "BOXDB_CONSTRAINT_PRIMARYKEY", 19, 1555},
+				{"INSERT INTO children VALUES(2,99,'Grace',1)", "BOXDB_CONSTRAINT_FOREIGNKEY", 19, 787},
+				{"INSERT INTO children VALUES(2,NULL,NULL,1)", "BOXDB_CONSTRAINT_NOTNULL", 19, 1299},
+				{"INSERT INTO children VALUES(2,NULL,'Grace',0)", "BOXDB_CONSTRAINT_CHECK", 19, 275},
+				{"SELECT * FROM missing", "BOXDB_ERROR", 1, 1},
+				{"SELECT FROM", "BOXDB_ERROR", 1, 1},
+			} {
+				_, err := db.Exec(test.sql)
+				failure = nil
+				if !errors.As(err, &failure) || failure.Code != test.code || failure.ResultCode == nil || *failure.ResultCode != test.primary || failure.ExtendedCode == nil || *failure.ExtendedCode != test.extended {
+					t.Fatalf("%s: unexpected error %+v", test.sql, failure)
+				}
+			}
+			_, err = db.Prepare("SELECT FROM")
+			if !errors.As(err, &failure) || failure.Code != "BOXDB_ERROR" || failure.ExtendedCode == nil || *failure.ExtendedCode != 1 {
+				t.Fatalf("prepare error = %v", err)
+			}
+			_, err = db.Query("SELECT 1; SELECT 2")
+			if !errors.As(err, &failure) || failure.Code != "BOXDB_VALIDATION" || failure.ResultCode != nil || failure.ExtendedCode != nil {
+				t.Fatalf("query validation = %v", err)
+			}
+		})
+	}
+}
+
+func TestOpeningErrorsPreserveCodesAndAbsentEngineDetails(t *testing.T) {
+	for _, test := range []struct {
+		format boxdb.Format
+		code   string
+		result *int
+	}{
+		{boxdb.Binary, "BOXDB_CANTOPEN", pointer(14)},
+		{boxdb.Readable, "BOXDB_IO", nil},
+	} {
+		_, err := boxdb.Open(filepath.Join(t.TempDir(), "missing", "data.db"), boxdb.WithFormat(test.format))
+		var failure *boxdb.Error
+		if !errors.As(err, &failure) || failure.Code != test.code || !reflect.DeepEqual(failure.ResultCode, test.result) || !reflect.DeepEqual(failure.ExtendedCode, test.result) {
+			t.Fatalf("opening %s: %v", test.format, err)
+		}
+	}
+}
+
+func pointer(value int) *int { return &value }
+
+func TestInvalidOptionsReturnStructuredValidationErrors(t *testing.T) {
+	_, err := boxdb.Open(":memory:", boxdb.WithFormat("invalid"))
+	var failure *boxdb.Error
+	if !errors.As(err, &failure) || failure.Code != "BOXDB_VALIDATION" || failure.ResultCode != nil || failure.ExtendedCode != nil {
+		t.Fatalf("option validation = %v", err)
+	}
+}
+
+func TestNonFiniteParametersReturnValidationErrors(t *testing.T) {
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec("SELECT ?", math.Inf(1))
+	var failure *boxdb.Error
+	if !errors.As(err, &failure) || failure.Code != "BOXDB_VALIDATION" {
+		t.Fatalf("non-finite parameter = %v", err)
+	}
+}
+
+func TestCommitPreservesPublicationAndCleanupFailuresWithoutRetry(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "store")
+	if err := os.Mkdir(parent, 0755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := boxdb.Open(filepath.Join(parent, "data.yaml"), boxdb.WithFormat(boxdb.Readable))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE t(n INT64)"); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO t VALUES(1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(parent, parent+"-moved"); err != nil {
+		t.Fatal(err)
+	}
+	err = tx.Commit()
+	if errors.Is(err, driver.ErrBadConn) {
+		t.Fatalf("commit must not request a retry: %v", err)
+	}
+	combined, ok := err.(interface{ Unwrap() []error })
+	if !ok || len(combined.Unwrap()) != 2 {
+		t.Fatalf("commit lost cleanup failure: %v", err)
+	}
+	var publication, cleanup *boxdb.Error
+	if !errors.As(combined.Unwrap()[0], &publication) || publication.Code != "BOXDB_IO" {
+		t.Fatalf("publication failure = %v", combined.Unwrap()[0])
+	}
+	if !errors.As(combined.Unwrap()[1], &cleanup) || cleanup.Code != "BOXDB_UNAVAILABLE" {
+		t.Fatalf("cleanup failure = %v", combined.Unwrap()[1])
+	}
+}
 
 func TestQueriesThroughDatabaseSQL(t *testing.T) {
 	db, err := boxdb.Open(":memory:")
@@ -213,6 +345,10 @@ func TestContextCancellationStopsWaitingForWriterLock(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("lock cancellation = %v", err)
 	}
+	var busy *boxdb.Error
+	if !errors.As(err, &busy) || busy.Code != "BOXDB_BUSY" || busy.ResultCode == nil || *busy.ResultCode != 5 {
+		t.Fatalf("lock cancellation lost engine cause: %v", err)
+	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("cancellation took %s", elapsed)
 	}
@@ -236,6 +372,10 @@ func TestContextCancellationInterruptsQueriesAndKeepsConnectionUsable(t *testing
 	err = db.QueryRowContext(ctx, "WITH RECURSIVE numbers(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM numbers WHERE x<1000000000) SELECT sum(x) FROM numbers").Scan(&sum)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("query cancellation = %v", err)
+	}
+	var interrupted *boxdb.Error
+	if !errors.As(err, &interrupted) || interrupted.Code != "BOXDB_INTERRUPT" {
+		t.Fatalf("cancellation lost engine cause: %v", err)
 	}
 	if err := db.QueryRow("SELECT 42").Scan(&sum); err != nil || sum != 42 {
 		t.Fatalf("connection after cancellation = %d, %v", sum, err)

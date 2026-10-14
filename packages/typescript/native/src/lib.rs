@@ -13,11 +13,11 @@ fn database_failure(env: Env, error: boxdb::Error) -> napi::Error {
     let result = (|| -> napi::Result<napi::Error> {
         let mut object = env.create_error(failure(&error))?;
         object.set_named_property("code", error.code())?;
-        if let Some(code) = error.sqlite_code() {
-            object.set_named_property("sqliteCode", code)?;
+        if let Some(code) = error.result_code() {
+            object.set_named_property("resultCode", code)?;
         }
-        if let Some(code) = error.sqlite_extended_code() {
-            object.set_named_property("sqliteExtendedCode", code)?;
+        if let Some(code) = error.extended_code() {
+            object.set_named_property("extendedCode", code)?;
         }
         Ok(napi::Error::from(object.into_unknown(&env)?))
     })();
@@ -62,7 +62,7 @@ pub struct NativeInfo {
 pub struct NativeResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Cell>>,
-    pub changes: f64,
+    pub changes: BigInt,
     pub last_insert_rowid: BigInt,
 }
 
@@ -73,10 +73,10 @@ pub struct NativeDatabase {
 }
 
 impl NativeDatabase {
-    fn database(&mut self) -> napi::Result<&mut Database> {
+    fn database(&mut self, env: Env) -> napi::Result<&mut Database> {
         self.database
             .as_mut()
-            .ok_or_else(|| failure("database is closed"))
+            .ok_or_else(|| database_failure(env, boxdb::Error::closed("database is closed")))
     }
 }
 
@@ -90,7 +90,7 @@ impl NativeDatabase {
             _ => return Err(failure("format must be binary or readable")),
         };
         let database = if path == ":memory:" {
-            Database::memory()
+            Database::try_memory().map_err(|error| database_failure(env, error))?
         } else {
             Database::open(path, format).map_err(|error| database_failure(env, error))?
         };
@@ -102,7 +102,7 @@ impl NativeDatabase {
     #[napi]
     pub fn prepare(&mut self, env: Env, sql: String) -> napi::Result<NativeInfo> {
         let info = self
-            .database()?
+            .database(env)?
             .statement_info(&sql)
             .map_err(|error| database_failure(env, error))?;
         Ok(NativeInfo {
@@ -123,7 +123,7 @@ impl NativeDatabase {
             .into_iter()
             .map(input)
             .collect::<napi::Result<Vec<_>>>()?;
-        let database = self.database()?;
+        let database = self.database(env)?;
         let result = database
             .execute_native(&sql, &parameters)
             .map_err(|error| database_failure(env, error))?;
@@ -134,22 +134,22 @@ impl NativeDatabase {
                 .into_iter()
                 .map(|row| row.into_iter().map(output).collect())
                 .collect::<napi::Result<_>>()?,
-            changes: result.affected as f64,
+            changes: (result.affected as u64).into(),
             last_insert_rowid: database.last_insert_rowid().into(),
         })
     }
 
     #[napi]
     pub fn exec(&mut self, env: Env, sql: String) -> napi::Result<()> {
-        self.database()?
+        self.database(env)?
             .execute(&sql)
             .map_err(|error| database_failure(env, error))?;
         Ok(())
     }
 
     #[napi(getter)]
-    pub fn in_transaction(&mut self) -> napi::Result<bool> {
-        Ok(self.database()?.in_transaction())
+    pub fn in_transaction(&mut self, env: Env) -> napi::Result<bool> {
+        Ok(self.database(env)?.in_transaction())
     }
 
     #[napi]

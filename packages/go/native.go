@@ -12,6 +12,7 @@ import "C"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 	"unsafe"
 )
@@ -48,7 +49,10 @@ func (db *nativeDB) callContext(ctx context.Context, command any, out any) error
 	close(done)
 	<-stopped // No interrupt may race with the next operation or Close.
 	if err != nil && ctx.Err() != nil {
-		return ctx.Err()
+		var failure *Error
+		if errors.As(err, &failure) && (failure.Code == "BOXDB_INTERRUPT" || failure.Code == "BOXDB_BUSY" || failure.Code == "BOXDB_LOCKED") {
+			return errors.Join(ctx.Err(), err)
+		}
 	}
 	return err
 }
@@ -62,7 +66,11 @@ func openNative(path string, readable bool) (*nativeDB, error) {
 	handle := C.boxdb_go_open(cpath, C.bool(readable), &failure)
 	if handle == nil {
 		defer C.boxdb_go_free(failure)
-		return nil, &Error{Message: C.GoString(failure)}
+		var err Error
+		if decode := json.Unmarshal([]byte(C.GoString(failure)), &err); decode != nil {
+			return nil, &Error{Code: "BOXDB_INTERNAL", Message: "invalid native open response", cause: decode}
+		}
+		return nil, &err
 	}
 	return &nativeDB{handle: handle}, nil
 }
@@ -70,7 +78,7 @@ func openNative(path string, readable bool) (*nativeDB, error) {
 func (db *nativeDB) call(command any, out any) error {
 	data, err := json.Marshal(command)
 	if err != nil {
-		return err
+		return &Error{Code: "BOXDB_VALIDATION", Message: err.Error(), cause: err}
 	}
 	request := C.CString(string(data))
 	defer C.free(unsafe.Pointer(request))
@@ -78,15 +86,18 @@ func (db *nativeDB) call(command any, out any) error {
 	defer C.boxdb_go_free(answer)
 	var envelope struct {
 		Result json.RawMessage `json:"result"`
-		Error  string          `json:"error"`
+		Error  *Error          `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(C.GoString(answer)), &envelope); err != nil {
-		return err
+		return &Error{Code: "BOXDB_INTERNAL", Message: "invalid native response", cause: err}
 	}
-	if envelope.Error != "" {
-		return &Error{Message: envelope.Error}
+	if envelope.Error != nil {
+		return envelope.Error
 	}
-	return json.Unmarshal(envelope.Result, out)
+	if err := json.Unmarshal(envelope.Result, out); err != nil {
+		return &Error{Code: "BOXDB_INTERNAL", Message: "invalid native result", cause: err}
+	}
+	return nil
 }
 
 func (db *nativeDB) close() { C.boxdb_go_close(db.handle) }

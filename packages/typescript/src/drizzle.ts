@@ -1,13 +1,17 @@
 import type { Database as BetterSQLiteDatabase } from "better-sqlite3";
 import { BetterSQLiteSession } from "drizzle-orm/better-sqlite3/session";
 import { DefaultLogger } from "drizzle-orm/logger";
+import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
 import { createTableRelationsHelpers, extractTablesRelationalConfig } from "drizzle-orm/relations";
 import { BaseSQLiteDatabase, SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import type { DrizzleConfig } from "drizzle-orm/utils";
 import { Database, type RunResult } from "./index.js";
 
 export type DrizzleDatabase<TSchema extends Record<string, unknown> = Record<string, never>> =
-  BaseSQLiteDatabase<"sync", RunResult, TSchema> & { $client: Database };
+  BaseSQLiteDatabase<"sync", RunResult, TSchema> & {
+    $client: Database;
+    $migrate(config: MigrationConfig): void;
+  };
 
 /** Use Drizzle's SQLite session with BoxDB, without loading better-sqlite3. */
 export function drizzle<TSchema extends Record<string, unknown> = Record<string, never>>(
@@ -39,5 +43,10 @@ export function drizzle<TSchema extends Record<string, unknown> = Record<string,
     logger ? { logger } : {},
   );
   const database = new BaseSQLiteDatabase("sync", dialect, session, schema);
-  return Object.assign(database, { $client: client }) as DrizzleDatabase<TSchema>;
+  return Object.assign(database, {
+    $client: client,
+    $migrate(config: MigrationConfig): void {
+      dialect.migrate(readMigrationFiles(config), session, config);
+    },
+  }) as unknown as DrizzleDatabase<TSchema>;
 }
