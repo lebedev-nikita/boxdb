@@ -114,13 +114,13 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
     db.execute(
         "CREATE TABLE derived (
             id INT64 PRIMARY KEY,
-            payload JSON,
+            enabled_source BOOLEAN,
             amount_source TEXT,
-            enabled BOOLEAN AS (json_extract(payload,'$.enabled')),
+            enabled BOOLEAN AS (enabled_source),
             code UINT8 AS (enabled+7) STORED,
             amount DECIMAL(6,2) AS (amount_source) STORED
         );
-        INSERT INTO derived(id,payload,amount_source) VALUES(1,'{\"enabled\":1}','12.50')",
+        INSERT INTO derived(id,enabled_source,amount_source) VALUES(1,1,'12.50')",
     )
     .unwrap();
     for format in [Format::Binary, Format::Readable] {
@@ -136,7 +136,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
                 row["values"],
                 serde_json::json!({
                     "id": 1,
-                    "payload": "{\"enabled\":1}",
+                    "enabled_source": 1,
                     "amount_source": "12.50"
                 })
             );
@@ -160,7 +160,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
                 .is_err()
         );
         restored
-            .execute("UPDATE derived SET payload='{\"enabled\":0}',amount_source='20.00'")
+            .execute("UPDATE derived SET enabled_source=0,amount_source='20.00'")
             .unwrap();
         assert_eq!(
             restored

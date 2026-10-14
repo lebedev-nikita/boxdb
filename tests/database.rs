@@ -48,7 +48,6 @@ fn native_sql_programs_have_the_same_results_as_sqlite() {
         ],
         vec![
             "SELECT 0.1+0.2 AS n,1/2 AS fraction,TRUE AS yes,NULL IS NULL AS empty",
-            "SELECT json_extract('{\"x\":2}','$.x') AS n",
             "VALUES(1,'雪'),(2,'abc')",
             "CREATE TABLE native_float(n REAL) STRICT",
             "INSERT INTO native_float VALUES(0.1),(1)",

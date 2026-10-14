@@ -130,3 +130,9 @@ version = "0.1"
 
 [dependencies.num-traits]
 version = "0.2"
+
+[dependencies.uuid]
+version = "1"
+
+[dependencies.chrono]
+version = "0.4"

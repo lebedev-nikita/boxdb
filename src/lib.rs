@@ -626,7 +626,7 @@ impl Database {
                 schema::cleanup(&self.connection)?;
                 self.refresh(true)?;
                 if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
-                    schema::normalize_instants(&self.connection, &self.types.borrow())?;
+                    schema::normalize_arrays(&self.connection, &self.types.borrow())?;
                 }
             }
             if guarded {

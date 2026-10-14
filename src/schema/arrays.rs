@@ -1,15 +1,17 @@
-//! Normalize instant storage on SQL writes, including nested typed arrays.
+//! Normalize native elements in nested typed arrays stored as opaque text.
 use super::{Types, decode, encode, quote};
 use crate::{Error, Result, Type};
 use rusqlite::{Connection, functions::FunctionFlags, types::Value as SqlValue};
 use std::collections::BTreeMap;
 
-fn contains_instant(ty: &Type) -> bool {
+fn contains_native(ty: &Type) -> bool {
     match ty {
-        Type::Instant => true,
-        Type::Array(inner) => contains_instant(inner),
-        _ => false,
+        Type::Array(inner) => contains_native(inner),
+        _ => ty.native_kind().is_some(),
     }
+}
+fn needs_normalization(ty: &Type) -> bool {
+    matches!(ty, Type::Array(_)) && contains_native(ty)
 }
 
 struct Column {
@@ -21,7 +23,7 @@ struct Column {
 fn tables(db: &Connection, types: &Types) -> Result<BTreeMap<String, Vec<Column>>> {
     let mut tables = BTreeMap::<String, Vec<Column>>::new();
     for (i, ((table, column), ty)) in types.iter().enumerate() {
-        if contains_instant(ty) {
+        if needs_normalization(ty) {
             let hidden: i64 = db.query_row(
                 "SELECT hidden FROM pragma_table_xinfo(?1,'main') WHERE name=?2",
                 [table, column],
@@ -29,7 +31,7 @@ fn tables(db: &Connection, types: &Types) -> Result<BTreeMap<String, Vec<Column>
             )?;
             tables.entry(table.clone()).or_default().push(Column {
                 name: column.clone(),
-                function: format!("__boxdb_instant_{i}"),
+                function: format!("__boxdb_array_{i}"),
                 generated: hidden != 0,
             });
         }
@@ -97,10 +99,10 @@ fn identity(db: &Connection, table: &str) -> Result<Vec<String>> {
 
 pub(super) fn install(db: &Connection, types: &Types) -> Result<()> {
     for (i, (_, ty)) in types.iter().enumerate() {
-        if contains_instant(ty) {
+        if needs_normalization(ty) {
             let ty = ty.clone();
             db.create_scalar_function(
-                format!("__boxdb_instant_{i}").as_str(),
+                format!("__boxdb_array_{i}").as_str(),
                 1,
                 FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
                 move |ctx| {
@@ -132,7 +134,7 @@ pub(super) fn install(db: &Connection, types: &Types) -> Result<()> {
             .join(" OR ");
         let mut body = String::new();
         if !generated_check.is_empty() {
-            body.push_str(&format!("SELECT RAISE(ABORT,'generated INSTANT must be canonical UTC') WHERE {generated_check};"));
+            body.push_str(&format!("SELECT RAISE(ABORT,'generated typed array must be canonical') WHERE {generated_check};"));
         }
         if !set.is_empty() {
             // SQLite forbids qualified UPDATE targets inside trigger SQL. A
@@ -145,7 +147,7 @@ pub(super) fn install(db: &Connection, types: &Types) -> Result<()> {
                 "SELECT EXISTS(SELECT 1 FROM main.{} WHERE {identity} AND ({dirty}))",
                 quote(&table)
             );
-            let writer = format!("__boxdb_instant_write_{i}");
+            let writer = format!("__boxdb_array_write_{i}");
             db.create_scalar_function(
                 writer.as_str(),
                 keys.len() as i32,
@@ -163,7 +165,7 @@ pub(super) fn install(db: &Connection, types: &Types) -> Result<()> {
                             .query_row(&check, rusqlite::params_from_iter(&params), |r| r.get(0))?;
                     if dirty {
                         return Err(rusqlite::Error::UserFunctionError(Box::new(Error::new(
-                            "INSTANT normalization failed".into(),
+                            "typed array normalization failed".into(),
                         ))));
                     }
                     Ok(0i64)
@@ -209,7 +211,7 @@ pub(crate) fn normalize(db: &Connection, types: &Types) -> Result<()> {
             |r| r.get(0),
         )?;
         if dirty {
-            return Err(Error::new("generated INSTANT must be canonical UTC".into()));
+            return Err(Error::new("generated typed array must be canonical".into()));
         }
     }
     Ok(())

@@ -111,7 +111,7 @@ test("validates BoxDB extended types and returns their SQLite representations", 
     active: 1n,
     payload: '{"x":1}',
     amount: "12.5",
-    at: "2024-02-29T12:00:00.000000000Z",
+    at: "2024-02-29T12:00:00.000000Z",
     small: 255n,
   });
   await expect(db.query`UPDATE t SET small=${256}`.execute()).rejects.toThrow();

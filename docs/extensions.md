@@ -9,6 +9,7 @@ connections and does not change other SQLite connections in the process.
 | --- | --- | --- |
 | Full-text search | SQLite FTS5, including Unicode and trigram tokenizers | [FTS5](https://www.sqlite.org/fts5.html) |
 | Spatial indexing | SQLite R*Tree | [R*Tree](https://www.sqlite.org/rtree.html) |
+| Native UUID, temporal values and temporal SQL functions | BoxDB's patched SQLite engine | [Temporal types](temporal.md) |
 | Exact decimal arithmetic | BoxDB's patched SQLite engine | [Native decimals](native-decimal.md) |
 | Unicode text functions and collation | sqlean-text | [Text functions](https://github.com/nalgeon/sqlean/blob/0.28.4/docs/text.md) |
 | Regular expressions | sqlean-regexp with PCRE2 | [Regexp functions](https://github.com/nalgeon/sqlean/blob/0.28.4/docs/regexp.md) |
@@ -91,6 +92,6 @@ attempting to create one rolls back the statement and leaves the file usable.
 The file format remains ordinary SQLite. External SQLite connections need the
 same modules, functions or collations when accessing schema objects that use
 them. For example, an index on `text_lower(name)` requires that function, and a
-table declaring `COLLATE text_nocase` requires that collation. Ordinary BoxDB
-decimal storage does not require the decimal extension unless the schema itself
-references its functions or collation.
+table declaring `COLLATE text_nocase` requires that collation. Native values and their indexes require BoxDB's patched engine. JSON columns
+validate complete documents; JSON1/JSONB SQL functions, operators and virtual
+tables are disabled.

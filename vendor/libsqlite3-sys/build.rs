@@ -166,6 +166,7 @@ mod build_bundled {
         let mut cfg = cc::Build::new();
         cfg.file(super::boxdb::source(out_dir))
             .include(env!("CARGO_MANIFEST_DIR"))
+            .include(out_dir)
             .flag("-DSQLITE_CORE")
             .flag("-DSQLITE_DEFAULT_FOREIGN_KEYS=1")
             .flag("-DSQLITE_ENABLE_API_ARMOR")
@@ -174,7 +175,7 @@ mod build_bundled {
             .flag("-DSQLITE_ENABLE_FTS3")
             .flag("-DSQLITE_ENABLE_FTS3_PARENTHESIS")
             .flag("-DSQLITE_ENABLE_FTS5")
-            .flag("-DSQLITE_ENABLE_JSON1")
+            .flag("-DSQLITE_OMIT_JSON")
             .flag("-DSQLITE_ENABLE_LOAD_EXTENSION=1")
             .flag("-DSQLITE_ENABLE_MEMORY_MANAGEMENT")
             .flag("-DSQLITE_ENABLE_RTREE")
