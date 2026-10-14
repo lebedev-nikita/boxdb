@@ -1,4 +1,4 @@
-use boxdb::{Database, Format, Value};
+use boxdb::{Database, Format, SchemaFormat, Value};
 
 #[test]
 fn decimal_sql_keeps_arithmetic_aggregates_and_ordering_exact() {
@@ -140,6 +140,31 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
             );
         }
     }
+}
+
+#[test]
+fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("schema.db");
+    let mut db = Database::open(&path, Format::Binary).unwrap();
+    db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount NUMERIC(12,2), adjusted TEXT GENERATED ALWAYS AS (decimal_add(amount,'0.10')) STORED); CREATE INDEX folded ON terms(text_lower(name))").unwrap();
+    drop(db);
+    let sql =
+        String::from_utf8(Database::dump_schema_file(&path, SchemaFormat::Sql).unwrap()).unwrap();
+    assert!(sql.contains("text_lower"));
+    assert!(sql.contains("Decimal"));
+    let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
+    let mut restored = Database::from_snapshot(&yaml).unwrap();
+    restored
+        .execute("INSERT INTO terms(name,amount) VALUES('Ёж','0.20')")
+        .unwrap();
+    assert_eq!(
+        restored
+            .execute("SELECT adjusted FROM terms WHERE name='ёж'")
+            .unwrap()[0]
+            .rows,
+        vec![vec![Value::Text("0.30".into())]]
+    );
 }
 
 #[test]

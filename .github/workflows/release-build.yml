@@ -107,12 +107,17 @@ jobs:
         run: |
           boxdb_release_archive="boxdb-${BOXDB_RELEASE_VERSION}-${BOXDB_RELEASE_TARGET}.tar.gz"
           boxdb_release_stage="target/release-assets/staging"
-          mkdir -p "$boxdb_release_stage/docs" "$boxdb_release_stage/assets"
+          mkdir -p "$boxdb_release_stage/docs" "$boxdb_release_stage/assets" "$boxdb_release_stage/licenses"
           cp "target/${BOXDB_RELEASE_TARGET}/release/boxdb" README.md LICENSE "$boxdb_release_stage/"
           cp docs/replication.md "$boxdb_release_stage/docs/"
           cp assets/icon.svg "$boxdb_release_stage/assets/"
+          cp vendor/sqlean/LICENSE "$boxdb_release_stage/licenses/sqlean.txt"
+          cp vendor/sqlean/regexp/pcre2/LICENSE "$boxdb_release_stage/licenses/pcre2.txt"
+          cp vendor/sqlite-vec/LICENSE-MIT "$boxdb_release_stage/licenses/sqlite-vec-MIT.txt"
+          cp vendor/sqlite-vec/LICENSE-APACHE "$boxdb_release_stage/licenses/sqlite-vec-APACHE.txt"
           tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
-            boxdb README.md LICENSE docs/replication.md assets/icon.svg
+            boxdb README.md LICENSE docs/replication.md assets/icon.svg \
+            licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt
       - name: Upload CLI archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -171,7 +176,7 @@ jobs:
           for name in names[:2]:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
-                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg"}:
+                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt"}:
                       raise SystemExit("Incomplete CLI archive: " + name)
                   if not all(member.isfile() and member.size > 0 for member in members):
                       raise SystemExit("Invalid CLI archive member: " + name)
