@@ -1,9 +1,13 @@
 default:
     @just --list
 
-# Count lines in tracked project files, excluding vendored dependencies.
+# Count tracked project and test files separately, excluding vendored dependencies.
 count-lines:
-    cloc --vcs=git --exclude-dir=vendor
+    @echo 'Project files (excluding tests):'
+    cloc --vcs=git --exclude-dir=vendor,test,tests
+    @echo
+    @echo 'Test files:'
+    cloc --vcs=git --exclude-dir=vendor --match-d='(^|/)(test|tests)(/|$)'
 
 ts-install:
     bun install --cwd packages/typescript --frozen-lockfile
