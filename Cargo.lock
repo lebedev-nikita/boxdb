@@ -151,15 +151,18 @@ name = "boxdb"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
+ "cc",
  "chrono",
  "clap",
  "fs2",
  "hex",
+ "libsqlite3-sys",
  "rusqlite",
  "serde",
  "serde-saphyr",
  "serde_json",
  "sha2",
+ "sqlite-vec",
  "sqlparser",
  "tempfile",
  "thiserror",
@@ -1048,6 +1051,15 @@ name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+
+[[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "sqlite-wasm-rs"

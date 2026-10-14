@@ -5,6 +5,26 @@ use std::time::Duration;
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
+fn cli_provides_bundled_extensions_without_loading_shared_libraries() {
+    let output = Command::new(BIN)
+        .args(["--json", "-e", "SELECT decimal_add('0.1','0.2') AS amount, text_lower('ПРИВЕТ') AS word, regexp_substr('order #123','\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        result["rows"][0],
+        serde_json::json!([
+            {"Text": "0.3"}, {"Text": "привет"}, {"Text": "123"}, {"Real": 1.0},
+        ])
+    );
+}
+
+#[test]
 fn cli_reports_boxdb_name_and_release_version() {
     let output = Command::new(BIN).arg("--version").output().unwrap();
     assert!(output.status.success());

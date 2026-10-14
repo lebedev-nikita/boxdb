@@ -496,6 +496,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
         return Err(Error("duplicate readable header".into()));
     }
     let db = Connection::open_in_memory()?;
+    crate::extensions::register(&db)?;
     db.pragma_update(None, "foreign_keys", true)?;
     db.execute_batch("BEGIN; PRAGMA defer_foreign_keys=ON")?;
     for record in &records {

@@ -56,7 +56,7 @@ fn up_preserves_extended_types_and_does_not_apply_a_version_twice() {
     let result: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(
         result["rows"],
-        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Numeric":"12.50"}]])
+        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Decimal":"12.50"}]])
     );
 }
 

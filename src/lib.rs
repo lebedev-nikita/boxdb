@@ -39,6 +39,7 @@ convert_error!(
 pub mod migrations;
 pub mod types;
 pub use types::{Type, Value};
+mod extensions;
 mod readable;
 mod schema;
 mod schema_dump;
@@ -125,6 +126,7 @@ fn authorizer(db: &Connection, internal: Arc<AtomicBool>) -> Result<()> {
     Ok(())
 }
 fn configure(db: &Connection, binary: bool) -> Result<()> {
+    extensions::register(db)?;
     db.busy_timeout(Duration::from_secs(5))?;
     db.pragma_update(None, "foreign_keys", true)?;
     db.pragma_update(None, "synchronous", "FULL")?;
@@ -516,6 +518,15 @@ impl Database {
             if ddl {
                 let _guard = InternalGuard::enter(&self.internal);
                 self.connection.flush_prepared_statement_cache();
+                if self.readable.is_some()
+                    && self.connection.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM pragma_table_list WHERE schema='main' AND type='virtual')",
+                        [],
+                        |row| row.get::<_, bool>(0),
+                    )?
+                {
+                    return Err(Error("virtual tables require binary storage; readable storage does not support them".into()));
+                }
                 if let Some(change) = &alteration {
                     schema::save_alteration(&self.connection, change)?;
                     if !change.columns.is_empty() {

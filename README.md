@@ -18,7 +18,7 @@ boxdb data.db -e "
   CREATE TABLE accounts (
     id INT64 PRIMARY KEY,
     name TEXT NOT NULL,
-    balance NUMERIC(12,2)
+    balance DECIMAL(12,2)
   );
   INSERT INTO accounts(name,balance) VALUES('Ada','12.50');
   SELECT * FROM accounts;
@@ -53,7 +53,11 @@ UTC instants and typed arrays. Bind decimal strings for exact numeric values.
 See [type declarations](src/types.rs) and the
 [storage and validation contract](docs/storage.md).
 
-Binary files work with ordinary SQLite clients. External writers receive
+FTS5, R*Tree, exact decimal SQL functions, Unicode text functions, regular
+expressions and vector search are built in for every client. No shared-library
+loading is needed. See [extension examples and storage limits](docs/extensions.md).
+
+Binary files use SQLite's standard format. External writers receive
 SQLite constraints but can bypass BoxDB's additional validation. Readable YAML
 storage executes in memory and publishes a complete snapshot on commit, with
 one writer per file. See [storage formats](docs/storage.md) and

@@ -119,11 +119,13 @@ pub(crate) fn import(bytes: &[u8]) -> Result<Connection> {
     let mut temp = tempfile::NamedTempFile::new()?;
     temp.write_all(bytes)?;
     let source = Connection::open_with_flags(temp.path(), OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    crate::extensions::register(&source)?;
     let check: String = source.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
     if check != "ok" {
         return Err(Error(format!("invalid SQLite snapshot: {check}")));
     }
     let mut destination = Connection::open_in_memory()?;
+    crate::extensions::register(&destination)?;
     copy(&source, &mut destination)?;
     Ok(destination)
 }
