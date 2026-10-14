@@ -114,6 +114,10 @@ up to five seconds; setting `PRAGMA busy_timeout` replaces the cancellable lock
 handler. Opening native databases is synchronous. Results are currently fully
 materialized by the Rust core before `Rows` iteration.
 
+Pool session cleanup finishes before the next operation and is independent of
+that operation's cancellation. A cancelled request does not discard a healthy
+connection or lose its committed in-memory data.
+
 ## Values and errors
 
 Use ordinary Go integers, floats, strings, booleans, `[]byte`, `nil`, `time.Time`,

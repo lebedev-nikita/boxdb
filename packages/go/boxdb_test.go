@@ -245,6 +245,37 @@ func TestShortDeadlinesPreserveInMemoryData(t *testing.T) {
 	}
 }
 
+func TestCancelledPoolReusePreservesInMemoryData(t *testing.T) {
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE users(name TEXT); INSERT INTO users VALUES('Ada')"); err != nil {
+		t.Fatal(err)
+	}
+	// Borrowing the used connection exercises session cleanup without running
+	// cancellable SQL that could otherwise change or roll back the stored data.
+	for i := 0; i < 1000; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Microsecond)
+		connection, err := db.Conn(ctx)
+		cancel()
+		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var name string
+	if err := db.QueryRow("SELECT name FROM users").Scan(&name); err != nil || name != "Ada" {
+		t.Fatalf("data after cancelled pool reuse = %q, %v", name, err)
+	}
+}
+
 func TestExecScriptsAndParameterizedStatementBoundaries(t *testing.T) {
 	db, err := boxdb.Open(":memory:")
 	if err != nil {
