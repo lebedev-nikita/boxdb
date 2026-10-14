@@ -1,6 +1,11 @@
 default:
     @just --list
 
+# Compare all storage profiles with unmodified bundled SQLite.
+[positional-arguments]
+bench-sqlite *args:
+    @python3 tools/benchmark_sqlite.py "$@"
+
 # Count tracked project, test, and vendored SQLite files separately.
 count-lines:
     @echo 'Project files (excluding tests):'
@@ -38,5 +43,7 @@ go-test: go-build
 
 check: ts-check ts-test go-check go-test
     cargo fmt --all --check
+    rustfmt --edition 2024 --check benches/support/workload.rs
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --locked
+    python3 -m unittest discover -s tests -p 'test_*.py'

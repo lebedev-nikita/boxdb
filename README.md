@@ -89,11 +89,10 @@ cgo; follow its native build and local module installation instructions.
 
 ## Development
 
-With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun and Just installed, run:
+With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun, Just and Python 3.11+ installed, run:
 
 ```sh
 just check
-python3 -m unittest discover -s tests -p 'test_performance.py'
 ```
 
 `just check` builds and checks all clients and runs their tests. Use `just --list`
