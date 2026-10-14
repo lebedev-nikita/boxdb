@@ -93,9 +93,47 @@ type check, not UUID, JSON, decimal, date or array parsing costs.
 
 Reopening includes a full scan because SQLite opens files lazily. The OS cache
 is not flushed, so results represent a warm cache. Run on an idle machine and
-compare multiple dataset and batch sizes on the same filesystem. Local timings
-are not universal performance claims or CI pass/fail thresholds. CI separately
-checks correctness on a small dataset in binary and typed YAML modes.
+compare multiple dataset and batch sizes on the same filesystem. Saved local
+timings are not universal performance claims or CI thresholds. CI checks
+correctness on a small dataset and runs the regression check described below.
+
+## Performance regression check
+
+The [CI performance job](../.github/workflows/ci.yml) measures all eight workloads
+in binary and YAML modes, each with ordinary and VARCHAR columns. Pull requests
+compare against their target branch's base SHA; pushes to existing branches
+compare against the previous branch tip. New-branch pushes have no baseline
+and skip this job.
+
+Both revisions use the current benchmark harness, the same runner, filesystem,
+release toolchain and workload settings. Builds finish before measurement.
+Each report retains seven measured samples after warmup, with query repetition
+to reduce timer noise. Correct results and reopened data are still verified.
+CI artifacts retain both raw reports, revision IDs and the comparison output,
+including on failure.
+
+To compare two reports collected under those conditions:
+
+```sh
+python3 tools/check_performance.py /tmp/base.json /tmp/current.json
+python3 -m unittest discover -s tests -p 'test_performance.py'
+```
+
+The checker recomputes BoxDB median latency per unit from raw samples. It fails
+when the increase exceeds both 30% of the baseline and 0.5 microseconds per unit.
+The absolute allowance avoids failures from tiny timing differences in fast
+queries; it also means smaller changes can pass. Use `--help` to adjust tolerances.
+Exit codes are 0 for a pass, 1 for a regression and 2 for an invalid comparison.
+
+Reports must match workload settings, platform and SQLite version/settings, and
+contain at least five complete samples for both engines. Output paths may differ.
+SQLite dependency upgrades require a new compatible baseline. The checker uses
+BoxDB latency directly, so a slowdown shared with SQLite is still visible.
+
+Shared runners and filesystem synchronization can produce noisy measurements;
+inspect raw samples and repeat a failed comparison on an idle machine before
+changing tolerances. This gate detects substantial regressions in these workloads;
+it does not cover every SQL query, extended type, dataset size or memory usage.
 
 ## Binary reports
 

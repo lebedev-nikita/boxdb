@@ -3,3 +3,4 @@
 !Cargo.lock
 *.tmp
 .tmp*
+__pycache__/

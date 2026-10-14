@@ -105,6 +105,7 @@ library. Export requires an idle connection with no active transaction.
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
+python3 -m unittest discover -s tests -p 'test_performance.py'
 cargo test --locked --test litestream -- --ignored
 cargo bench --locked --bench sqlite_vs_boxdb
 cargo bench --locked --bench sqlite_vs_boxdb -- --boxdb-format yaml
