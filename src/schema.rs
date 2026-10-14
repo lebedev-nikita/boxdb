@@ -49,6 +49,11 @@ fn extension(input: &str) -> Result<Option<Type>> {
     ) {
         return Ok(None);
     }
+    // Drizzle's SQLite migration journal declares SERIAL PRIMARY KEY.
+    // Treat it as SQLite's rowid-backed INTEGER rather than a new logical type.
+    if name == "SERIAL" {
+        return Ok(Some(Type::Int64));
+    }
     match Type::parse(input) {
         Ok(ty) => Ok(Some(ty)),
         Err(e)

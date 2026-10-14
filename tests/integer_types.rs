@@ -1,15 +1,15 @@
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
-fn integer_types_require_an_explicit_supported_bit_width() {
+fn integer_types_support_explicit_bit_widths_and_sqlite_integer() {
     for name in [
-        "INT", "INTEGER", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64",
-        "UINT128", "INT24", "UINT24", "INT64(1)",
+        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64", "UINT128",
+        "INT24", "UINT24", "INT64(1)",
     ] {
         assert!(Type::parse(name).is_err(), "{name}");
     }
     for name in [
-        "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32",
+        "INTEGER", "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32",
     ] {
         assert!(Type::parse(name).is_ok(), "{name}");
         assert!(Type::parse(&format!("{name}[]")).is_ok(), "{name}[]");
@@ -61,8 +61,8 @@ fn sql_declarations_reject_unsized_and_unsupported_integers() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(body TEXT)").unwrap();
     for name in [
-        "INT", "INTEGER", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64",
-        "UINT128", "INT24", "INT64(1)",
+        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64", "UINT128",
+        "INT24", "INT64(1)",
     ] {
         for sql in [
             format!("CREATE TABLE bad(n {name})"),
@@ -198,10 +198,7 @@ fn unsigned_arrays_and_integers_survive_snapshots_and_reopening() {
 fn temp_alter_cannot_bypass_explicit_integer_widths() {
     let mut db = Database::memory();
     db.execute("CREATE TEMP TABLE t(body TEXT)").unwrap();
-    assert!(
-        db.execute("ALTER TABLE temp.t ADD COLUMN n INTEGER")
-            .is_err()
-    );
+    assert!(db.execute("ALTER TABLE temp.t ADD COLUMN n INT").is_err());
     db.execute("ALTER TABLE temp.t ADD COLUMN n INT64 DEFAULT 42")
         .unwrap();
     db.execute("INSERT INTO temp.t(body) VALUES('row')")
@@ -244,4 +241,22 @@ fn existing_integer_metadata_keeps_its_original_bit_width_on_open() {
     );
     assert!(db.execute("UPDATE legacy SET s=32768").is_err());
     assert!(db.execute("UPDATE legacy SET n=2147483648").is_err());
+}
+
+#[test]
+fn sqlite_integer_alias_supports_orm_schemas_and_autoincrement() {
+    assert_eq!(Type::parse("INTEGER").unwrap(), Type::Int64);
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL); CREATE TEMP TABLE scratch(n INTEGER); ALTER TABLE users ADD COLUMN revision INTEGER DEFAULT 0").unwrap();
+    db.execute("INSERT INTO users(name) VALUES('Ada')").unwrap();
+    assert_eq!(
+        db.execute("SELECT id,revision FROM users").unwrap()[0].rows,
+        vec![vec![Value::Integer(1), Value::Integer(0)]]
+    );
+    db.execute_params("INSERT INTO scratch VALUES(?)", &[Value::Integer(i64::MAX)])
+        .unwrap();
+    assert_eq!(
+        db.execute("SELECT n FROM scratch").unwrap()[0].rows,
+        vec![vec![Value::Integer(i64::MAX)]]
+    );
 }

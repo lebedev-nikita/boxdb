@@ -42,10 +42,11 @@ window functions, and SQLite functions. Tables created through BoxDB are
 `STRICT` automatically; explicitly writing `STRICT` is also valid. Standard
 columns use SQLite's strict typing and lossless conversion rules. Use `ANY`
 for mixed storage classes; columns without a declared type default to `ANY`.
-Integer declarations require a bit width: `INT8`, `INT16`, `INT32`, `INT64`,
-`UINT8`, `UINT16`, or `UINT32`. `INT8` means eight bits. Unsized integer names
-and the former byte-width aliases are rejected. `UINT64` is deferred;
-see [issue #1](https://github.com/lebedev-nikita/boxdb/issues/1).
+Integer declarations support SQLite's `INTEGER` (signed 64-bit), or an explicit
+bit width: `INT8`, `INT16`, `INT32`, `INT64`, `UINT8`, `UINT16`, or `UINT32`.
+`INT8` means eight bits. Other unsized names and former byte-width aliases are
+rejected. The SQL alias `SERIAL` maps to `INTEGER` for Drizzle migration journals.
+`UINT64` is deferred; see [issue #1](https://github.com/lebedev-nikita/boxdb/issues/1).
 BoxDB extensions also include `BOOLEAN`, bounded `VARCHAR`, exact
 `NUMERIC`/`DECIMAL`, UUID, JSON, UTC `INSTANT`, BYTEA, and typed arrays.
 
@@ -98,6 +99,14 @@ fn main() -> boxdb::Result<()> {
 The interface uses `Database`, `QueryResult` and typed `Value`s; it does not
 implement the full rusqlite Rust API. `cargo doc --no-deps --open` documents the
 library. Export requires an idle connection with no active transaction.
+
+## TypeScript client
+
+The [TypeScript package](packages/typescript/README.md) uses the same Rust core
+through Node-API in Node.js and Bun. It provides `db.query(sql, params)`, short
+`all/get/run` methods, prepared statements, transactions, a Drizzle adapter and
+compatibility with Kysely's built-in SQLite dialect. Build from this checkout
+with `just ts-build`; no prebuilt npm binaries are published yet.
 
 ## Development
 

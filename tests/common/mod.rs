@@ -46,7 +46,7 @@ pub fn sqlite_execute(db: &Connection, sql: &str) -> boxdb::Result<Vec<QueryResu
 }
 
 // Keep the SQLite corpus unchanged while adapting its integer declarations to
-// BoxDB's explicit-width policy. The reference client receives native types.
+// BoxDB's supported types. The reference client receives native declarations.
 pub fn integer_sql(sql: &str, explicit: bool) -> String {
     use sqlparser::{
         dialect::SQLiteDialect,
