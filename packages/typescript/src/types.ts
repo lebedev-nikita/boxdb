@@ -16,4 +16,6 @@ export interface DatabaseOptions {
   readOnly?: boolean;
   busyTimeoutMs?: number;
   maxPendingQueries?: number;
+  /** Default transaction lifetime in milliseconds after BEGIN succeeds; defaults to 5000. */
+  transactionTimeoutMs?: number;
 }

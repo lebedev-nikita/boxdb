@@ -84,8 +84,31 @@ await tx.commit();
 Commit is explicit. Disposal and `rollback()` discard unfinished work. Root
 transactions support `deferred` (default), `immediate`, and `exclusive`; nested
 transactions use savepoints and have no mode. Use the innermost transaction
-handle: root SQL and parent-handle SQL fail promptly while another handle owns
-the connection. SQL transaction-control statements must use handles too.
+handle for work inside a transaction; parent-handle SQL fails while a nested
+handle owns the connection. Root requests, including `db.begin()`, wait for the
+entire transaction to finish. Root SQL then executes independently in autocommit,
+in submission order. SQL transaction-control statements must use handles too.
+
+Transactions have a five-second lifetime by default, starting after `BEGIN`
+succeeds. Set `transactionTimeoutMs` on the client or override it with `timeoutMs`
+on `db.begin()`; both accept integers from 1 to 2147483647 milliseconds.
+Savepoints inherit the outer deadline and do not extend it. Expiry interrupts
+running SQL, cancels queued transaction work and rolls back. Waiting root
+requests resume only after cleanup; further queries or commits through the
+expired handle fail with `BOXDB_TRANSACTION_TIMEOUT`.
+
+```ts
+await using db = await Database.open(":memory:", { transactionTimeoutMs: 10_000 });
+await using tx = await db.begin({ timeoutMs: 2_000 });
+const pending = db.query`SELECT 1 AS answer`.execute();
+await tx.commit();
+await pending; // Executes outside the completed transaction.
+```
+
+Awaiting a root request before finishing your own transaction waits until its
+timeout rolls it back. Use `tx` for operations needed before commit or rollback.
+The deadline starts cancellation; freeing the connection still requires native
+SQL interruption and rollback to complete.
 
 `tx.active` reports whether its transaction still exists. A failed commit leaves
 an active SQLite transaction available for repair or retry. If SQLite itself
@@ -114,7 +137,7 @@ to abort. `await using db` performs a draining close.
 ## Options, values and diagnostics
 
 `Database.open(path, options)` accepts `format: "binary" | "readable"`,
-`readOnly`, `busyTimeoutMs`, `maxPendingQueries`, and `signal`.
+`readOnly`, `busyTimeoutMs`, `transactionTimeoutMs`, `maxPendingQueries`, and `signal`.
 Existing contents determine the format. A read-only readable connection reads
 an opening snapshot without taking the writer's lock.
 
@@ -136,7 +159,8 @@ an exhausted queue uses `BOXDB_QUEUE_FULL`. `findBoxDBError(error)` follows caus
 and aggregate members without looping on cycles. Invalid arguments throw
 `TypeError` or `RangeError`. See the [client error contract](../../docs/client-errors.md).
 
-The optional queue limit bounds waiting operations; cleanup always gets through.
+The optional queue limit bounds waiting operations, including root requests
+waiting for a transaction; cleanup always gets through.
 `db.diagnostics` reports pending/active/completed operations and the last queue
 wait and execution durations in milliseconds. A duration covers a complete
 scheduled operation, including preparation and native execution.

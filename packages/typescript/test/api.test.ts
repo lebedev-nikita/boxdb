@@ -15,13 +15,104 @@ test("tagged queries compose identifiers and fragments with bound values", async
   expect(await query.values()).toEqual([["O'Reilly"]]);
 });
 
+test.each(["commit", "rollback"] as const)(
+  "root writes wait for transaction %s and execute outside it",
+  async (finish) => {
+    await using db = await Database.open();
+    await db.exec("CREATE TABLE item(id INTEGER)");
+    await using tx = await db.begin();
+    await tx.execute("INSERT INTO item VALUES(1)");
+    const pending = db.execute("INSERT INTO item VALUES(2)");
+    const written = expect(pending).resolves.toMatchObject({ changes: 1n });
+    void written.catch(() => {});
+    try {
+      expect((await tx.execute("SELECT * FROM item")).rows).toEqual([{ id: 1n }]);
+      expect(db.diagnostics.pendingQueries).toBe(1);
+      await tx[finish]();
+      await written;
+      expect((await db.execute("SELECT * FROM item ORDER BY id")).rows).toEqual(
+        finish === "commit" ? [{ id: 1n }, { id: 2n }] : [{ id: 2n }],
+      );
+    } finally {
+      await tx.rollback();
+      await written;
+    }
+  },
+);
+
+test("root requests queued behind begin execute in order after the transaction", async () => {
+  await using db = await Database.open();
+  await db.exec("CREATE TABLE item(id INTEGER)");
+  const beginning = db.begin();
+  const first = db.exec("INSERT INTO item VALUES(2)");
+  const second = db.query`SELECT * FROM item ORDER BY id`.execute();
+  await using tx = await beginning;
+  try {
+    await tx.execute("INSERT INTO item VALUES(1)");
+    await tx.commit();
+    await first;
+    expect(await second).toEqual([{ id: 1n }, { id: 2n }]);
+  } finally {
+    await tx.rollback();
+    await Promise.all([first, second]);
+  }
+});
+
+test("root transaction requests also wait for the current transaction to finish", async () => {
+  await using db = await Database.open();
+  await db.exec("CREATE TABLE item(id INTEGER)");
+  await using first = await db.begin();
+  const beginning = db.begin();
+  try {
+    await first.execute("INSERT INTO item VALUES(1)");
+    await first.rollback();
+    await using second = await beginning;
+    await second.execute("INSERT INTO item VALUES(2)");
+    await second.commit();
+    expect((await db.execute("SELECT * FROM item")).rows).toEqual([{ id: 2n }]);
+  } finally {
+    await first.rollback();
+    await (await beginning).rollback();
+  }
+});
+
+test("waiting root queries consume capacity and can be cancelled without cancelling the transaction", async () => {
+  await using db = await Database.open(":memory:", { maxPendingQueries: 1 });
+  await db.exec("CREATE TABLE item(id INTEGER)");
+  await using tx = await db.begin();
+  const controller = new AbortController();
+  const reason = new Error("cancel waiting root query");
+  const pending = db.execute("INSERT INTO item VALUES(2)", [], { signal: controller.signal });
+  const rejected = expect(pending).rejects.toBe(reason);
+  await expect(db.execute("SELECT 1")).rejects.toMatchObject({ code: "BOXDB_QUEUE_FULL" });
+  controller.abort(reason);
+  await rejected;
+  expect(db.diagnostics.pendingQueries).toBe(0);
+  await tx.execute("INSERT INTO item VALUES(1)");
+  await tx.commit();
+  expect((await db.execute("SELECT * FROM item")).rows).toEqual([{ id: 1n }]);
+});
+
+test("draining close executes accepted root queries after the transaction finishes", async () => {
+  const db = await Database.open(":memory:", { maxPendingQueries: 1 });
+  try {
+    await using tx = await db.begin();
+    const pending = db.execute("SELECT 7 AS answer");
+    const closed = db.close();
+    await tx.commit();
+    expect((await pending).rows).toEqual([{ answer: 7n }]);
+    await closed;
+  } finally {
+    await db.close({ mode: "abort" });
+  }
+});
+
 test("using transactions own their connection and roll back unfinished work", async () => {
   await using db = await Database.open();
   await db.exec("CREATE TABLE item(id INTEGER PRIMARY KEY)");
   {
     await using tx = await db.begin();
     await tx.query`INSERT INTO item VALUES (${1})`;
-    await expect(db.query`SELECT * FROM item`.execute()).rejects.toThrow(/transaction/i);
     {
       await using child = await tx.begin();
       await child.query`INSERT INTO item VALUES (${2})`;
