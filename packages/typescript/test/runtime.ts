@@ -7,6 +7,13 @@ import { Kysely, SqliteDialect } from "kysely";
 
 const client = new Database();
 try {
+  assert.deepEqual(
+    client.get(
+      "SELECT decimal_add(?,?) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance",
+      ["0.1", "0.2", "ПРИВЕТ", "order #123"],
+    ),
+    { amount: "0.3", word: "привет", digits: "123", distance: 1 },
+  );
   client.exec("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)");
   const users = sqliteTable("users", { id: integer().primaryKey(), name: text() });
   const orm = drizzle(client);

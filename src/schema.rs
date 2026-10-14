@@ -394,7 +394,7 @@ pub(crate) fn native(value: SqlValue) -> Value {
 }
 pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     let rich = match value {
-        Value::Numeric(_) => Some(Type::Numeric(None)),
+        Value::Decimal(_) => Some(Type::Decimal(None)),
         Value::Uuid(_) => Some(Type::Uuid),
         Value::Instant(_) => Some(Type::Instant),
         _ => None,
@@ -492,7 +492,7 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
             let json: serde_json::Value = serde_json::from_str(&s)?;
             array_value(&Type::Array(inner.clone()), json)
         }
-        (Type::Numeric(_), SqlValue::Text(s)) => ty.validate(&Value::Numeric(s)),
+        (Type::Decimal(_), SqlValue::Text(s)) => ty.validate(&Value::Decimal(s)),
         (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(bytes)),
         (Type::Varchar(limit), SqlValue::Text(text)) => {
             if limit.is_some_and(|n| text.chars().count() > n) {

@@ -26,6 +26,11 @@ fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
 rusqlite = { version = "0.40.2", features = ["bundled", "functions", "backup", "column_metadata", "hooks", "preupdate_hook"] }
+libsqlite3-sys = "0.38.2"
+sqlite-vec = "=0.1.9"
+
+[build-dependencies]
+cc = "1"
 
 [[bench]]
 name = "sqlite_vs_boxdb"

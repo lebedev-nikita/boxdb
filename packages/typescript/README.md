@@ -89,7 +89,7 @@ runs synchronously on the calling thread when the query starts. The supplied
 
 Results use SQLite storage values: `null`, `number`, `string`, `Buffer`, and
 `bigint` when safe-integer mode is enabled. JSON and arrays remain JSON strings;
-NUMERIC remains exact decimal text; INSTANT remains UTC text with nanoseconds;
+DECIMAL (also named NUMERIC) remains exact decimal text; INSTANT remains UTC text with nanoseconds;
 BOOLEAN returns 0 or 1. BoxDB still validates extended values on reads and writes.
 Input parameters also accept `Uint8Array` and boolean (bound as 0 or 1).
 Serialize objects explicitly, for example with `JSON.stringify`.
@@ -121,7 +121,7 @@ objects. They expose `run`, `all`, `get`, `iterate`, `raw`, `safeIntegers`,
 `reader`, `readonly`, and `source`. `raw()` returns arrays instead of row
 objects. Queries use Rust's SQLite statement cache; `get` and `iterate` currently
 materialize the complete result. This is a compatibility subset, not a complete
-replacement for better-sqlite3 (no extensions, user functions or backup API).
+replacement for better-sqlite3 (no dynamic extension loading, user functions or backup API).
 
 Transactions commit on return and roll back on exceptions. Nested transactions
 use savepoints. Callbacks must be synchronous; async callbacks and returned
@@ -149,8 +149,25 @@ The official `drizzle-orm/better-sqlite3/migrator` works with this adapter.
 BoxDB accepts `INTEGER` as signed 64-bit and the migration journal's `SERIAL`
 as an SQL alias for SQLite INTEGER. Other BoxDB typing rules still apply:
 unknown SQLite column types are not automatically accepted in STRICT tables,
-and NUMERIC has BoxDB's exact text semantics. Use TEXT for application strings;
+and DECIMAL/NUMERIC has BoxDB's exact text semantics. Use TEXT for application strings;
 use custom Drizzle column types for BoxDB-specific declarations.
+
+## Built-in extensions
+
+Every connection includes decimal arithmetic, Unicode text functions, regular
+expressions, sqlite-vec, FTS5 and R*Tree:
+
+```ts
+const db = new Database();
+const result = db.get("SELECT decimal_add(?,?) AS amount, text_lower(?) AS name", [
+  "0.1", "0.2", "ПРИВЕТ",
+]);
+// { amount: "0.3", name: "привет" }
+```
+
+Bind decimals as strings and vectors as JSON strings or packed `Buffer` values.
+Virtual tables require an in-memory or binary database; readable YAML does not
+support them. See the [SQL extension guide](../../docs/extensions.md) for examples.
 
 ## Kysely
 

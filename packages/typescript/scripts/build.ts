@@ -43,4 +43,16 @@ copyFileSync(
   fileURLToPath(new URL("../../../LICENSE", import.meta.url)),
   `${packageRoot}dist/LICENSE`,
 );
+mkdirSync(`${packageRoot}dist/licenses`, { recursive: true });
+for (const [source, name] of [
+  ["sqlean/LICENSE", "sqlean.txt"],
+  ["sqlean/regexp/pcre2/LICENSE", "pcre2.txt"],
+  ["sqlite-vec/LICENSE-MIT", "sqlite-vec-MIT.txt"],
+  ["sqlite-vec/LICENSE-APACHE", "sqlite-vec-APACHE.txt"],
+]) {
+  copyFileSync(
+    fileURLToPath(new URL(`../../../vendor/${source}`, import.meta.url)),
+    `${packageRoot}dist/licenses/${name}`,
+  );
+}
 run("bunx", ["tsc", "-p", "tsconfig.build.json"]);
