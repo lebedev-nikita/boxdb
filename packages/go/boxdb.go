@@ -9,14 +9,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 )
 
 // Error is a failure reported by the BoxDB core.
-type Error struct{ Message string }
+type Error struct {
+	Message      string `json:"message"`
+	Code         string `json:"code"`
+	ResultCode   *int   `json:"result_code"`
+	ExtendedCode *int   `json:"extended_code"`
+	cause        error
+}
 
 func (e *Error) Error() string { return "boxdb: " + e.Message }
+func (e *Error) Unwrap() error { return e.cause }
+
+func validationError(message string, args ...any) error {
+	return &Error{Code: "BOXDB_VALIDATION", Message: fmt.Sprintf(message, args...)}
+}
 
 // Format controls the storage format of a new database file.
 type Format string
@@ -35,7 +47,7 @@ type Option func(*settings) error
 func WithFormat(format Format) Option {
 	return func(s *settings) error {
 		if format != Binary && format != Readable {
-			return fmt.Errorf("boxdb: unsupported format %q", format)
+			return validationError("unsupported format %q", format)
 		}
 		s.format = format
 		return nil
@@ -48,7 +60,7 @@ func Open(path string, options ...Option) (*sql.DB, error) {
 	configuration := settings{format: Binary}
 	for _, option := range options {
 		if option == nil {
-			return nil, errors.New("boxdb: nil option")
+			return nil, validationError("nil option")
 		}
 		if err := option(&configuration); err != nil {
 			return nil, err
@@ -84,7 +96,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 	path := c.path
 	if strings.ContainsRune(path, 0) {
-		return nil, errors.New("boxdb: path contains NUL")
+		return nil, validationError("path contains NUL")
 	}
 	if path == "" {
 		path = ":memory:"
@@ -123,7 +135,7 @@ func (c *conn) Begin() (driver.Tx, error) {
 }
 func (c *conn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
 	if options.Isolation != driver.IsolationLevel(sql.LevelDefault) && options.Isolation != driver.IsolationLevel(sql.LevelSerializable) {
-		return nil, errors.New("boxdb: only default and serializable isolation are supported")
+		return nil, validationError("only default and serializable isolation are supported")
 	}
 	if options.ReadOnly {
 		if _, err := c.run(ctx, "PRAGMA query_only=ON", nil); err != nil {
@@ -131,23 +143,32 @@ func (c *conn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx
 		}
 	}
 	if _, err := c.run(ctx, "BEGIN", nil); err != nil {
-		_ = c.ResetSession(context.Background())
-		return nil, err
+		return nil, errors.Join(err, c.reset(context.Background()))
 	}
 	return &transaction{conn: c}, nil
 }
 
 func (c *conn) ResetSession(ctx context.Context) error {
+	if err := c.reset(ctx); err != nil {
+		if !c.IsValid() {
+			return errors.Join(driver.ErrBadConn, err)
+		}
+		return err
+	}
+	return nil
+}
+
+func (c *conn) reset(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if !c.IsValid() {
-		return driver.ErrBadConn
+		return &Error{Code: "BOXDB_UNAVAILABLE", Message: "connection is unavailable"}
 	}
 	var result struct{}
 	if err := c.native.callContext(ctx, command{Operation: "reset"}, &result); err != nil {
 		c.invalid = true
-		return driver.ErrBadConn
+		return err
 	}
 	return nil
 }
@@ -157,16 +178,13 @@ type transaction struct{ conn *conn }
 
 func (tx *transaction) finish(query string) error {
 	_, err := tx.conn.run(context.Background(), query, nil)
-	cleanup := tx.conn.ResetSession(context.Background())
-	if err != nil {
-		return err
-	}
-	return cleanup
+	cleanup := tx.conn.reset(context.Background())
+	return errors.Join(err, cleanup)
 }
 func (tx *transaction) Commit() error { return tx.finish("COMMIT") }
 func (tx *transaction) Rollback() error {
 	// SQLite may already have rolled back an interrupted transaction.
-	return tx.conn.ResetSession(context.Background())
+	return tx.conn.reset(context.Background())
 }
 
 type queryResult struct {
@@ -207,6 +225,9 @@ func input(value driver.Value) (any, error) {
 	case int64:
 		return map[string]any{"Integer": value}, nil
 	case float64:
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return nil, validationError("SQL numbers must be finite")
+		}
 		return map[string]any{"Real": value}, nil
 	case bool:
 		return map[string]any{"Boolean": value}, nil
@@ -224,7 +245,7 @@ func input(value driver.Value) (any, error) {
 		}
 		return map[string]any{"Bytea": bytes}, nil
 	default:
-		return nil, fmt.Errorf("boxdb: unsupported parameter type %T", value)
+		return nil, validationError("unsupported parameter type %T", value)
 	}
 }
 
@@ -286,18 +307,18 @@ func (c *conn) executeBound(ctx context.Context, query string, args []driver.Nam
 			}
 			if match {
 				if bound[i] {
-					return nil, fmt.Errorf("boxdb: parameter %d is bound twice", i+1)
+					return nil, validationError("parameter %d is bound twice", i+1)
 				}
 				parameters[i], bound[i], matched = value, true, true
 			}
 		}
 		if !matched {
-			return nil, fmt.Errorf("boxdb: unknown parameter %q at position %d", arg.Name, arg.Ordinal)
+			return nil, validationError("unknown parameter %q at position %d", arg.Name, arg.Ordinal)
 		}
 	}
 	for i, ok := range bound {
 		if !ok {
-			return nil, fmt.Errorf("boxdb: missing parameter %d", i+1)
+			return nil, validationError("missing parameter %d", i+1)
 		}
 	}
 	return c.run(ctx, query, parameters)
@@ -327,13 +348,13 @@ func (s *stmt) Query(values []driver.Value) (driver.Rows, error) {
 }
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	if s.closed {
-		return nil, errors.New("boxdb: statement is closed")
+		return nil, &Error{Code: "BOXDB_CLOSED", Message: "statement is closed"}
 	}
 	return s.conn.executeBound(ctx, s.query, args, s.parameters)
 }
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	if s.closed {
-		return nil, errors.New("boxdb: statement is closed")
+		return nil, &Error{Code: "BOXDB_CLOSED", Message: "statement is closed"}
 	}
 	result, err := s.conn.executeBound(ctx, s.query, args, s.parameters)
 	if err != nil {
@@ -407,7 +428,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				}
 				dest[i] = v
 			default:
-				return fmt.Errorf("boxdb: unexpected storage type %s", kind)
+				return &Error{Code: "BOXDB_INTERNAL", Message: fmt.Sprintf("unexpected storage type %s", kind)}
 			}
 		}
 	}

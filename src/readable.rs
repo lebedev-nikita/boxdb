@@ -309,7 +309,7 @@ impl TablePlan {
                     ));
                 }
                 ValueRef::Text(bytes) => {
-                    let text = std::str::from_utf8(bytes).map_err(|e| Error::new(e.to_string()))?;
+                    let text = std::str::from_utf8(bytes).map_err(Error::validation)?;
                     if plain_text(text) {
                         writer.write_all(b" ")?;
                         writer.write_all(bytes)?;

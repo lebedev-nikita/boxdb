@@ -53,8 +53,17 @@ impl ReadableFile {
             .create(true)
             .truncate(false)
             .open(PathBuf::from(lock))?;
-        lock.try_lock_exclusive()
-            .map_err(|_| Error::new("readable database is locked".into()))?;
+        lock.try_lock_exclusive().map_err(|error| {
+            let locked = error.raw_os_error() == fs2::lock_contended_error().raw_os_error();
+            let error = Error::from(error);
+            if locked {
+                error
+                    .with_code("BOXDB_LOCKED")
+                    .with_context("readable database is locked")
+            } else {
+                error.with_context("lock readable database")
+            }
+        })?;
         Ok(Self {
             path,
             _lock: lock,
@@ -78,7 +87,7 @@ impl ReadableFile {
             }
             temp.as_file().sync_all()?;
             temp.persist(&self.path)
-                .map_err(|e| Error::new(e.to_string()))?;
+                .map_err(|e| Error::from(e.error).with_context("publish readable database"))?;
             File::open(parent)?.sync_all()?;
             Ok(())
         })
@@ -88,9 +97,15 @@ pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<
     let backup = Backup::new(source, destination)?;
     match backup.step(-1)? {
         StepResult::Done => Ok(()),
-        _ => Err(Error::new(
-            "SQLite snapshot is busy; retry after the transaction completes".into(),
+        StepResult::Busy => Err(Error::sqlite(
+            rusqlite::ffi::SQLITE_BUSY,
+            "BoxDB snapshot is busy; retry after the transaction completes".into(),
         )),
+        StepResult::Locked => Err(Error::sqlite(
+            rusqlite::ffi::SQLITE_LOCKED,
+            "BoxDB snapshot is locked; retry after the transaction completes".into(),
+        )),
+        _ => Err(Error::internal("BoxDB snapshot backup did not finish")),
     }
 }
 pub(crate) fn snapshot(db: &Connection) -> Result<Vec<u8>> {

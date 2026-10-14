@@ -131,7 +131,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
 pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     let tokens = Tokenizer::new(&SQLiteDialect {}, sql)
         .tokenize()
-        .map_err(|e| Error::new(e.to_string()))?
+        .map_err(Error::validation)?
         .into_iter()
         .filter(|t| !matches!(t, Token::Whitespace(_) | Token::SemiColon))
         .collect::<Vec<_>>();

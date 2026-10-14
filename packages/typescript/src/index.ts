@@ -12,8 +12,8 @@ export type SQLParameter = SQLValue | Uint8Array | boolean;
 export type Parameters = readonly SQLParameter[] | Readonly<Record<string, SQLParameter>>;
 export type Row = Record<string, SQLValue>;
 export interface RunResult {
-  changes: number;
-  lastInsertRowid: number | bigint;
+  changes: bigint;
+  lastInsertRowid: bigint;
 }
 export interface QueryResult<T = Row> extends RunResult {
   columns: string[];
@@ -21,7 +21,6 @@ export interface QueryResult<T = Row> extends RunResult {
 }
 export interface DatabaseOptions {
   format?: "binary" | "readable";
-  safeIntegers?: boolean;
 }
 export interface Transaction<A extends unknown[], R> {
   (...args: A): R;
@@ -32,21 +31,36 @@ export interface Transaction<A extends unknown[], R> {
 
 export interface BoxDBErrorOptions extends ErrorOptions {
   code?: string;
-  sqliteCode?: number;
-  sqliteExtendedCode?: number;
+  resultCode?: number;
+  extendedCode?: number;
 }
 
 export class BoxDBError extends Error {
   readonly code: string;
-  readonly sqliteCode: number | undefined;
-  readonly sqliteExtendedCode: number | undefined;
+  readonly resultCode: number | undefined;
+  readonly extendedCode: number | undefined;
   constructor(message: string, options?: BoxDBErrorOptions) {
     super(message, options);
     this.name = "BoxDBError";
     this.code = options?.code ?? "BOXDB_ERROR";
-    this.sqliteCode = options?.sqliteCode;
-    this.sqliteExtendedCode = options?.sqliteExtendedCode;
+    this.resultCode = options?.resultCode;
+    this.extendedCode = options?.extendedCode;
   }
+}
+
+/** Find the first BoxDB failure in an error's causes or aggregate members. */
+export function findBoxDBError(error: unknown): BoxDBError | undefined {
+  const pending = [error];
+  const seen = new Set<unknown>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current instanceof BoxDBError) return current;
+    if (!record(current) || seen.has(current)) continue;
+    seen.add(current);
+    if (current instanceof AggregateError) pending.push(...[...current.errors].reverse());
+    if (current.cause !== undefined) pending.push(current.cause);
+  }
+  return undefined;
 }
 
 function call<T>(operation: () => T): T {
@@ -54,45 +68,35 @@ function call<T>(operation: () => T): T {
     return operation();
   } catch (error) {
     if (error instanceof BoxDBError) throw error;
-    const options: BoxDBErrorOptions = { cause: error };
-    if (
-      record(error) &&
-      typeof error.code === "string" &&
-      error.code.startsWith("SQLITE_") &&
-      typeof error.sqliteCode === "number" &&
-      typeof error.sqliteExtendedCode === "number"
-    ) {
+    const options: BoxDBErrorOptions = { cause: error, code: "BOXDB_INTERNAL" };
+    if (record(error) && typeof error.code === "string" && error.code.startsWith("BOXDB_")) {
       options.code = error.code;
-      options.sqliteCode = error.sqliteCode;
-      options.sqliteExtendedCode = error.sqliteExtendedCode;
+      if (typeof error.resultCode === "number") options.resultCode = error.resultCode;
+      if (typeof error.extendedCode === "number") options.extendedCode = error.extendedCode;
     }
     throw new BoxDBError(error instanceof Error ? error.message : String(error), options);
   }
 }
 
 function value(parameter: unknown): NativeValue {
-  if (parameter === null || typeof parameter === "string" || typeof parameter === "bigint")
+  if (typeof parameter === "bigint") {
+    if (parameter < -9223372036854775808n || parameter > 9223372036854775807n)
+      throw new RangeError("bigint is outside the BoxDB signed 64-bit range");
     return parameter;
+  }
+  if (parameter === null || typeof parameter === "string") return parameter;
   if (typeof parameter === "number") {
     if (!Number.isFinite(parameter)) throw new TypeError("SQL numbers must be finite");
     if (Number.isInteger(parameter) && !Number.isSafeInteger(parameter)) {
       throw new RangeError("Use bigint for integers outside the JavaScript safe range");
     }
-    return parameter;
+    return Number.isInteger(parameter) ? BigInt(parameter) : parameter;
   }
-  if (typeof parameter === "boolean") return parameter ? 1 : 0;
+  if (typeof parameter === "boolean") return parameter ? 1n : 0n;
   if (parameter instanceof Uint8Array) return Buffer.from(parameter);
   throw new TypeError(
     "SQL parameters must be null, string, number, bigint, boolean, or Uint8Array",
   );
-}
-
-function integer(value: bigint, safeIntegers: boolean): number | bigint {
-  if (safeIntegers) return value;
-  const number = Number(value);
-  if (!Number.isSafeInteger(number))
-    throw new RangeError("Use safeIntegers: true to read 64-bit integers without precision loss");
-  return number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -111,7 +115,6 @@ export class Database {
   readonly readonly = false;
   #connection: NativeConnection;
   #open = true;
-  #safeIntegers: boolean;
   #savepoint = 0;
 
   constructor(path = ":memory:", options: DatabaseOptions = {}) {
@@ -125,7 +128,6 @@ export class Database {
     }
     this.name = path;
     this.memory = path === ":memory:";
-    this.#safeIntegers = options.safeIntegers ?? false;
     this.#connection = call(() => new NativeDatabase(path, options.format ?? "binary"));
   }
 
@@ -156,7 +158,7 @@ export class Database {
   prepare<T = Row>(sql: string): Statement<T> {
     if (typeof sql !== "string") throw new TypeError("SQL must be a string");
     const info = call(() => this.#connection.prepare(sql));
-    return new Statement<T>(sql, info, this.#safeIntegers, (parameters) =>
+    return new Statement<T>(sql, info, (parameters) =>
       call(() => this.#connection.execute(sql, parameters)),
     );
   }
@@ -174,11 +176,6 @@ export class Database {
       return column === undefined ? undefined : result.rows[0]?.[column];
     }
     return result.rows as T[];
-  }
-
-  defaultSafeIntegers(enabled = true): this {
-    this.#safeIntegers = enabled;
-    return this;
   }
 
   transaction<A extends unknown[], R>(fn: (...args: A) => R): Transaction<A, R> {
@@ -239,21 +236,14 @@ export class Statement<T = Row> {
   readonly reader: boolean;
   #info: NativeInfo;
   #execute: (parameters: NativeValue[]) => NativeResult;
-  #safeIntegers: boolean;
   #raw = false;
 
-  constructor(
-    sql: string,
-    info: NativeInfo,
-    safeIntegers: boolean,
-    execute: (parameters: NativeValue[]) => NativeResult,
-  ) {
+  constructor(sql: string, info: NativeInfo, execute: (parameters: NativeValue[]) => NativeResult) {
     this.source = sql;
     this.readonly = info.readonly;
     this.reader = info.columns.length > 0;
     this.#info = info;
     this.#execute = execute;
-    this.#safeIntegers = safeIntegers;
   }
 
   #bind(args: unknown[]): NativeValue[] {
@@ -283,9 +273,7 @@ export class Statement<T = Row> {
 
   #result(args: unknown[]): QueryResult<T> {
     const result = this.#execute(this.#bind(args));
-    const rows = result.rows.map((row) =>
-      row.map((cell) => (typeof cell === "bigint" ? integer(cell, this.#safeIntegers) : cell)),
-    );
+    const rows = result.rows;
     return {
       columns: result.columns,
       rows: (this.#raw
@@ -294,10 +282,7 @@ export class Statement<T = Row> {
             Object.fromEntries(result.columns.map((name, index) => [name, row[index]])),
           )) as T[],
       changes: result.changes,
-      lastInsertRowid: integer(
-        result.lastInsertRowid,
-        this.#safeIntegers || !Number.isSafeInteger(Number(result.lastInsertRowid)),
-      ),
+      lastInsertRowid: result.lastInsertRowid,
     };
   }
 
@@ -325,10 +310,6 @@ export class Statement<T = Row> {
   raw(enabled = true): Statement<T | SQLValue[]> {
     this.#raw = enabled;
     return this as Statement<T | SQLValue[]>;
-  }
-  safeIntegers(enabled = true): this {
-    this.#safeIntegers = enabled;
-    return this;
   }
 }
 

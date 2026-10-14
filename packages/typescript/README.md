@@ -58,7 +58,7 @@ using db = new Database("data.db");
 const sql = adapter(db);
 const name = "Ada";
 
-const users = await sql<{ id: number; name: string }[]>`
+const users = await sql<{ id: bigint; name: string }[]>`
   SELECT id, name FROM users WHERE name = ${name}
 `;
 ```
@@ -87,27 +87,42 @@ runs synchronously on the calling thread when the query starts. The supplied
 
 ## Values and errors
 
-Results use SQLite storage values: `null`, `number`, `string`, `Buffer`, and
-`bigint` when safe-integer mode is enabled. JSON and arrays remain JSON strings;
-DECIMAL (also named NUMERIC) remains exact decimal text; INSTANT remains UTC text with nanoseconds;
-BOOLEAN returns 0 or 1. BoxDB still validates extended values on reads and writes.
-Input parameters also accept `Uint8Array` and boolean (bound as 0 or 1).
-Serialize objects explicitly, for example with `JSON.stringify`.
+Integer results always use `bigint`, including IDs, BOOLEAN storage values,
+write counts and `lastInsertRowid`. REAL values use `number`; other storage
+values use `null`, `string` and `Buffer`. JSON and arrays remain JSON strings;
+DECIMAL/NUMERIC remains exact text. Bind decimal strings for exact amounts.
+INSTANT remains canonical UTC text. The `safeIntegers` option and mode-switching
+methods are no longer supported.
 
-Integer results outside JavaScript's safe range throw `RangeError` instead of
-silently losing precision. Use `new Database(path, { safeIntegers: true })`,
-`db.defaultSafeIntegers()` for future statements, or `statement.safeIntegers()`
-to read all SQLite integers as `bigint`. Bind large integers as `bigint`; SQLite
-accepts signed 64-bit integers. A large `lastInsertRowid` is always preserved as
-`bigint`, even outside safe-integer mode. SQLite REAL values remain numbers.
+Parameters accept signed int64 `bigint`, safe integer `number`, finite real
+`number`, boolean, `Uint8Array`, string and null. Safe integer numbers and
+booleans bind as integers. Unsafe integer numbers and bigint values outside
+int64 throw `RangeError`; invalid types and non-finite numbers throw `TypeError`.
+Serialize objects explicitly. JSON serialization of bigint results requires
+an application-defined conversion, such as a replacer that writes decimal strings.
+Result generics describe the expected row shape; they do not validate it.
 
-Result generics, such as `db.all<User>(sql)`, describe the expected row shape;
-they do not validate that shape. Native failures throw `BoxDBError` with the
-original `cause`. SQLite failures preserve their symbolic `code` (for example,
-`SQLITE_CONSTRAINT_UNIQUE`), primary `sqliteCode` (`19`), and full
-`sqliteExtendedCode` (`2067`). Other BoxDB failures use `code: "BOXDB_ERROR"`
-with undefined SQLite codes. Argument and precision errors throw `TypeError`
-or `RangeError`.
+Database failures throw `BoxDBError` with a symbolic `BOXDB_*` code, optional
+numeric `resultCode` and `extendedCode`, and the native exception as `cause`.
+For example, a UNIQUE violation has `BOXDB_CONSTRAINT_UNIQUE`, `19` and `2067`.
+BoxDB validation, I/O, closed and unavailable connections, and internal failures
+have distinct categories; failures outside the engine have no numeric codes.
+See the [error contract](../../docs/client-errors.md).
+
+ORMs may wrap the error. Use `findBoxDBError` to inspect direct errors, `cause`
+chains and `AggregateError` members:
+
+```ts
+import { findBoxDBError } from "@boxdb/client";
+
+try {
+  db.run("INSERT INTO users(name) VALUES(?)", ["Ada"]);
+} catch (error) {
+  const failure = findBoxDBError(error);
+  if (failure?.code === "BOXDB_CONSTRAINT_UNIQUE") console.log("Name already exists");
+  else throw error;
+}
+```
 
 ## Prepared statements and transactions
 
@@ -120,7 +135,7 @@ insertMany.immediate(["Grace", "Linus"]);
 ```
 
 Prepared statements accept variadic parameters, arrays or named parameter
-objects. They expose `run`, `all`, `get`, `iterate`, `raw`, `safeIntegers`,
+objects. They expose `run`, `all`, `get`, `iterate`, `raw`,
 `reader`, `readonly`, and `source`. `raw()` returns arrays instead of row
 objects. Queries use Rust's SQLite statement cache; `get` and `iterate` currently
 materialize the complete result. This is a compatibility subset, not a complete
@@ -140,7 +155,7 @@ import { drizzle } from "@boxdb/client/drizzle";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const users = sqliteTable("users", {
-  id: integer().primaryKey({ autoIncrement: true }),
+  id: integer().$type<bigint>().primaryKey({ autoIncrement: true }),
   name: text().notNull(),
 });
 const orm = drizzle(db, { schema: { users } });
@@ -148,7 +163,11 @@ orm.insert(users).values({ name: "Ada" }).run();
 const rows = orm.select().from(users).all();
 ```
 
-The official `drizzle-orm/better-sqlite3/migrator` works with this adapter.
+Use `orm.$migrate({ migrationsFolder: "./drizzle" })` to run Drizzle migrations.
+This uses Drizzle's migration engine without the better-sqlite3 result types,
+which assume numeric write counts. Integer columns should use `$type<bigint>()`
+to match their runtime values. Boolean column mapping is supported; for date
+mapping, use a custom decoder that accepts bigint or BoxDB's INSTANT text.
 BoxDB accepts `INTEGER` as signed 64-bit and the migration journal's `SERIAL`
 as an SQL alias for SQLite INTEGER. Other BoxDB typing rules still apply:
 unknown SQLite column types are not automatically accepted in STRICT tables,

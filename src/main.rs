@@ -239,16 +239,10 @@ fn run(cli: Cli) -> Result<()> {
                     "   ...> "
                 }
             );
-            io::stdout()
-                .flush()
-                .map_err(|e| Error::new(e.to_string()))?;
+            io::stdout().flush().map_err(Error::from)?;
         }
         let mut line = String::new();
-        if input
-            .read_line(&mut line)
-            .map_err(|e| Error::new(e.to_string()))?
-            == 0
-        {
+        if input.read_line(&mut line).map_err(Error::from)? == 0 {
             break;
         }
         if pending.is_empty() && line.trim_start().starts_with('.') {
@@ -308,10 +302,7 @@ fn print_result(result: &QueryResult, json: bool) -> Result<()> {
         return Ok(());
     }
     if json {
-        println!(
-            "{}",
-            serde_json::to_string(result).map_err(|e| Error::new(e.to_string()))?
-        );
+        println!("{}", serde_json::to_string(result).map_err(Error::from)?);
     } else {
         println!("{}", result.columns.join("\t"));
         for row in &result.rows {

@@ -1,4 +1,4 @@
-use boxdb::{Database, Format, InterruptHandle, Value};
+use boxdb::{Database, Error, Format, InterruptHandle, Value};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -52,10 +52,10 @@ struct Command {
     parameters: Vec<Value>,
 }
 
-fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, String> {
-    let command: Command = serde_json::from_str(request).map_err(|e| e.to_string())?;
+fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, Error> {
+    let command: Command = serde_json::from_str(request)?;
     if command.operation == "exec" {
-        let results = database.execute(&command.sql).map_err(|e| e.to_string())?;
+        let results = database.execute(&command.sql)?;
         return Ok(json!({
             "columns": [], "rows": [],
             "affected": results.last().map_or(0, |result| result.affected),
@@ -64,24 +64,16 @@ fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, 
     }
     if command.operation == "reset" {
         if database.in_transaction() {
-            database
-                .execute_native("ROLLBACK", &[])
-                .map_err(|e| e.to_string())?;
+            database.execute_native("ROLLBACK", &[])?;
         }
-        database
-            .execute_native("PRAGMA query_only=OFF", &[])
-            .map_err(|e| e.to_string())?;
+        database.execute_native("PRAGMA query_only=OFF", &[])?;
         return Ok(json!({}));
     }
     if command.operation == "prepare" {
-        let info = database
-            .statement_info(&command.sql)
-            .map_err(|e| e.to_string())?;
+        let info = database.statement_info(&command.sql)?;
         return Ok(json!({"parameters": info.parameters}));
     }
-    let result = database
-        .execute_native(&command.sql, &command.parameters)
-        .map_err(|e| e.to_string())?;
+    let result = database.execute_native(&command.sql, &command.parameters)?;
     Ok(json!({
         "columns": result.columns,
         "rows": result.rows,
@@ -90,7 +82,7 @@ fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, 
     }))
 }
 
-fn response(result: Result<serde_json::Value, String>) -> String {
+fn response(result: Result<serde_json::Value, Error>) -> String {
     match result {
         Ok(value) => json!({"result": value}).to_string(),
         Err(error) => json!({"error": error}).to_string(),
@@ -116,7 +108,7 @@ pub unsafe extern "C" fn boxdb_go_open(
     let path = match unsafe { CStr::from_ptr(path) }.to_str() {
         Ok(path) => path.to_owned(),
         Err(e) => {
-            unsafe { *error = string(e.to_string()) };
+            unsafe { *error = string(serde_json::to_string(&Error::validation(e)).unwrap()) };
             return std::ptr::null_mut();
         }
     };
@@ -128,7 +120,7 @@ pub unsafe extern "C" fn boxdb_go_open(
         CANCELLATION.with(|flag| *flag.borrow_mut() = Some(worker_cancelled));
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let database = if path == ":memory:" {
-                Ok(Database::memory())
+                Database::try_memory()
             } else {
                 Database::open(
                     path,
@@ -142,27 +134,27 @@ pub unsafe extern "C" fn boxdb_go_open(
             let mut database = match database {
                 Ok(database) => {
                     if let Err(error) = database.busy_handler(Some(busy)) {
-                        let _ = ready.send(Err(error.to_string()));
+                        let _ = ready.send(Err(error));
                         return;
                     }
                     let _ = ready.send(Ok(database.interrupt_handle()));
                     database
                 }
                 Err(error) => {
-                    let _ = ready.send(Err(error.to_string()));
+                    let _ = ready.send(Err(error));
                     return;
                 }
             };
             while let Ok((request, reply)) = receiver.recv() {
                 let result = catch_unwind(AssertUnwindSafe(|| execute(&mut database, &request)))
-                    .unwrap_or_else(|_| Err("BoxDB worker panicked".into()));
+                    .unwrap_or_else(|_| Err(Error::internal("BoxDB worker panicked")));
                 let _ = reply.send(response(result));
             }
         }));
     });
     match opened
         .recv()
-        .unwrap_or_else(|_| Err("BoxDB worker stopped while opening".into()))
+        .unwrap_or_else(|_| Err(Error::internal("BoxDB worker stopped while opening")))
     {
         Ok(interrupt) => Box::into_raw(Box::new(Handle {
             sender: Some(sender),
@@ -172,7 +164,7 @@ pub unsafe extern "C" fn boxdb_go_open(
         })),
         Err(message) => {
             let _ = worker.join();
-            unsafe { *error = string(message) };
+            unsafe { *error = string(serde_json::to_string(&message).unwrap()) };
             std::ptr::null_mut()
         }
     }
@@ -205,15 +197,17 @@ pub unsafe extern "C" fn boxdb_go_call(
     let result = (|| {
         let request = unsafe { CStr::from_ptr(request) }
             .to_str()
-            .map_err(|e| e.to_string())?;
+            .map_err(Error::validation)?;
         let (reply, answer) = mpsc::sync_channel(1);
         unsafe { &*handle }
             .sender
             .as_ref()
-            .ok_or("database is closed")?
+            .ok_or_else(|| Error::closed("database is closed"))?
             .send((request.to_owned(), reply))
-            .map_err(|_| "BoxDB worker stopped")?;
-        answer.recv().map_err(|_| "BoxDB worker stopped".to_owned())
+            .map_err(|_| Error::internal("BoxDB worker stopped"))?;
+        answer
+            .recv()
+            .map_err(|_| Error::internal("BoxDB worker stopped"))
     })();
     string(result.unwrap_or_else(|error| response(Err(error))))
 }

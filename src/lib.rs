@@ -163,11 +163,11 @@ impl Database {
         })
     }
     pub fn memory() -> Self {
-        Self::new(
-            Connection::open_in_memory().expect("open SQLite memory database"),
-            false,
-        )
-        .expect("configure SQLite memory database")
+        Self::try_memory().expect("configure BoxDB memory database")
+    }
+    /// Open an isolated memory database, returning initialization failures.
+    pub fn try_memory() -> Result<Self> {
+        Self::new(Connection::open_in_memory()?, false)
     }
     /// Open an ordinary SQLite binary database or a standalone YAML stream.
     /// Existing contents determine the format; `format` applies to new files.
@@ -236,7 +236,8 @@ impl Database {
         if self.poisoned {
             return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
-            ));
+            )
+            .with_code("BOXDB_UNAVAILABLE"));
         }
         if self.in_transaction() {
             return Err(Error::new("export requires no active transaction".into()));
@@ -364,7 +365,8 @@ impl Database {
         if self.poisoned {
             return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
-            ));
+            )
+            .with_code("BOXDB_UNAVAILABLE"));
         }
         let statements = split(sql)?;
         let [sql] = statements.as_slice() else {
@@ -412,7 +414,8 @@ impl Database {
         if self.poisoned {
             return Err(Error::new(
                 "connection must be reopened after a publication failure".into(),
-            ));
+            )
+            .with_code("BOXDB_UNAVAILABLE"));
         }
         let keyword = schema::keyword(sql);
         if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("VALUES") {
@@ -701,7 +704,8 @@ fn split(sql: &str) -> Result<Vec<&str>> {
     for (i, byte) in sql.bytes().enumerate() {
         if byte == b';' {
             let prefix = &sql[start..=i];
-            let text = CString::new(prefix).map_err(|_| Error::new("SQL contains NUL".into()))?;
+            let text = CString::new(prefix)
+                .map_err(|error| Error::new("SQL contains NUL".into()).with_source(error))?;
             // SAFETY: CString provides a valid NUL-terminated string for this call.
             if unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) } != 0 {
                 if !schema::keyword(prefix).is_empty() {

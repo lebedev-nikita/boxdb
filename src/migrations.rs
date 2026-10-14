@@ -74,7 +74,7 @@ impl MigrationSet {
         }
         if latest.as_str() >= time.format("%Y%m%d%H%M%S").to_string().as_str() {
             time = chrono::NaiveDateTime::parse_from_str(&latest, "%Y%m%d%H%M%S")
-                .map_err(|e| Error::new(e.to_string()))?
+                .map_err(Error::validation)?
                 .checked_add_signed(chrono::Duration::seconds(1))
                 .ok_or_else(|| Error::new("migration version overflow".into()))?;
         }
@@ -377,7 +377,7 @@ fn sections(sql: &str) -> Result<(&str, &str)> {
     };
     let tokens = Tokenizer::new(&SQLiteDialect {}, sql)
         .tokenize_with_location()
-        .map_err(|e| Error::new(e.to_string()))?;
+        .map_err(Error::validation)?;
     let mut offsets = vec![0];
     for (i, byte) in sql.bytes().enumerate() {
         if byte == b'\n' {
@@ -409,7 +409,7 @@ fn sections(sql: &str) -> Result<(&str, &str)> {
         // A comment inside an unfinished trigger body is SQL, not a directive.
         if !crate::schema::keyword(previous).is_empty() {
             let text = std::ffi::CString::new(format!("{previous};"))
-                .map_err(|_| Error::new("SQL contains NUL".into()))?;
+                .map_err(|error| Error::new("SQL contains NUL".into()).with_source(error))?;
             // SAFETY: CString remains alive and is NUL-terminated.
             if unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) } == 0 {
                 continue;

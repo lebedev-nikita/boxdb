@@ -9,7 +9,7 @@ export interface NativeInfo {
 export interface NativeResult {
   columns: string[];
   rows: NativeValue[][];
-  changes: number;
+  changes: bigint;
   lastInsertRowid: bigint;
 }
 export interface NativeConnection {
