@@ -51,6 +51,30 @@ it("keeps timers running while a write waits for another connection's lock", asy
   }
 });
 
+it("cancels a default transaction waiting for a writer and keeps the connection usable", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "boxdb-begin-cancel-"));
+  directories.push(directory);
+  const path = join(directory, "data.db");
+  await using holder = await Database.open(path);
+  await holder.exec("CREATE TABLE item(id INTEGER)");
+  const db = await open(path);
+  await using lock = await holder.begin();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30);
+  try {
+    await expect(db.begin({ signal: controller.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+  } finally {
+    clearTimeout(timer);
+    await lock.rollback();
+  }
+  await using tx = await db.begin();
+  await tx.execute("INSERT INTO item VALUES(1)");
+  await tx.commit();
+  expect((await db.execute("SELECT * FROM item")).rows).toEqual([{ id: 1n }]);
+});
+
 it.each([false, true])(
   "cancels a lock wait promptly even when a script changes busy_timeout: %s",
   async (script) => {

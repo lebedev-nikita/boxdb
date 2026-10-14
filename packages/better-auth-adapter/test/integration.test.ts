@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { Database } from "@boxdb/client";
@@ -31,6 +34,46 @@ test("Better Auth registers a user, signs in and reads a persisted session", asy
   expect(session?.session.expiresAt).toBeInstanceOf(Date);
   await auth.api.signOut({ headers: new Headers({ cookie }) });
   expect(await auth.api.getSession({ headers: new Headers({ cookie }) })).toBeNull();
+});
+
+test("auth transactions wait for another writer before invoking their callback", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "boxdb-auth-contention-"));
+  try {
+    const path = join(directory, "auth.db");
+    await using db = await Database.open(path);
+    const adapter = betterAuthAdapter(db)(options);
+    await db.exec((await adapter.createSchema!(options)).code);
+    await using other = await Database.open(path);
+    await using blocker = await other.begin();
+    let calls = 0;
+    const pending = adapter.transaction(async (tx) => {
+      calls++;
+      return tx.create({
+        model: "user",
+        data: {
+          name: "Ada",
+          email: "ada@example.com",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+    });
+    void pending.catch(() => {});
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(calls).toBe(0);
+      await blocker.commit();
+      expect(await pending).toMatchObject({ email: "ada@example.com" });
+      expect(calls).toBe(1);
+      expect(await adapter.count({ model: "user" })).toBe(1);
+    } finally {
+      await blocker.rollback();
+      await pending.catch(() => {});
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("adapter transactions roll back failed operations and preserve mapped fields", async () => {

@@ -82,8 +82,25 @@ await tx.commit();
 ```
 
 Commit is explicit. Disposal and `rollback()` discard unfinished work. Root
-transactions support `deferred` (default), `immediate`, and `exclusive`; nested
-transactions use savepoints and have no mode. Use the innermost transaction
+transactions use `immediate` by default, acquiring the writer before transaction
+work starts. Explicit `deferred` and `exclusive` modes remain available.
+
+Use `db.begin({ readOnly: true })` for a deferred transaction that rejects SQL
+writes with `BOXDB_READONLY`. In binary WAL databases it can read a consistent
+snapshot while another connection writes. The native guard covers queries and
+scripts, including attempts to disable `query_only`; the previous connection
+setting is restored after the transaction. Read-only connections automatically
+start read-only transactions. Combining read-only with an immediate or exclusive
+mode throws `TypeError`.
+
+```ts
+await using tx = await db.begin({ readOnly: true });
+const total = await tx.query`SELECT count(*) AS count FROM users`.get();
+await tx.commit();
+```
+
+Nested transactions use savepoints and inherit the outer read-only restriction
+and deadline. They have no independent mode. Use the innermost transaction
 handle for work inside a transaction; parent-handle SQL fails while a nested
 handle owns the connection. Root requests, including `db.begin()`, wait for the
 entire transaction to finish. Root SQL then executes independently in autocommit,

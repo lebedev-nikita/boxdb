@@ -70,6 +70,7 @@ struct Request {
     operation: String,
     sql: String,
     parameters: Vec<Value>,
+    read_only: bool,
     reply: mpsc::Sender<WorkerReply>,
 }
 
@@ -163,6 +164,7 @@ impl NativeDatabase {
             .name("boxdb-typescript".into())
             .spawn(move || {
                 let mut database = None;
+                let mut query_only_restore = None;
                 while let Ok(request) = receiver.recv() {
                     CANCELLATION.with(|state| {
                         *state.borrow_mut() = Some((
@@ -205,8 +207,13 @@ impl NativeDatabase {
                         if matches!(request.operation.as_str(), "prepare" | "execute" | "exec") {
                             Database::validate_query_sql(&request.sql)?;
                         }
-                        if read_only {
-                            db.query_only()?;
+                        let query_only = read_only || request.read_only;
+                        if query_only {
+                            let previous = db.query_only(true)?;
+                            query_only_restore.get_or_insert(previous);
+                        } else if let Some(previous) = query_only_restore {
+                            db.query_only(previous)?;
+                            query_only_restore = None;
                         }
                         db.busy_handler(Some(busy))?;
                         db.progress_handler(1000, Some(cancelled))?;
@@ -230,8 +237,8 @@ impl NativeDatabase {
                                             "operation cancelled".into(),
                                         ));
                                     }
-                                    if read_only {
-                                        db.query_only()?;
+                                    if query_only {
+                                        db.query_only(true)?;
                                     }
                                     db.busy_handler(Some(busy))
                                 })?;
@@ -270,6 +277,7 @@ impl NativeDatabase {
         operation: String,
         sql: String,
         parameters: Vec<Cell>,
+        read_only: bool,
     ) -> napi::Result<AsyncTask<ResponseTask>> {
         let parameters = parameters
             .into_iter()
@@ -290,6 +298,7 @@ impl NativeDatabase {
                 operation,
                 sql,
                 parameters,
+                read_only,
                 reply,
             })
             .is_err()

@@ -50,6 +50,9 @@ rollback failures through JavaScript's explicit resource management protocol.
 Transaction deadline expiry uses `BOXDB_TRANSACTION_TIMEOUT`, interrupts running
 SQL and rolls back before releasing root requests waiting on the connection.
 Expired handles retain the timeout reason for further queries and commit calls.
+TypeScript read-only transactions use `BOXDB_READONLY` for forbidden SQL writes. Their
+restriction is inherited by savepoints and released before waiting root work
+resumes; an explicitly enabled pre-existing `query_only` setting is preserved.
 Argument errors use `TypeError` or `RangeError`; both unsafe integer numbers and
 bigint outside signed int64 use `RangeError`.
 

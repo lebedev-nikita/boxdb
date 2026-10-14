@@ -23,6 +23,7 @@ export interface NativeConnection {
     operation: string,
     sql: string,
     parameters: NativeValue[],
+    readOnly: boolean,
   ): Promise<NativeResponse>;
   cancel(id: number): void;
 }

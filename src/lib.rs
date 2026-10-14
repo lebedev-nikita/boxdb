@@ -280,10 +280,19 @@ impl Database {
         }
         Ok(())
     }
-    pub fn query_only(&self) -> Result<()> {
-        self.connection
-            .pragma_update(None, "query_only", true)
-            .map_err(Into::into)
+    /// Set SQLite's query-only guard, returning its previous value.
+    pub fn query_only(&self, enabled: bool) -> Result<bool> {
+        if self.poisoned {
+            return Err(Error::new(
+                "connection must be reopened after a publication failure".into(),
+            )
+            .with_code("BOXDB_UNAVAILABLE"));
+        }
+        let previous = self
+            .connection
+            .pragma_query_value(None, "query_only", |row| row.get(0))?;
+        self.connection.pragma_update(None, "query_only", enabled)?;
+        Ok(previous)
     }
     /// Obtain a thread-safe handle for interrupting an active SQLite operation.
     pub fn interrupt_handle(&self) -> InterruptHandle {
@@ -392,10 +401,15 @@ impl Database {
         if force || version != self.data_version || self.validation_dirty.get() {
             let _guard = InternalGuard::enter(&self.internal);
             let types = schema::load(&self.connection)?;
-            schema::install(&self.connection, &types)?;
+            let query_only: bool =
+                self.connection
+                    .pragma_query_value(None, "query_only", |row| row.get(0))?;
+            if !query_only {
+                schema::install(&self.connection, &types)?;
+            }
             self.types.replace(types);
             self.result_types.borrow_mut().clear();
-            self.validation_dirty.set(false);
+            self.validation_dirty.set(query_only);
             self.pager_version
                 .set(storage::data_version(&self.connection)?);
             self.data_version = version;

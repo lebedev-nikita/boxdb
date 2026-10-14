@@ -15,6 +15,8 @@ export interface QueryOptions {
 }
 export interface TransactionOptions extends QueryOptions {
   mode?: "deferred" | "immediate" | "exclusive";
+  /** Start a deferred transaction that rejects writes. */
+  readOnly?: boolean;
   /** Overrides the client's transaction timeout, in milliseconds. */
   timeoutMs?: number;
 }
@@ -125,6 +127,7 @@ class Queue {
 }
 
 class Connection {
+  readonly readOnly: boolean;
   closing = false;
   readonly shutdown = new AbortController();
   inTransaction = false;
@@ -133,10 +136,11 @@ class Connection {
   #requestId = 0;
 
   constructor(path: string, options: DatabaseOptions) {
+    this.readOnly = options.readOnly ?? false;
     this.#native = new NativeDatabase(
       path,
       options.format ?? "binary",
-      options.readOnly ?? false,
+      this.readOnly,
       options.busyTimeoutMs ?? 5000,
     );
   }
@@ -171,7 +175,13 @@ class Connection {
     const id = ++this.#requestId;
     const cancel = () => this.#native.cancel(id);
     try {
-      const pending = this.#native.call(id, operation, sql, parameters);
+      const pending = this.#native.call(
+        id,
+        operation,
+        sql,
+        parameters,
+        this.readOnly || this.owner?.readOnly === true,
+      );
       signal?.addEventListener("abort", cancel, { once: true });
       const response = await pending;
       this.inTransaction = response.inTransaction;
@@ -324,6 +334,7 @@ class TransactionSession extends Queries implements TransactionHandle {
     private readonly parent?: TransactionSession,
     private readonly savepointName?: string,
     timeoutMs?: number,
+    readonly readOnly = false,
   ) {
     const timeout = new AbortController();
     const signal = transactionSignal
@@ -356,7 +367,15 @@ class TransactionSession extends Queries implements TransactionHandle {
     return this.schedule(async () => {
       const name = `boxdb_${++savepoint}`;
       await this.connection.request("control", `SAVEPOINT ${name}`, [], signal);
-      return new TransactionSession(this.connection, this.queue, signal, this, name);
+      return new TransactionSession(
+        this.connection,
+        this.queue,
+        signal,
+        this,
+        name,
+        undefined,
+        this.readOnly,
+      );
     }, options);
   }
   commit(): Promise<void> {
@@ -498,8 +517,14 @@ export class Database extends Queries {
   async begin(options: TransactionOptions = {}): Promise<TransactionHandle> {
     const timeoutMs = options.timeoutMs ?? this.transactionTimeoutMs;
     validateTimeout(timeoutMs, "timeoutMs");
+    if (options.readOnly !== undefined && typeof options.readOnly !== "boolean")
+      throw new TypeError("readOnly must be a boolean");
+    const readOnly = this.connection.readOnly || options.readOnly === true;
+    const mode = options.mode ?? (readOnly ? "deferred" : "immediate");
+    if (readOnly && mode !== "deferred")
+      throw new TypeError("readOnly transactions must use deferred mode");
     return this.schedule(async (signal) => {
-      await this.connection.begin(options.mode ?? "deferred", signal);
+      await this.connection.begin(mode, signal);
       return new TransactionSession(
         this.connection,
         this.queue,
@@ -507,6 +532,7 @@ export class Database extends Queries {
         undefined,
         undefined,
         timeoutMs,
+        readOnly,
       );
     }, options);
   }

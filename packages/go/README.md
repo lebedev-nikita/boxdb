@@ -101,8 +101,13 @@ return errors. Queries and prepared statements require one SQL statement.
 `ExecContext` without parameters also accepts SQL scripts; `RowsAffected` refers
 to the last statement. Scripts stop on the first error and are not automatically
 atomic. Use `BeginTx`, execute through `*sql.Tx`, then `Commit` or `Rollback` for
-atomic work. Default and serializable isolation and read-only transactions are
-supported; other isolation levels return an error.
+atomic work. `Begin` and writable `BeginTx` transactions use `BEGIN IMMEDIATE`,
+acquiring the writer before transaction work starts. `sql.TxOptions{ReadOnly:
+true}` uses a deferred transaction and rejects writes, including scripts that
+try to disable `query_only`. Commit, rollback and pool reset clear the read-only
+restriction before connection reuse. Default and serializable isolation are
+supported; other isolation levels return an error. Raw SQL transaction commands
+retain SQLite's own mode semantics.
 
 Contexts interrupt active SQLite queries and lock waits. The default lock wait is
 up to five seconds; setting `PRAGMA busy_timeout` replaces the cancellable lock
