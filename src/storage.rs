@@ -13,6 +13,19 @@ use std::{
 };
 pub(crate) const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 pub(crate) const MAX_SNAPSHOT: usize = 256 * 1024 * 1024;
+/// Inspect committed contents without opening a writer or changing the file.
+pub(crate) fn reader(path: &Path) -> Result<Connection> {
+    use std::io::Read;
+    let mut header = [0; 16];
+    let count = File::open(path)?.read(&mut header)?;
+    if count == 16 && header == SQLITE_HEADER {
+        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        db.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(db)
+    } else {
+        import(&fs::read(path)?)
+    }
+}
 pub(crate) struct ReadableFile {
     pub path: PathBuf,
     _lock: File,

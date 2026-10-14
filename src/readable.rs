@@ -371,7 +371,7 @@ fn schema_records(db: &Connection) -> Result<Vec<Record>> {
         application_id: db.query_row("PRAGMA application_id", [], |r| r.get(0))?,
         user_version: db.query_row("PRAGMA user_version", [], |r| r.get(0))?,
     }];
-    let objects = db.prepare("SELECT type,name,tbl_name,sql FROM main.sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END,name")?
+    let objects = db.prepare("SELECT type,name,tbl_name,sql FROM main.sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END,name")?
         .query_map([], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (object_type, name, table, sql) in objects {
@@ -425,6 +425,12 @@ impl<W: std::io::Write> std::io::Write for LimitedWriter<W> {
     }
 }
 pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
+    encode_tables(db, false)
+}
+pub(crate) fn encode_schema(db: &Connection) -> Result<Vec<u8>> {
+    encode_tables(db, true)
+}
+fn encode_tables(db: &Connection, schema_only: bool) -> Result<Vec<u8>> {
     let mut bytes = vec![];
     let mut writer = LimitedWriter {
         inner: &mut bytes,
@@ -439,6 +445,7 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
             object_type, name, ..
         } = record
             && object_type == "table"
+            && (!schema_only || name == schema::META || name == crate::migrations::TABLE)
         {
             let table = TablePlan::new(db, name)?;
             let mut statement = db.prepare(&table.select)?;
@@ -448,8 +455,10 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
             }
         }
     }
-    for record in sequence_records(db)? {
-        write_document(&mut writer, &record)?;
+    if !schema_only {
+        for record in sequence_records(db)? {
+            write_document(&mut writer, &record)?;
+        }
     }
     Ok(bytes)
 }

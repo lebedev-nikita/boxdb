@@ -36,10 +36,13 @@ convert_error!(
     serde_saphyr::SerializeError,
     sqlparser::parser::ParserError
 );
+pub mod migrations;
 pub mod types;
 pub use types::{Type, Value};
 mod readable;
 mod schema;
+mod schema_dump;
+pub use schema_dump::SchemaFormat;
 mod storage;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
@@ -134,6 +137,16 @@ fn configure(db: &Connection, binary: bool) -> Result<()> {
     Ok(())
 }
 impl Database {
+    /// Export schema and BoxDB metadata, excluding application rows and sequences.
+    pub fn dump_schema(&self, format: SchemaFormat) -> Result<Vec<u8>> {
+        schema_dump::dump(&self.connection, format)
+    }
+
+    /// Export committed schema without opening a writer or changing the source.
+    pub fn dump_schema_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result<Vec<u8>> {
+        schema_dump::dump(&storage::reader(path.as_ref())?, format)
+    }
+
     fn new(connection: Connection, binary: bool) -> Result<Self> {
         configure(&connection, binary)?;
         let types = schema::load(&connection)?;
