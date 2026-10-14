@@ -28,6 +28,7 @@ pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 pub mod migrations;
 pub mod types;
+pub use rusqlite::InterruptHandle;
 pub use types::{Type, Value};
 mod extensions;
 mod readable;
@@ -219,6 +220,16 @@ impl Database {
     }
     pub fn in_transaction(&self) -> bool {
         !self.connection.is_autocommit()
+    }
+    /// Obtain a thread-safe handle for interrupting an active SQLite operation.
+    pub fn interrupt_handle(&self) -> InterruptHandle {
+        self.connection.get_interrupt_handle()
+    }
+    /// Replace the default five-second busy timeout with a callback.
+    /// Returning false stops waiting for a SQLite lock. A later busy_timeout PRAGMA
+    /// replaces this callback again.
+    pub fn busy_handler(&self, callback: Option<fn(i32) -> bool>) -> Result<()> {
+        self.connection.busy_handler(callback).map_err(Into::into)
     }
     /// Export a consistent snapshot. Finish the current transaction first.
     pub fn export(&self, format: Format) -> Result<Vec<u8>> {

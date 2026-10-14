@@ -2,7 +2,7 @@
 
 # BoxDB
 
-An experimental SQLite client for Rust, TypeScript and the command line. BoxDB
+An experimental SQLite client for Rust, TypeScript, Go and the command line. BoxDB
 adds logical types and validation to ordinary SQLite databases, with an optional
 readable YAML format for storing data in Git. Version 0 does not preserve old
 BoxDB file or API compatibility.
@@ -78,16 +78,20 @@ The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
 and includes Drizzle, Kysely and a Postgres.js-style adapter. Follow its build
 and installation instructions; no prebuilt npm binaries are published yet.
 
+The [Go client](packages/go/README.md) implements `database/sql`, with context
+cancellation, prepared statements and transactions. It uses the Rust core through
+cgo; follow its native build and local module installation instructions.
+
 ## Development
 
-With Rust, libclang, Node.js 22.18+, Bun and Just installed, run:
+With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun and Just installed, run:
 
 ```sh
 just check
 python3 -m unittest discover -s tests -p 'test_performance.py'
 ```
 
-`just check` builds and checks both clients and runs their tests. Use `just --list`
-for individual TypeScript tasks.
+`just check` builds and checks all clients and runs their tests. Use `just --list`
+for individual Go and TypeScript tasks.
 See [benchmark commands and methodology](docs/benchmarks.md) and
 [UTC instant examples](docs/temporal.md) for specialized workflows.

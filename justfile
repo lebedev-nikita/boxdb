@@ -23,7 +23,17 @@ ts-test: ts-build
     cd packages/typescript && node test/runtime.ts
     cd packages/typescript && bun run test/runtime.ts
 
-check: ts-check ts-test
+go-build:
+    go run packages/go/build.go
+
+go-check: go-build
+    test -z "$(gofmt -l packages/go/*.go)"
+    cd packages/go && go vet ./...
+
+go-test: go-build
+    cd packages/go && go test -race -count=1 ./...
+
+check: ts-check ts-test go-check go-test
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --locked

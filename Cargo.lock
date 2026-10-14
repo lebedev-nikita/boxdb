@@ -170,6 +170,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxdb-go"
+version = "0.1.0"
+dependencies = [
+ "boxdb",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "boxdb-node"
 version = "0.1.0"
 dependencies = [
