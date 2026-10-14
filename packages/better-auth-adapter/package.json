@@ -1,0 +1,36 @@
+{
+  "name": "@boxdb/better-auth-adapter",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit && oxlint src test && oxfmt --check src test package.json tsconfig.json tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@boxdb/client": "workspace:*",
+    "@types/node": "26.6.5",
+    "better-auth": "^1.7.7",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
+  },
+  "peerDependencies": {
+    "@boxdb/client": "^0.1.0",
+    "better-auth": "^1.7.7"
+  }
+}

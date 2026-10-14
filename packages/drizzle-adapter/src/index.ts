@@ -1,0 +1,159 @@
+import { DefaultLogger, type Logger } from "drizzle-orm/logger";
+import {
+  createTableRelationsHelpers,
+  extractTablesRelationalConfig,
+  type RelationalSchemaConfig,
+  type TablesRelationalConfig,
+} from "drizzle-orm/relations";
+import {
+  BaseSQLiteDatabase,
+  SQLiteAsyncDialect,
+  type SQLiteTransactionConfig,
+} from "drizzle-orm/sqlite-core";
+import {
+  SqliteRemoteDatabase,
+  type RemoteCallback,
+  type AsyncBatchRemoteCallback,
+} from "drizzle-orm/sqlite-proxy";
+import { SQLiteRemoteSession, SQLiteProxyTransaction } from "drizzle-orm/sqlite-proxy/session";
+import type { DrizzleConfig } from "drizzle-orm/utils";
+import {
+  type Database,
+  type TransactionClient,
+  type SQLValue,
+  type RunResult,
+} from "@boxdb/client";
+
+export interface DrizzleRunResult extends RunResult {
+  rows?: unknown[];
+}
+
+export type DrizzleDatabase<TSchema extends Record<string, unknown> = Record<string, never>> =
+  BaseSQLiteDatabase<"async", DrizzleRunResult, TSchema> & {
+    batch: SqliteRemoteDatabase<TSchema>["batch"];
+    $client: Database | TransactionClient;
+  };
+
+class Session<
+  TFullSchema extends Record<string, unknown>,
+  TSchema extends TablesRelationalConfig,
+> extends SQLiteRemoteSession<TFullSchema, TSchema> {
+  constructor(
+    private readonly database: Database | TransactionClient,
+    private readonly asyncDialect: SQLiteAsyncDialect,
+    private readonly relationalSchema: RelationalSchemaConfig<TSchema> | undefined,
+    private readonly options: { logger?: Logger },
+  ) {
+    const query: RemoteCallback = async (sql, parameters, method) => {
+      const result = await database.execute<SQLValue[]>(sql, parameters, { raw: true });
+      const rows = result.rows;
+      // sqlite-proxy expects one positional row (or undefined) for get().
+      return {
+        rows: method === "get" ? rows[0]! : rows,
+        changes: result.changes,
+        lastInsertRowid: result.lastInsertRowid,
+      };
+    };
+    const batch: AsyncBatchRemoteCallback = async (statements) => {
+      await using tx = await database.begin();
+      const results = [];
+      for (const statement of statements) {
+        const result = await tx.execute<SQLValue[]>(statement.sql, statement.params, { raw: true });
+        const rows = result.rows;
+        results.push({
+          rows: statement.method === "get" ? rows[0]! : rows,
+          changes: result.changes,
+          lastInsertRowid: result.lastInsertRowid,
+        });
+      }
+      await tx.commit();
+      return results;
+    };
+    super(query, asyncDialect, relationalSchema, batch, options);
+  }
+
+  override transaction<T>(
+    fn: (tx: SQLiteProxyTransaction<TFullSchema, TSchema>) => Promise<T>,
+    config?: SQLiteTransactionConfig,
+  ): Promise<T> {
+    return (async () => {
+      await using client = await this.database.begin(
+        config?.behavior ? { mode: config.behavior } : {},
+      );
+      const session = new Session<TFullSchema, TSchema>(
+        client,
+        this.asyncDialect,
+        this.relationalSchema,
+        this.options,
+      );
+      const result = await fn(
+        new Transaction("async", this.asyncDialect, session, this.relationalSchema),
+      );
+      await client.commit();
+      return result;
+    })();
+  }
+}
+
+class Transaction<
+  TFullSchema extends Record<string, unknown>,
+  TSchema extends TablesRelationalConfig,
+> extends SQLiteProxyTransaction<TFullSchema, TSchema> {
+  constructor(
+    resultType: "async",
+    dialect: SQLiteAsyncDialect,
+    private readonly scopedSession: Session<TFullSchema, TSchema>,
+    schema: RelationalSchemaConfig<TSchema> | undefined,
+  ) {
+    super(resultType, dialect, scopedSession, schema);
+  }
+  override transaction<T>(
+    fn: (tx: SQLiteProxyTransaction<TFullSchema, TSchema>) => Promise<T>,
+  ): Promise<T> {
+    return this.scopedSession.transaction(fn);
+  }
+}
+
+/** Run Drizzle queries and transactions on the connection's native thread. */
+export function createDrizzleDatabase<
+  TSchema extends Record<string, unknown> = Record<string, never>,
+>(
+  client: Database | TransactionClient,
+  config: Omit<DrizzleConfig<TSchema>, "cache"> = {},
+): DrizzleDatabase<TSchema> {
+  const dialect = new SQLiteAsyncDialect(
+    config.casing === undefined ? {} : { casing: config.casing },
+  );
+  const tables = config.schema
+    ? extractTablesRelationalConfig(config.schema, createTableRelationsHelpers)
+    : undefined;
+  const schema =
+    tables && config.schema
+      ? { fullSchema: config.schema, schema: tables.tables, tableNamesMap: tables.tableNamesMap }
+      : undefined;
+  const logger = config.logger === true ? new DefaultLogger() : config.logger || undefined;
+  const session = new Session(client, dialect, schema, logger ? { logger } : {});
+  const database = new SqliteRemoteDatabase("async", dialect, session, schema);
+  return Object.assign(database, { $client: client }) as unknown as DrizzleDatabase<TSchema>;
+}
+
+/** Apply generated migrations and their journal entries in one transaction. */
+export async function migrate(
+  database: Pick<DrizzleDatabase, "$client">,
+  config: import("drizzle-orm/migrator").MigrationConfig,
+): Promise<void> {
+  const { readMigrationFiles } = await import("drizzle-orm/migrator");
+  const migrations = readMigrationFiles(config);
+  await using tx = await database.$client.begin({ mode: "immediate" });
+  const table = tx.identifier(config.migrationsTable ?? "__drizzle_migrations");
+  await tx.query`CREATE TABLE IF NOT EXISTS ${table} (id INTEGER PRIMARY KEY, hash TEXT NOT NULL, created_at INTEGER NOT NULL)`;
+  const last = await tx.query<{
+    created_at: bigint;
+  }>`SELECT created_at FROM ${table} ORDER BY created_at DESC LIMIT 1`.get();
+  for (const migration of migrations) {
+    if (last && last.created_at >= BigInt(migration.folderMillis)) continue;
+    for (const statement of migration.sql) await tx.exec(statement);
+    await tx.query`INSERT INTO ${table}(hash,created_at) VALUES(${migration.hash},${migration.folderMillis})`;
+  }
+  await tx.commit();
+}

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -38,6 +38,7 @@ copyFileSync(
   `${targetDirectory}/${release ? "release" : "debug"}/${library}`,
   `${packageRoot}native/boxdb.node`,
 );
+rmSync(`${packageRoot}dist`, { recursive: true, force: true });
 mkdirSync(`${packageRoot}dist`, { recursive: true });
 copyFileSync(
   fileURLToPath(new URL("../../../LICENSE", import.meta.url)),
@@ -56,3 +57,4 @@ for (const [source, name] of [
   );
 }
 run("bunx", ["tsc", "-p", "tsconfig.build.json"]);
+run("bunx", ["tsc", "-p", "tsconfig.runtime.json"]);

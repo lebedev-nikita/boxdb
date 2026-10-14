@@ -20,39 +20,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./drizzle": {
-      "types": "./dist/drizzle.d.ts",
-      "import": "./dist/drizzle.js"
-    },
-    "./adapters/postgres": {
-      "types": "./dist/adapters/postgres.d.ts",
-      "import": "./dist/adapters/postgres.js"
     }
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "check": "tsc --noEmit && oxlint src test scripts && oxfmt --check src test scripts package.json tsconfig.json tsconfig.build.json",
+    "check": "tsc --noEmit && oxlint src test scripts && oxfmt --check src test scripts package.json tsconfig.json tsconfig.build.json tsconfig.runtime.json",
     "test": "vitest run",
     "build:release": "bun run scripts/build.ts --release"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.5",
-    "drizzle-orm": "^0.45.0",
-    "kysely": "0.29.6",
     "oxfmt": "0.73.0",
     "oxlint": "1.88.0",
     "typescript": "7.0.2",
     "vitest": "5.0.4"
-  },
-  "peerDependencies": {
-    "drizzle-orm": ">=0.45.0 <0.46.0"
-  },
-  "peerDependenciesMeta": {
-    "drizzle-orm": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=22.18.0"

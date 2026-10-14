@@ -78,7 +78,7 @@ The [library source](src/lib.rs) includes a minimal example;
 `cargo doc --no-deps --open` opens the API reference.
 
 The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
-and includes Drizzle, Kysely and a Postgres.js-style adapter. Follow its build
+with a nonblocking API and separate Drizzle, Better Auth and db0 adapters. Follow its build
 and installation instructions; no prebuilt npm binaries are published yet.
 
 The [Go client](packages/go/README.md) implements `database/sql`, with context

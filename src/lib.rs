@@ -55,6 +55,13 @@ pub struct StatementInfo {
     pub parameters: Vec<Option<String>>,
     pub readonly: bool,
 }
+/// Options used by asynchronous language bindings while opening a connection.
+#[derive(Clone, Copy, Default)]
+pub struct OpenOptions {
+    pub read_only: bool,
+    pub busy_handler: Option<fn(i32) -> bool>,
+    pub progress_handler: Option<fn() -> bool>,
+}
 pub struct Database {
     connection: Connection,
     format: Option<Format>,
@@ -117,13 +124,18 @@ fn authorizer(db: &Connection, internal: Arc<AtomicBool>) -> Result<()> {
     }))?;
     Ok(())
 }
-fn configure(db: &Connection, binary: bool) -> Result<()> {
+fn configure(db: &Connection, binary: bool, options: OpenOptions) -> Result<()> {
     extensions::register(db)?;
-    db.busy_timeout(Duration::from_secs(5))?;
+    if let Some(callback) = options.busy_handler {
+        db.busy_handler(Some(callback))?;
+    } else {
+        db.busy_timeout(Duration::from_secs(5))?;
+    }
+    db.progress_handler(1000, options.progress_handler)?;
     db.pragma_update(None, "foreign_keys", true)?;
     db.pragma_update(None, "synchronous", "FULL")?;
     db.pragma_update(None, "fullfsync", true)?;
-    if binary {
+    if binary && !options.read_only {
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.pragma_update(None, "locking_mode", "NORMAL")?;
     }
@@ -142,7 +154,14 @@ impl Database {
     }
 
     fn new(connection: Connection, binary: bool) -> Result<Self> {
-        configure(&connection, binary)?;
+        Self::new_with_options(connection, binary, OpenOptions::default())
+    }
+    fn new_with_options(
+        connection: Connection,
+        binary: bool,
+        options: OpenOptions,
+    ) -> Result<Self> {
+        configure(&connection, binary, options)?;
         let types = schema::load(&connection)?;
         schema::install(&connection, &types)?;
         let data_version = connection.query_row("PRAGMA data_version", [], |r| r.get(0))?;
@@ -173,6 +192,20 @@ impl Database {
     /// Open an ordinary SQLite binary database or a standalone YAML stream.
     /// Existing contents determine the format; `format` applies to new files.
     pub fn open(path: impl AsRef<Path>, format: Format) -> Result<Self> {
+        Self::open_with_options(path, format, OpenOptions::default())
+    }
+    pub fn memory_with_options(options: OpenOptions) -> Result<Self> {
+        let db = Self::new_with_options(Connection::open_in_memory()?, false, options)?;
+        if options.read_only {
+            db.connection.pragma_update(None, "query_only", true)?;
+        }
+        Ok(db)
+    }
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        format: Format,
+        options: OpenOptions,
+    ) -> Result<Self> {
         let path = path.as_ref();
         let detected = if path.exists() && path.metadata()?.len() > 0 {
             use std::io::Read;
@@ -194,17 +227,28 @@ impl Database {
         };
         let mut db = match detected {
             Format::Binary => {
-                let connection = Connection::open(path)?;
-                Self::new(connection, true)?
+                let connection = if options.read_only {
+                    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?
+                } else {
+                    Connection::open(path)?
+                };
+                Self::new_with_options(connection, true, options)?
             }
             Format::Readable => {
+                if options.read_only {
+                    let connection = storage::import(&std::fs::read(path)?)?;
+                    let mut db = Self::new_with_options(connection, false, options)?;
+                    db.connection.pragma_update(None, "query_only", true)?;
+                    db.format = Some(detected);
+                    return Ok(db);
+                }
                 let file = storage::ReadableFile::open(path)?;
                 let connection = if path.exists() && path.metadata()?.len() > 0 {
                     storage::import(&std::fs::read(path)?)?
                 } else {
                     Connection::open_in_memory()?
                 };
-                let mut db = Self::new(connection, false)?;
+                let mut db = Self::new_with_options(connection, false, options)?;
                 file.watch(&db.connection)?;
                 if !path.exists() || path.metadata()?.len() == 0 {
                     file.publish(&db.connection)?;
@@ -222,6 +266,25 @@ impl Database {
     pub fn in_transaction(&self) -> bool {
         !self.connection.is_autocommit()
     }
+    /// Reject transaction control in driver SQL; handles manage this separately.
+    pub fn validate_query_sql(sql: &str) -> Result<()> {
+        for statement in split(sql)? {
+            if matches!(
+                schema::keyword(statement).to_ascii_uppercase().as_str(),
+                "BEGIN" | "COMMIT" | "END" | "ROLLBACK" | "SAVEPOINT" | "RELEASE"
+            ) {
+                return Err(Error::new(
+                    "use transaction handles for transaction control".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn query_only(&self) -> Result<()> {
+        self.connection
+            .pragma_update(None, "query_only", true)
+            .map_err(Into::into)
+    }
     /// Obtain a thread-safe handle for interrupting an active SQLite operation.
     pub fn interrupt_handle(&self) -> InterruptHandle {
         self.connection.get_interrupt_handle()
@@ -231,6 +294,12 @@ impl Database {
     /// replaces this callback again.
     pub fn busy_handler(&self, callback: Option<fn(i32) -> bool>) -> Result<()> {
         self.connection.busy_handler(callback).map_err(Into::into)
+    }
+    /// Install a callback that interrupts SQL when it returns true.
+    pub fn progress_handler(&self, operations: i32, callback: Option<fn() -> bool>) -> Result<()> {
+        self.connection
+            .progress_handler(operations, callback)
+            .map_err(Into::into)
     }
     /// Export a consistent snapshot. Finish the current transaction first.
     pub fn export(&self, format: Format) -> Result<Vec<u8>> {
@@ -334,15 +403,26 @@ impl Database {
         Ok(())
     }
     pub fn execute(&mut self, sql: &str) -> Result<Vec<QueryResult>> {
+        self.execute_with_hook(sql, |_| Ok(()))
+    }
+    /// Execute a script, calling a hook before each statement. Bindings use this
+    /// to restore cancellation handlers after a PRAGMA replaces the busy handler.
+    pub fn execute_with_hook(
+        &mut self,
+        sql: &str,
+        mut before_statement: impl FnMut(&Self) -> Result<()>,
+    ) -> Result<Vec<QueryResult>> {
         if !sql.contains(';') {
             return if sql.trim().is_empty() {
                 Ok(vec![])
             } else {
+                before_statement(self)?;
                 Ok(vec![self.execute_one(sql, &[], true)?])
             };
         }
         let mut results = vec![];
         for statement in split(sql)? {
+            before_statement(self)?;
             results.push(self.execute_one(statement, &[], true)?);
         }
         Ok(results)

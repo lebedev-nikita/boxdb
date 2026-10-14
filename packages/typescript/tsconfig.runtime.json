@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "test",
+    "outDir": ".tmp-runtime",
+    "declaration": false
+  },
+  "include": ["test/runtime.ts"]
+}
