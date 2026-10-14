@@ -1,3 +1,4 @@
+import { is } from "drizzle-orm";
 import { DefaultLogger, type Logger } from "drizzle-orm/logger";
 import {
   createTableRelationsHelpers,
@@ -8,6 +9,7 @@ import {
 import {
   BaseSQLiteDatabase,
   SQLiteAsyncDialect,
+  SQLiteTimestamp,
   type SQLiteTransactionConfig,
 } from "drizzle-orm/sqlite-core";
 import {
@@ -15,7 +17,12 @@ import {
   type RemoteCallback,
   type AsyncBatchRemoteCallback,
 } from "drizzle-orm/sqlite-proxy";
-import { SQLiteRemoteSession, SQLiteProxyTransaction } from "drizzle-orm/sqlite-proxy/session";
+import {
+  SQLiteRemoteSession,
+  SQLiteProxyTransaction,
+  type PreparedQueryConfig,
+  type RemotePreparedQuery,
+} from "drizzle-orm/sqlite-proxy/session";
 import type { DrizzleConfig } from "drizzle-orm/utils";
 import {
   type Database,
@@ -33,6 +40,40 @@ export type DrizzleDatabase<TSchema extends Record<string, unknown> = Record<str
     batch: SqliteRemoteDatabase<TSchema>["batch"];
     $client: Database | TransactionClient;
   };
+
+// Timestamp decoders expect number inputs; integer columns retain bigint.
+function timestampDecoder<T extends object>(field: T): T {
+  if (!is(field, SQLiteTimestamp)) return field;
+  return new Proxy(field, {
+    get(target, key, receiver) {
+      if (key === "mapFromDriverValue")
+        return (value: number | bigint) => {
+          const number = typeof value === "bigint" ? Number(value) : value;
+          if (!Number.isSafeInteger(number))
+            throw new RangeError("Timestamp is outside the safe integer range");
+          return target.mapFromDriverValue(number);
+        };
+      return Reflect.get(target, key, receiver);
+    },
+  });
+}
+
+class Dialect extends SQLiteAsyncDialect {
+  override buildRelationalQuery(
+    ...args: Parameters<SQLiteAsyncDialect["buildRelationalQuery"]>
+  ): ReturnType<SQLiteAsyncDialect["buildRelationalQuery"]> {
+    const query = super.buildRelationalQuery(...args);
+    type Selection = { field: object; isJson: boolean; selection: Selection[] };
+    const visit = (selection: Selection[]) => {
+      for (const item of selection) {
+        item.field = timestampDecoder(item.field);
+        if (item.isJson) visit(item.selection);
+      }
+    };
+    visit(query.selection);
+    return query;
+  }
+}
 
 class Session<
   TFullSchema extends Record<string, unknown>,
@@ -70,6 +111,21 @@ class Session<
       return results;
     };
     super(query, asyncDialect, relationalSchema, batch, options);
+  }
+
+  override prepareQuery<T extends Omit<PreparedQueryConfig, "run">>(
+    ...args: Parameters<SQLiteRemoteSession<TFullSchema, TSchema>["prepareQuery"]>
+  ): RemotePreparedQuery<T> {
+    const [query, fields, method, arrayMode, mapper, metadata, cache] = args;
+    return super.prepareQuery<T>(
+      query,
+      fields?.map((item) => ({ ...item, field: timestampDecoder(item.field) })),
+      method,
+      arrayMode,
+      mapper,
+      metadata,
+      cache,
+    );
   }
 
   override transaction<T>(
@@ -121,9 +177,7 @@ export function createDrizzleDatabase<
   client: Database | TransactionClient,
   config: Omit<DrizzleConfig<TSchema>, "cache"> = {},
 ): DrizzleDatabase<TSchema> {
-  const dialect = new SQLiteAsyncDialect(
-    config.casing === undefined ? {} : { casing: config.casing },
-  );
+  const dialect = new Dialect(config.casing === undefined ? {} : { casing: config.casing });
   const tables = config.schema
     ? extractTablesRelationalConfig(config.schema, createTableRelationsHelpers)
     : undefined;

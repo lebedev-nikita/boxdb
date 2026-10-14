@@ -128,3 +128,19 @@ it("preserves bigint storage integers while mapping boolean columns", async () =
     { id: 1n, name: "Ada", active: true, profile: null },
   ]);
 });
+
+it("maps timestamp columns from bigint storage without converting integer IDs", async () => {
+  await using client = await Database.open();
+  await client.exec("CREATE TABLE events(id INTEGER PRIMARY KEY,at INTEGER,at_ms INTEGER)");
+  const events = sqliteTable("events", {
+    id: integer().primaryKey().$type<bigint>(),
+    at: integer({ mode: "timestamp" }),
+    atMs: integer("at_ms", { mode: "timestamp_ms" }),
+  });
+  const db = createDrizzleDatabase(client, { schema: { events } });
+  const date = new Date("2026-10-14T12:00:00.000Z");
+  await db.insert(events).values({ id: 9223372036854775807n, at: date, atMs: date });
+  const expected = { id: 9223372036854775807n, at: date, atMs: date };
+  expect(await db.select().from(events).get()).toEqual(expected);
+  expect(await db.query.events.findFirst()).toEqual(expected);
+});

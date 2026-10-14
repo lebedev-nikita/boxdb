@@ -24,7 +24,8 @@ transaction handles internally; nested callbacks use savepoints. You can also
 pass an existing BoxDB transaction to `createDrizzleDatabase`.
 
 Write metadata and integer cells remain bigint. Use `integer().$type<bigint>()`
-for Drizzle integer columns; boolean columns still map to boolean. Migrations
+for Drizzle integer columns. Boolean columns map to boolean and timestamp
+columns map to Date, without converting unrelated integer cells. Migrations
 use an INTEGER journal and apply SQL and journal entries in one transaction.
 
 The adapter borrows `$client`; close it yourself or use `await using`.
