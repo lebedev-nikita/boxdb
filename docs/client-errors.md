@@ -47,6 +47,9 @@ TypeScript transactions use explicit handles and `await using`: unfinished
 transactions roll back during disposal. A failed commit keeps a still-active
 native transaction available for repair or retry. Disposal retains operation and
 rollback failures through JavaScript's explicit resource management protocol.
+Transaction deadline expiry uses `BOXDB_TRANSACTION_TIMEOUT`, interrupts running
+SQL and rolls back before releasing root requests waiting on the connection.
+Expired handles retain the timeout reason for further queries and commit calls.
 Argument errors use `TypeError` or `RangeError`; both unsafe integer numbers and
 bigint outside signed int64 use `RangeError`.
 

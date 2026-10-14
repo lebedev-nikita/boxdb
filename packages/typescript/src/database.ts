@@ -15,6 +15,15 @@ export interface QueryOptions {
 }
 export interface TransactionOptions extends QueryOptions {
   mode?: "deferred" | "immediate" | "exclusive";
+  /** Overrides the client's transaction timeout, in milliseconds. */
+  timeoutMs?: number;
+}
+
+const DEFAULT_TRANSACTION_TIMEOUT_MS = 5000;
+
+function validateTimeout(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1 || value > 2_147_483_647)
+    throw new RangeError(`${name} must be an integer between 1 and 2147483647`);
 }
 
 export interface Diagnostics {
@@ -26,6 +35,9 @@ export interface Diagnostics {
 }
 class Queue {
   tail: Promise<void> = Promise.resolve();
+  #idle: (() => void) | undefined;
+  #scheduled = false;
+  #waiting: { ready: () => boolean; run: () => Promise<void>; cancel: () => void }[] = [];
   pending = 0;
   active = 0;
   completed = 0;
@@ -41,57 +53,73 @@ class Queue {
       lastExecutionMs: this.executionMs,
     };
   }
-  run<T>(operation: () => Promise<T>, signal?: AbortSignal, cleanup = false): Promise<T> {
+  run<T>(
+    operation: () => Promise<T>,
+    signal?: AbortSignal,
+    cleanup = false,
+    ready: () => boolean = () => true,
+  ): Promise<T> {
     if (signal?.aborted) return Promise.reject(signal.reason);
     if (!cleanup && this.pending >= this.limit)
       return Promise.reject(new BoxDBError("query queue is full", { code: "BOXDB_QUEUE_FULL" }));
-    let waiting = true;
     const enqueued = performance.now();
+    if (!this.#idle)
+      this.tail = new Promise((resolve) => {
+        this.#idle = resolve;
+      });
     this.pending++;
-    const leaveQueue = () => {
-      if (waiting) {
-        waiting = false;
-        this.pending--;
-      }
-    };
-    const result = this.tail.then(async () => {
-      leaveQueue();
-      signal?.throwIfAborted();
-      const started = performance.now();
-      this.waitMs = started - enqueued;
-      this.active++;
-      try {
-        return await operation();
-      } finally {
-        this.active--;
-        this.completed++;
-        this.executionMs = performance.now() - started;
-      }
-    });
-    this.tail = result.then(
-      () => {},
-      () => {},
-    );
-    if (!signal) return result;
     return new Promise<T>((resolve, reject) => {
-      const cancel = () => {
-        if (waiting) {
-          leaveQueue();
-          reject(signal.reason);
-        }
+      const entry = {
+        ready,
+        cancel: () => {
+          const index = this.#waiting.indexOf(entry);
+          if (index < 0) return;
+          this.#waiting.splice(index, 1);
+          this.pending--;
+          signal?.removeEventListener("abort", entry.cancel);
+          reject(signal?.reason);
+          this.pump();
+        },
+        run: async () => {
+          this.pending--;
+          signal?.removeEventListener("abort", entry.cancel);
+          const started = performance.now();
+          this.waitMs = started - enqueued;
+          this.active++;
+          try {
+            signal?.throwIfAborted();
+            resolve(await operation());
+          } catch (error) {
+            reject(error);
+          } finally {
+            this.active--;
+            this.completed++;
+            this.executionMs = performance.now() - started;
+            this.pump();
+          }
+        },
       };
-      signal.addEventListener("abort", cancel, { once: true });
-      if (signal.aborted) cancel();
-      result.then(
-        (value) => {
-          signal.removeEventListener("abort", cancel);
-          resolve(value);
-        },
-        (error) => {
-          signal.removeEventListener("abort", cancel);
-          reject(error);
-        },
-      );
+      this.#waiting.push(entry);
+      signal?.addEventListener("abort", entry.cancel, { once: true });
+      if (signal?.aborted) entry.cancel();
+      this.pump();
+    });
+  }
+
+  private pump(): void {
+    if (this.#scheduled || this.active) return;
+    this.#scheduled = true;
+    queueMicrotask(() => {
+      this.#scheduled = false;
+      // Transaction work bypasses root requests waiting for connection ownership.
+      const index = this.#waiting.findIndex((entry) => entry.ready());
+      if (index >= 0) {
+        const [entry] = this.#waiting.splice(index, 1);
+        void entry!.run();
+      } else if (this.#waiting.length === 0) {
+        this.#idle?.();
+        this.#idle = undefined;
+      }
     });
   }
 }
@@ -205,8 +233,7 @@ class Queries {
   ): Promise<T> {
     if (this.root && this.connection.closing)
       return Promise.reject(new BoxDBError("database is closed", { code: "BOXDB_CLOSED" }));
-    if (this.root && this.connection.owner)
-      return Promise.reject(new BoxDBError("Use the active transaction handle"));
+    if (this.signal?.aborted) return Promise.reject(this.signal.reason);
     if (!this.root && (this.connection.owner as Queries | undefined) !== this)
       return Promise.reject(
         new BoxDBError("transaction is closed or has an active nested transaction"),
@@ -215,15 +242,18 @@ class Queries {
       (signal): signal is AbortSignal => signal !== undefined,
     );
     const signal = signals.length === 1 ? signals[0]! : AbortSignal.any(signals);
-    return this.queue.run(() => {
-      if (this.root && this.connection.owner)
-        throw new BoxDBError("Use the active transaction handle");
-      if (!this.root && (this.connection.owner as Queries | undefined) !== this)
-        throw new BoxDBError("transaction is closed or has an active nested transaction");
-      if (!this.root && !this.connection.inTransaction)
-        throw new BoxDBError("transaction has ended");
-      return operation(signal);
-    }, signal);
+    return this.queue.run(
+      () => {
+        if (!this.root && (this.connection.owner as Queries | undefined) !== this)
+          throw new BoxDBError("transaction is closed or has an active nested transaction");
+        if (!this.root && !this.connection.inTransaction)
+          throw new BoxDBError("transaction has ended");
+        return operation(signal);
+      },
+      signal,
+      false,
+      () => !this.root || !this.connection.owner,
+    );
   }
 
   readonly fragment = fragment;
@@ -279,6 +309,8 @@ export interface TransactionHandle extends TransactionClient {
 let savepoint = 0;
 class TransactionSession extends Queries implements TransactionHandle {
   #active = true;
+  #timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly transactionSignal: AbortSignal;
   #finishing: Promise<void> | undefined;
   readonly finished: Promise<void>;
   #release!: () => void;
@@ -288,17 +320,30 @@ class TransactionSession extends Queries implements TransactionHandle {
   constructor(
     connection: Connection,
     queue: Queue,
-    private readonly transactionSignal?: AbortSignal,
+    transactionSignal?: AbortSignal,
     private readonly parent?: TransactionSession,
     private readonly savepointName?: string,
+    timeoutMs?: number,
   ) {
-    super(connection, queue, transactionSignal);
+    const timeout = new AbortController();
+    const signal = transactionSignal
+      ? AbortSignal.any([transactionSignal, timeout.signal])
+      : timeout.signal;
+    super(connection, queue, signal);
+    this.transactionSignal = signal;
     this.finished = new Promise((resolve) => {
       this.#release = resolve;
     });
     connection.owner = this;
-    transactionSignal?.addEventListener("abort", this.#cancel, { once: true });
-    if (transactionSignal?.aborted) this.#cancel();
+    signal.addEventListener("abort", this.#cancel, { once: true });
+    if (timeoutMs !== undefined) {
+      this.#timer = setTimeout(() => {
+        timeout.abort(
+          new BoxDBError("transaction timed out", { code: "BOXDB_TRANSACTION_TIMEOUT" }),
+        );
+      }, timeoutMs);
+    }
+    if (signal.aborted) this.#cancel();
   }
   get active(): boolean {
     return this.#active && this.connection.inTransaction;
@@ -315,6 +360,7 @@ class TransactionSession extends Queries implements TransactionHandle {
     }, options);
   }
   commit(): Promise<void> {
+    if (this.transactionSignal.aborted) return Promise.reject(this.transactionSignal.reason);
     if (!this.active || (this.connection.owner as Queries | undefined) !== this || this.#finishing)
       return Promise.reject(
         new BoxDBError("transaction is closed or has an active nested transaction"),
@@ -328,7 +374,8 @@ class TransactionSession extends Queries implements TransactionHandle {
   }
   private release(): void {
     this.#active = false;
-    this.transactionSignal?.removeEventListener("abort", this.#cancel);
+    clearTimeout(this.#timer);
+    this.transactionSignal.removeEventListener("abort", this.#cancel);
     this.connection.owner = this.parent;
     this.#release();
   }
@@ -394,11 +441,13 @@ class TransactionSession extends Queries implements TransactionHandle {
 export class Database extends Queries {
   readonly name: string;
   readonly memory: boolean;
+  private readonly transactionTimeoutMs: number;
 
   private constructor(path: string, options: DatabaseOptions) {
     super(new Connection(path, options), new Queue(options.maxPendingQueries), undefined, true);
     this.name = path;
     this.memory = path === ":memory:";
+    this.transactionTimeoutMs = options.transactionTimeoutMs ?? DEFAULT_TRANSACTION_TIMEOUT_MS;
   }
 
   static async open(path = ":memory:", options: DatabaseOptions = {}): Promise<Database> {
@@ -422,6 +471,10 @@ export class Database extends Queries {
       (!Number.isSafeInteger(options.maxPendingQueries) || options.maxPendingQueries < 1)
     )
       throw new RangeError("maxPendingQueries must be a positive safe integer");
+    validateTimeout(
+      options.transactionTimeoutMs ?? DEFAULT_TRANSACTION_TIMEOUT_MS,
+      "transactionTimeoutMs",
+    );
     options.signal?.throwIfAborted();
     const db = new Database(path, options);
     try {
@@ -442,10 +495,19 @@ export class Database extends Queries {
     return !this.connection.closing;
   }
 
-  begin(options: TransactionOptions = {}): Promise<TransactionHandle> {
+  async begin(options: TransactionOptions = {}): Promise<TransactionHandle> {
+    const timeoutMs = options.timeoutMs ?? this.transactionTimeoutMs;
+    validateTimeout(timeoutMs, "timeoutMs");
     return this.schedule(async (signal) => {
       await this.connection.begin(options.mode ?? "deferred", signal);
-      return new TransactionSession(this.connection, this.queue, signal);
+      return new TransactionSession(
+        this.connection,
+        this.queue,
+        signal,
+        undefined,
+        undefined,
+        timeoutMs,
+      );
     }, options);
   }
 

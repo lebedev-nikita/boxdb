@@ -157,3 +157,38 @@ it("aborting an idle transaction rolls back without a cancellable cleanup", asyn
   expect(tx.active).toBe(false);
   expect(await db.query`SELECT * FROM item`).toEqual([]);
 });
+
+it("transaction timeout interrupts running SQL, cancels queued transaction writes and releases root writes", async () => {
+  const db = await open();
+  await db.exec("CREATE TABLE item(id INTEGER)");
+  await using tx = await db.begin({ timeoutMs: 50 });
+  await tx.execute("INSERT INTO item VALUES(1)");
+  const running = tx.execute(
+    "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000000) INSERT INTO item SELECT x FROM n",
+  );
+  const pending = db.execute("INSERT INTO item VALUES(2)");
+  const queued = tx.execute("INSERT INTO item VALUES(3)");
+  const failed = Promise.all([
+    expect(running).rejects.toMatchObject({ code: "BOXDB_TRANSACTION_TIMEOUT" }),
+    expect(queued).rejects.toMatchObject({ code: "BOXDB_TRANSACTION_TIMEOUT" }),
+  ]);
+  try {
+    await failed;
+    await pending;
+    expect(tx.active).toBe(false);
+    expect((await db.execute("SELECT * FROM item")).rows).toEqual([{ id: 2n }]);
+  } finally {
+    await tx.rollback();
+    await pending;
+  }
+});
+
+it("abort close cancels root queries waiting behind a transaction", async () => {
+  const db = await open();
+  await using tx = await db.begin();
+  const pending = db.execute("SELECT 1");
+  const failed = expect(pending).rejects.toMatchObject({ code: "BOXDB_CLOSED" });
+  await db.close({ mode: "abort" });
+  await failed;
+  expect(tx.active).toBe(false);
+});
