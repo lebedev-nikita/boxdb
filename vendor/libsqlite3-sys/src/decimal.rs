@@ -108,7 +108,7 @@ unsafe fn operand(kind: i32, data: *const c_char, length: i32) -> Result<BigDeci
     parse(std::str::from_utf8(bytes).map_err(|_| Error("invalid DECIMAL encoding".into()))?)
 }
 
-unsafe fn output(text: &[u8], result: *mut *mut c_char, length: *mut i32) -> i32 {
+pub(crate) unsafe fn output(text: &[u8], result: *mut *mut c_char, length: *mut i32) -> i32 {
     // SAFETY: the caller owns both output slots; SQLite owns the allocation.
     let buffer = unsafe { ffi::sqlite3_malloc64((text.len() + 1) as u64) }.cast::<c_char>();
     if buffer.is_null() {

@@ -687,10 +687,12 @@ dependencies = [
  "bigdecimal",
  "bindgen",
  "cc",
+ "chrono",
  "num-bigint",
  "num-integer",
  "num-traits",
  "pkg-config",
+ "uuid",
  "vcpkg",
 ]
 

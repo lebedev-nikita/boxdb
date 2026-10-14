@@ -12,13 +12,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - name: Install SQLite binding build dependency
         run: sudo apt-get update && sudo apt-get install --yes libclang-dev
       - run: cargo fmt --all --check
+      - run: rustfmt --edition 2024 --check benches/support/workload.rs
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --locked
-      - name: Performance report checker contract tests
-        run: python3 -m unittest discover -s tests -p 'test_performance.py'
+      - name: Benchmark CLI and performance report contract tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Benchmark correctness smoke test
         run: >-
           cargo test --locked --bench sqlite_vs_boxdb --
@@ -67,7 +69,7 @@ jobs:
       - name: Prepare base revision with the same benchmark harness
         run: |
           mv "$GITHUB_WORKSPACE/boxdb-baseline" "$RUNNER_TEMP/boxdb-baseline"
-          cp benches/sqlite_vs_boxdb.rs "$RUNNER_TEMP/boxdb-baseline/benches/sqlite_vs_boxdb.rs"
+          cp -R benches/. "$RUNNER_TEMP/boxdb-baseline/benches/"
           mkdir -p target/performance
           git rev-parse HEAD > target/performance/current-revision.txt
           git rev-parse "$BOXDB_BASE_REVISION" > target/performance/base-revision.txt

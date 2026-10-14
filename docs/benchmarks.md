@@ -1,30 +1,59 @@
 # SQLite vs BoxDB storage
 
-Both clients use bundled SQLite. By default, both store ordinary SQLite files;
-`--boxdb-format yaml` instead measures BoxDB's readable YAML storage against
-file-backed rusqlite. Timings include BoxDB's public API, result allocation,
-type validation and durable publication.
+Compare BoxDB with **unmodified SQLite** using Python 3.11+, the Rust build
+prerequisites and Just:
 
 ```sh
-cargo bench --locked --bench sqlite_vs_boxdb
-cargo bench --locked --bench sqlite_vs_boxdb -- --help
-cargo bench --locked --bench sqlite_vs_boxdb -- \
-  --rows 1000 --samples 7 --reads 100 --read-repetitions 20 --batch-size 100 --writes 20 \
-  --json /tmp/boxdb-benchmark.json
-cargo bench --locked --bench sqlite_vs_boxdb -- \
-  --rows 1000 --samples 7 --read-repetitions 20 --typed --json /tmp/boxdb-typed-benchmark.json
-cargo bench --locked --bench sqlite_vs_boxdb -- \
-  --boxdb-format yaml --rows 10000 --samples 5 --read-repetitions 20 \
-  --json /tmp/boxdb-yaml-benchmark.json
+just bench-sqlite
+just bench-sqlite --boxdb-format binary --schema ordinary --rows 10000
+just bench-sqlite --help
 ```
 
-No SQLite CLI installation is needed. Every sample creates a fresh temporary
-database; `--directory /existing/path` selects its filesystem. Temporary
-databases are removed automatically; requested JSON reports are retained.
+Without Just, run `python3 tools/benchmark_sqlite.py` with the same arguments.
+Defaults cover binary and YAML storage, with ordinary and VARCHAR columns.
+No SQLite CLI installation is needed. `--directory /existing/path` selects the
+filesystem for temporary databases, which are removed after each sample.
+
+[The command](../tools/benchmark_sqlite.py) builds two release executables before
+measuring. The reference lives in an isolated Cargo workspace, uses the registry
+SQLite package without BoxDB's patch, and must match BoxDB's original SQLite
+amalgamation byte for byte. Both use the [same workload source](../benches/support/workload.rs)
+and SQLite adapter. The reference mirrors the public Value enum to preserve
+owned-row allocation size without linking BoxDB's modified engine. Runtime
+version, row layout and DECIMAL probes are checked before comparing results.
+
+Each engine runs in a separate process for each sample. One warmup is discarded,
+then engine order alternates. Timings exclude process startup and compilation;
+read queries are also warmed inside each sample. Run on an idle machine.
+
+The command prints microseconds, ratios, percentage changes and added latency.
+Positive change means BoxDB takes longer. Reports go to a new directory under
+`target/performance/`; `--output /new/report/path` selects another location:
+
+- `summary.md` and `summary.json`: all measured samples and median comparisons.
+- `metadata.json`: Git revision, dirty status, source hash and Rust toolchain.
+- `raw/`: individual reports and logs, including discarded warmups.
+- `build/` and `bin/`: build logs and the measured executables.
+
+This compares the complete BoxDB API with a direct SQLite client: modified
+engine, type checks, result allocation and storage publication all contribute.
+It does not isolate the cost of the native-type dispatch alone.
+
+## Client-only harness
+
+The direct command below links **both clients to BoxDB's patched SQLite** because
+the root workspace patches `libsqlite3-sys`. It measures API/storage overhead
+and remains the harness for the revision regression gate. It is not the
+unmodified SQLite comparison above.
+
+```sh
+cargo bench --locked --bench sqlite_vs_boxdb -- --help
+cargo bench --locked --bench sqlite_vs_boxdb -- --json /tmp/boxdb-client-benchmark.json
+```
 
 ## Measurement
 
-[The harness](../benches/sqlite_vs_boxdb.rs) generates identical deterministic
+[The shared harness](../benches/support/workload.rs) generates identical deterministic
 integer/text rows, SQL and expected results outside timers. Both clients have
 an INTEGER primary key and an additional explicit ID index. Every workload is
 verified, including committed data after reopening.
@@ -51,7 +80,8 @@ One full warmup sample per client is discarded. Measured samples alternate
 client order. Reports contain raw durations, medians, configuration, SQLite
 version and OS/architecture. `BoxDB/SQLite` divides BoxDB's median microseconds
 per unit by SQLite's median for the same workload. Above 1 means BoxDB takes
-longer. The console and JSON `comparisons[].boxdb_over_sqlite` always show it.
+longer. The automated JSON exposes this as
+`runs[].comparisons[].boxdb_over_sqlite`; the direct harness uses `comparisons[]`.
 
 Storage sizes are sampled after insertion: `database_bytes`, `wal_bytes` and
 `total_storage_bytes` include the main file and WAL, excluding shared-memory
@@ -136,6 +166,9 @@ changing tolerances. This gate detects substantial regressions in these workload
 it does not cover every SQL query, extended type, dataset size or memory usage.
 
 ## Binary reports
+
+These checked-in reports predate the automated unmodified SQLite comparison;
+interpret them using their recorded implementation and settings.
 
 All three runs use seven measured samples, 100 read queries repeated 20 times
 per workload, INSERT batches of 100, and 20 writes on macOS ARM64 with matching
@@ -245,7 +278,7 @@ before/after speedup measurement.
 | `delete_transaction` | 138.97x | 13.91x | 0.27x |
 | `reopen_scan` | 18.76x | 3.59x | 2.35x |
 
-Saved reports also record compiler, Git base revision, collection time, storage
+Historical reports also record compiler, Git base revision, collection time, storage
 format and source SHA-256. When source changes were uncommitted, the Git base
 alone does not identify the measured implementation. The fingerprint hashes
 sorted `src/**/*.rs`, `benches/**/*.rs`, `Cargo.toml` and `Cargo.lock`, concatenating

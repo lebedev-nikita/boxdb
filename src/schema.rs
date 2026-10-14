@@ -71,9 +71,9 @@ fn extension(input: &str) -> Result<Option<Type>> {
         Err(_) => Ok(None),
     }
 }
+mod arrays;
 mod create;
-mod instant;
-pub(crate) use instant::normalize as normalize_instants;
+pub(crate) use arrays::normalize as normalize_arrays;
 pub(crate) struct Declaration {
     pub schema: String,
     pub select: bool,
@@ -97,6 +97,11 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             | Type::Uint32
             | Type::Boolean => "INTEGER",
             Type::Decimal(_) => "DECIMAL",
+            Type::Uuid => "UUID",
+            Type::Instant => "INSTANT",
+            Type::Date => "DATE",
+            Type::DateTime => "DATETIME",
+            Type::Interval => "INTERVAL",
             Type::Real => "REAL",
             Type::Bytea => "BLOB",
             _ => "TEXT",
@@ -199,7 +204,7 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
         if let AlterTableOperation::AddColumn { column_def, .. } = op {
             let original = column_def.data_type.clone();
             if let Some(ty) = translate_column(column_def)? {
-                if !main && !matches!(ty, Type::Decimal(_)) {
+                if !main && ty.native_kind().is_none() {
                     return Err(Error::new(
                         "extended types require main database tables".into(),
                     ));
@@ -367,6 +372,9 @@ pub(crate) fn uninstall(db: &Connection) -> Result<()> {
 pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
     uninstall(db)?;
     for (i, ((table, column), ty)) in types.iter().enumerate() {
+        if ty.native_kind().is_some() {
+            continue;
+        }
         let function = format!("__boxdb_validate_{i}");
         let ty = ty.clone();
         db.create_scalar_function(
@@ -411,8 +419,18 @@ pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
             db.execute_batch(&format!("CREATE TEMP TRIGGER {} AFTER {action} ON main.{} BEGIN SELECT {function}(NEW.{}); END",quote(&format!("__boxdb_validate_{i}_{action}")),quote(table),quote(column)))?;
         }
     }
-    instant::install(db, types)?;
+    arrays::install(db, types)?;
     Ok(())
+}
+fn native_value(kind: libsqlite3_sys::native::Kind, text: String) -> Value {
+    match kind {
+        libsqlite3_sys::native::Kind::Uuid => Value::Uuid(text),
+        libsqlite3_sys::native::Kind::Decimal => Value::Decimal(text),
+        libsqlite3_sys::native::Kind::Instant => Value::Instant(text),
+        libsqlite3_sys::native::Kind::Date => Value::Date(text),
+        libsqlite3_sys::native::Kind::DateTime => Value::DateTime(text),
+        libsqlite3_sys::native::Kind::Interval => Value::Interval(text),
+    }
 }
 pub(crate) fn native(value: SqlValue) -> Value {
     match value {
@@ -422,19 +440,36 @@ pub(crate) fn native(value: SqlValue) -> Value {
         SqlValue::Text(s) => Value::Text(s),
         SqlValue::Blob(b) => match decimal::decode(&b) {
             Some(text) => Value::Decimal(text.into()),
-            None => Value::Bytea(decimal::unescape_blob(b)),
+            None => match libsqlite3_sys::native::decode(&b) {
+                Some((kind, text)) => native_value(kind, text),
+                None => Value::Bytea(decimal::unescape_blob(b)),
+            },
         },
     }
 }
 pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
-    let rich = match value {
+    match value {
         Value::Decimal(text) => return Ok(SqlValue::Blob(decimal::encode(text)?)),
-        Value::Uuid(_) => Some(Type::Uuid),
-        Value::Instant(_) => Some(Type::Instant),
-        _ => None,
-    };
-    if let Some(ty) = rich {
-        return Ok(SqlValue::Text(ty.validate(value)?.to_string()));
+        Value::Uuid(text) => {
+            return libsqlite3_sys::native::encode(libsqlite3_sys::native::Kind::Uuid, text)
+                .map(SqlValue::Blob)
+                .map_err(|e| Error::new(e.0));
+        }
+        Value::Instant(text)
+        | Value::Date(text)
+        | Value::DateTime(text)
+        | Value::Interval(text) => {
+            let kind = match value {
+                Value::Instant(_) => libsqlite3_sys::native::Kind::Instant,
+                Value::Date(_) => libsqlite3_sys::native::Kind::Date,
+                Value::DateTime(_) => libsqlite3_sys::native::Kind::DateTime,
+                _ => libsqlite3_sys::native::Kind::Interval,
+            };
+            return libsqlite3_sys::native::encode(kind, text)
+                .map(SqlValue::Blob)
+                .map_err(|e| Error::new(e.0));
+        }
+        _ => (),
     }
     Ok(match value {
         Value::Null => SqlValue::Null,
@@ -472,6 +507,20 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                     Value::Bytea(bytes) => J::String(hex::encode(bytes)),
                     Value::Decimal(text) => {
                         J::String(decimal::parse(text)?.normalized().to_plain_string())
+                    }
+                    Value::Uuid(_)
+                    | Value::Instant(_)
+                    | Value::Date(_)
+                    | Value::DateTime(_)
+                    | Value::Interval(_) => {
+                        let ty = match v {
+                            Value::Uuid(_) => Type::Uuid,
+                            Value::Instant(_) => Type::Instant,
+                            Value::Date(_) => Type::Date,
+                            Value::DateTime(_) => Type::DateTime,
+                            _ => Type::Interval,
+                        };
+                        J::String(ty.validate(v)?.to_string())
                     }
                     _ => match encode(v)? {
                         SqlValue::Text(s) => J::String(s),
@@ -512,7 +561,7 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
         J::String(s) if matches!(ty, Type::Bytea) => {
             return Ok(Value::Bytea(hex::decode(s).map_err(Error::validation)?));
         }
-        J::String(s) if matches!(ty, Type::Decimal(_)) => return ty.cast(Value::Text(s)),
+        J::String(s) if ty.native_kind().is_some() => return ty.cast(Value::Text(s)),
         J::String(s) => return decode(ty, SqlValue::Text(s)),
         _ => return Err(Error::new("invalid array cell".into())),
     };
@@ -540,7 +589,7 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
             }
             Ok(Value::Text(text))
         }
-        (Type::Uuid | Type::Instant | Type::Json, SqlValue::Text(s)) => ty.cast(Value::Text(s)),
+        (Type::Json, SqlValue::Text(s)) => ty.cast(Value::Text(s)),
         (_, value) => ty.validate(&native(value)),
     }
 }

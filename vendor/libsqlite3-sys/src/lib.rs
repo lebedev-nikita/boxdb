@@ -10,6 +10,11 @@ use core::mem;
 
 mod error;
 pub mod decimal;
+pub mod native;
+mod temporal;
+mod temporal_functions;
+#[path = "../native_types.rs"]
+mod native_types;
 
 #[must_use]
 pub fn SQLITE_STATIC() -> sqlite3_destructor_type {

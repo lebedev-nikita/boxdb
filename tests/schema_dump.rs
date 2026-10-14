@@ -65,7 +65,7 @@ fn default_sql_dump_restores_types_and_objects_without_application_rows() {
         ]));
         assert_eq!(
             query(&restored, "SELECT b,d,n,tags,twice FROM projection;")["rows"],
-            serde_json::json!([[{"Boolean":true},{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Decimal":"12.50"},{"Array":[{"Text":"a"}]},{"Integer":2}]])
+            serde_json::json!([[{"Boolean":true},{"Instant":"2024-01-01T00:00:00.000000Z"},{"Decimal":"12.50"},{"Array":[{"Text":"a"}]},{"Integer":2}]])
         );
         assert_eq!(
             query(&restored, "SELECT body FROM audit;")["rows"][0][0]["Text"],
@@ -132,7 +132,7 @@ fn yaml_dump_is_a_readable_schema_snapshot_that_restores_through_convert() {
             &restored,
             "SELECT id,\"odd' column\",n,tags,b FROM \"odd' table\";"
         )["rows"],
-        serde_json::json!([[{"Integer":1},{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Decimal":"12.50"},{"Array":[{"UnsignedInteger":255}]},{"Boolean":true}]])
+        serde_json::json!([[{"Integer":1},{"Instant":"2024-01-01T00:00:00.000000Z"},{"Decimal":"12.50"},{"Array":[{"UnsignedInteger":255}]},{"Boolean":true}]])
     );
     assert!(
         !cli(&[
@@ -271,7 +271,7 @@ fn user_tables_with_names_similar_to_sqlite_system_tables_are_exported() {
         ]));
         assert_eq!(
             query(&restored, "SELECT at FROM sqlitex_records;")["rows"][0][0]["Instant"],
-            "2024-01-01T00:00:00.000000000Z"
+            "2024-01-01T00:00:00.000000Z"
         );
     }
 }

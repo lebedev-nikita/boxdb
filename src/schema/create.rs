@@ -103,15 +103,17 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         options: vec![],
     };
     let logical = translate_column(&mut definition)?;
-    if !["INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY", "DECIMAL"]
-        .iter()
-        .any(|native| {
-            definition
-                .data_type
-                .to_string()
-                .eq_ignore_ascii_case(native)
-        })
-    {
+    if ![
+        "INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY", "DECIMAL", "UUID", "INSTANT", "DATE",
+        "DATETIME", "INTERVAL",
+    ]
+    .iter()
+    .any(|native| {
+        definition
+            .data_type
+            .to_string()
+            .eq_ignore_ascii_case(native)
+    }) {
         return Err(Error::new(format!(
             "unsupported column type for {name}: {}",
             definition.data_type
@@ -228,7 +230,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     }
     if !schema.eq_ignore_ascii_case("main") {
         // Native decimals carry their identity and constraints in SQLite.
-        columns.retain(|(_, ty)| !matches!(ty, Type::Decimal(_)));
+        columns.retain(|(_, ty)| ty.native_kind().is_none());
         if !columns.is_empty() {
             return Err(Error::new(
                 "extended types require main database tables".into(),
@@ -314,6 +316,11 @@ impl Declaration {
                     "TEXT" => "TEXT",
                     "BLOB" => "BLOB",
                     "DECIMAL" => "DECIMAL",
+                    "UUID" => "UUID",
+                    "INSTANT" => "INSTANT",
+                    "DATE" => "DATE",
+                    "DATETIME" => "DATETIME",
+                    "INTERVAL" => "INTERVAL",
                     _ => "ANY",
                 };
                 format!("{} {datatype}", super::quote(name))

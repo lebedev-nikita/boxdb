@@ -6,8 +6,8 @@
 transactions, locks, recovery, and the `-wal` and `-shm` sidecars. BoxDB opens
 binary databases in WAL mode with FULL synchronization, `fullfsync=ON` on macOS,
 foreign keys enabled, a five-second busy timeout, and normal locking. Other
-connections using the same engine may use the file concurrently. Native DECIMAL
-requires BoxDB's patched SQLite; other STRICT tables require SQLite 3.37 or later.
+connections using the same engine may use the file concurrently. Native values
+and their indexes require BoxDB's patched SQLite engine.
 
 Do not copy only a live `.db` file while ignoring its WAL. Use SQLite's backup
 API, BoxDB export, or [Litestream](replication.md). Binary databases are not
@@ -17,10 +17,9 @@ currently limit imported/exported snapshots to 256 MiB.
 ## Extended schema
 
 The ordinary `__boxdb_columns` table records logical types, their version and
-physical table declarations. Databases without native decimals remain inspectable
-by ordinary SQLite clients without extensions.
-BoxDB validates its metadata against the current schema, registers validators
-on its connection, and installs TEMP triggers for INSERT and UPDATE. Those
+physical table declarations. Native types are validated by the engine. BoxDB
+validates its metadata against the current schema and installs TEMP validators
+for other logical types and native elements in typed arrays. Those
 triggers also validate writes caused by SQL expressions, INSERT SELECT and user
 triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
 
@@ -52,8 +51,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | VARCHAR(n) | TEXT with a length CHECK |
 | FLOAT4 | REAL with BoxDB's float32 validation |
 | BYTEA | BLOB with a storage-class CHECK |
-| DECIMAL | Versioned BLOB envelope interpreted by the patched SQLite engine |
-| UUID and INSTANT | Text |
+| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Versioned BLOB envelopes interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
 Unsigned columns return `Value::UnsignedInteger`; signed columns return
@@ -63,47 +61,35 @@ preserve these logical element types.
 
 Typed parameter values are normalized before binding. Use `Value::Decimal` for
 native exact arithmetic.
-Native DECIMAL retains its type in computed results; other extended values use
-column-origin metadata for typed projections, including aliases and views.
+Native values retain their types in computed results, materialization and sorting.
+Other logical values use column-origin metadata for typed projections.
 
-The binary file retains SQLite's standard page and record encoding. DECIMAL
-uses a versioned BLOB envelope; ordinary BLOBs with the reserved prefix are
-escaped. This preserves binary encoding while requiring BoxDB's modified engine
-for decimal query and index semantics. The readable format preserves these wire
-cells through its existing `{blob: hex}` representation. See
-[native decimals](native-decimal.md) for the full contract.
+The binary file retains SQLite's standard page and record encoding. Native
+values use versioned BLOB envelopes; ordinary BLOBs with the reserved prefix
+are escaped. Readable YAML uses typed mappings such as
+`at: {instant: "2024-02-29T12:00:00.000000Z"}` and `amount: {decimal: "12.50"}`.
+UUID uses a 16-byte payload and canonical lowercase text at public interfaces.
+See [native decimals](native-decimal.md) and [temporal types](temporal.md).
 
-`CAST(... AS DECIMAL)` is supported by the native engine; casts for other
-extended logical types remain unsupported.
+`CAST` supports the native types and explicit text views. Other extended logical
+casts remain unsupported. JSON is opaque validated text; SQL JSON/JSONB
+processing functions and operators are disabled.
 
 TEMP validators are specific to the BoxDB connection. An external SQLite writer
-can bypass additional Rust validators for other extended types. Native DECIMAL
-schemas and numeric indexes require the modified engine.
+can bypass additional Rust validators for other extended types. Native schemas
+and indexes require the modified engine.
 BoxDB checks extended values when reading them and validates them on snapshot
 import. A SELECT containing an invalid projected typed value returns an error
 for the entire result. Foreign-key enforcement must be enabled on each external connection.
 This is a validation contract, not protection against deliberate metadata edits.
 
-`INSTANT` is the only temporal column type. It represents an exact instant:
-input must include `Z` or an explicit numeric UTC offset. BoxDB shifts offset
-instants to UTC and stores fixed-width RFC 3339 text with nine fractional
-digits, such as `2024-02-29T12:00:00.000000000Z`. This also makes ordinary SQLite
-text ordering chronological for canonical values. Dates without a time or
-offset, leap seconds, and precision beyond nanoseconds are rejected. The UTC
-year must be between 0000 and 9999. See [instant usage](temporal.md).
-
-SQL writes through BoxDB normalize instant columns and typed instant arrays
-using TEMP triggers. Defaults added to existing rows are normalized within the
-schema savepoint. Readable imports normalize rows before restoring user triggers.
-Generated instant expressions must already produce canonical
-UTC text. Other SQLite connections do not run these triggers and should write
-canonical UTC values themselves. SQL comparisons with plain text literals still
-use SQLite text semantics; typed `Value::Instant` parameters are normalized
-before binding.
+Native temporal columns normalize assignments in the engine, including generated
+columns. Native typed array elements normalize through BoxDB TEMP triggers.
+See [temporal semantics and examples](temporal.md).
 
 Use BoxDB for typed CREATE/ALTER/DROP operations: it updates schema and metadata
 within one SQLite savepoint. Other extended typed declarations apply to main
-database tables; native DECIMAL also supports TEMP and attached tables.
+database tables; native scalar types also support TEMP and attached tables.
 External schema edits can leave stale metadata, which BoxDB rejects rather than
 silently guessing a new logical schema.
 

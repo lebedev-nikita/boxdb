@@ -148,9 +148,12 @@ count and row ID returns as bigint; REAL remains number. Convert bigint
 explicitly when serializing JSON. Unsafe integer inputs throw instead of rounding.
 
 Results retain native decimal values as exact text. DECIMAL arithmetic, comparisons
-and ordering run in the engine; NUMERIC is not supported. JSON and arrays remain
-strings, INSTANT is UTC text with nanoseconds, and blobs are `Buffer` values. See
-the [native decimal guide](../../docs/native-decimal.md) for exact arithmetic.
+and ordering run in the engine; NUMERIC is not supported. UUID and temporal values
+return canonical strings: INSTANT uses UTC, DATETIME has no time zone, and temporal
+strings preserve microsecond precision. JSON and arrays remain opaque strings;
+SQL JSON processing is disabled. Blobs are `Buffer` values. See the
+[native decimal guide](../../docs/native-decimal.md) and
+[temporal types](../../docs/temporal.md).
 
 `BoxDBError` preserves `code`, `resultCode`, `extendedCode` and `cause`. Engine
 failures have `BOXDB_*` names, such as `BOXDB_CONSTRAINT_UNIQUE`. Validation,

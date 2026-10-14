@@ -7,6 +7,9 @@ typedef struct BoxdbWireBlob { const char *data; int length; } BoxdbWireBlob;
 /* The spare Mem bit records an API text view without changing the wire value.
 ** u.nZero caches its byte length (negative for UTF-16); MEM_Zero is absent. */
 #define MEM_BoxdbText 0x0080
+static int boxdbNativeKind(const Mem*);
+static int boxdbKind(const Mem*);
+extern int boxdb_native_text(int,const char*,int,char**,int*);
 extern int boxdb_decimal_eval(int,int,const char*,int,int,const char*,int,char**,int*);
 extern int boxdb_decimal_compare(int,const char*,int,int,const char*,int);
 
@@ -53,10 +56,17 @@ static const void *boxdbValueText(Mem *p, u8 enc){
   int n;
   memset(&text,0,sizeof(text));
   text.db=p->db;
-  text.z=p->z+5;
-  text.n=p->n-5;
-  text.enc=boxdbIsDecimal(p) ? SQLITE_UTF8 : p->enc;
-  text.flags=MEM_Str|MEM_Ephem;
+  if( boxdbNativeKind(p) ){
+    char *formatted=0; int length=0;
+    if( boxdb_native_text(boxdbNativeKind(p),p->z+5,p->n-5,&formatted,&length) ){
+      sqlite3_free(formatted); return 0;
+    }
+    sqlite3VdbeMemSetStr(&text,formatted,length,SQLITE_UTF8,sqlite3_free);
+  }else{
+    text.z=p->z+5; text.n=p->n-5;
+    text.enc=boxdbIsDecimal(p) ? SQLITE_UTF8 : p->enc;
+    text.flags=MEM_Str|MEM_Ephem;
+  }
   if( sqlite3VdbeMemMakeWriteable(&text) ) return 0;
   if( sqlite3VdbeChangeEncoding(&text,requested) ){
     sqlite3VdbeMemRelease(&text);

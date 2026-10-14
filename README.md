@@ -49,17 +49,19 @@ YAML uses the readable database stream. See [migration and restoration usage](do
 
 SQLite executes queries directly. Tables created through BoxDB are STRICT by
 default; extended types include bounded integers, exact decimals, UUID, JSON,
-UTC instants and typed arrays. Native `DECIMAL` supports exact operators,
-aggregates, indexes, and numeric `ORDER BY`.
+UTC instants, calendar dates/datetimes, intervals and typed arrays. DECIMAL,
+UUID, INSTANT, DATE, DATETIME and INTERVAL are native engine values with typed
+comparison and indexing. JSON is validated opaque text; JSON/JSONB SQL functions
+and operators are disabled.
 Bind decimal strings for exact input. See [native decimals](docs/native-decimal.md).
-See [type declarations](src/types.rs) and the
+See [temporal arithmetic](docs/temporal.md), [type declarations](src/types.rs) and the
 [storage and validation contract](docs/storage.md).
 
 FTS5, R*Tree, exact decimal SQL functions, Unicode text functions, regular
 expressions and vector search are built in for every client. No shared-library
 loading is needed. See [extension examples and storage limits](docs/extensions.md).
 
-Binary files use SQLite's standard page and record format. Native decimal queries
+Binary files use SQLite's standard page and record format. Native type queries
 and indexes require BoxDB's patched engine. External writers can bypass BoxDB's
 additional validation for other extended types. Readable YAML
 storage executes in memory and publishes a complete snapshot on commit, with
@@ -87,11 +89,10 @@ cgo; follow its native build and local module installation instructions.
 
 ## Development
 
-With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun and Just installed, run:
+With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun, Just and Python 3.11+ installed, run:
 
 ```sh
 just check
-python3 -m unittest discover -s tests -p 'test_performance.py'
 ```
 
 `just check` builds and checks all clients and runs their tests. Use `just --list`

@@ -29,7 +29,21 @@ impl Serialize for Cell {
             SqlValue::Text(s) => serializer.serialize_str(s),
             SqlValue::Blob(bytes) => {
                 let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("blob", &hex::encode(bytes))?;
+                if let Some(text) = crate::decimal::decode(bytes) {
+                    map.serialize_entry("decimal", text)?;
+                } else if let Some((kind, text)) = libsqlite3_sys::native::decode(bytes) {
+                    let name = match kind {
+                        libsqlite3_sys::native::Kind::Uuid => "uuid",
+                        libsqlite3_sys::native::Kind::Instant => "instant",
+                        libsqlite3_sys::native::Kind::Date => "date",
+                        libsqlite3_sys::native::Kind::DateTime => "datetime",
+                        libsqlite3_sys::native::Kind::Interval => "interval",
+                        _ => unreachable!(),
+                    };
+                    map.serialize_entry(name, &text)?;
+                } else {
+                    map.serialize_entry("blob", &hex::encode(bytes))?;
+                }
                 map.end()
             }
         }
@@ -72,14 +86,39 @@ impl<'de> Deserialize<'de> for Cell {
             }
             fn visit_map<M: MapAccess<'de>>(self, map: M) -> std::result::Result<Cell, M::Error> {
                 #[derive(Deserialize)]
-                #[serde(deny_unknown_fields)]
-                struct Blob {
-                    blob: String,
+                #[serde(rename_all = "lowercase")]
+                enum WireCell {
+                    Blob(String),
+                    Decimal(String),
+                    Uuid(String),
+                    Instant(String),
+                    Date(String),
+                    DateTime(String),
+                    Interval(String),
                 }
-                let Blob { blob } = Blob::deserialize(MapAccessDeserializer::new(map))?;
-                hex::decode(blob)
-                    .map(|bytes| Cell(SqlValue::Blob(bytes)))
-                    .map_err(de::Error::custom)
+                let cell = WireCell::deserialize(MapAccessDeserializer::new(map))?;
+                use libsqlite3_sys::native::Kind;
+                let (kind, text) = match cell {
+                    WireCell::Blob(blob) => {
+                        return hex::decode(blob)
+                            .map(|bytes| Cell(SqlValue::Blob(bytes)))
+                            .map_err(de::Error::custom);
+                    }
+                    WireCell::Decimal(text) => {
+                        crate::decimal::parse(&text).map_err(de::Error::custom)?;
+                        return Ok(Cell(SqlValue::Blob(
+                            [crate::decimal::PREFIX, text.as_bytes()].concat(),
+                        )));
+                    }
+                    WireCell::Uuid(s) => (Kind::Uuid, s),
+                    WireCell::Instant(s) => (Kind::Instant, s),
+                    WireCell::Date(s) => (Kind::Date, s),
+                    WireCell::DateTime(s) => (Kind::DateTime, s),
+                    WireCell::Interval(s) => (Kind::Interval, s),
+                };
+                libsqlite3_sys::native::encode(kind, &text)
+                    .map(|b| Cell(SqlValue::Blob(b)))
+                    .map_err(|e| de::Error::custom(e.0))
             }
         }
         deserializer.deserialize_any(CellVisitor)
@@ -319,6 +358,17 @@ impl TablePlan {
                     }
                 }
                 ValueRef::Blob(bytes) => {
+                    if crate::decimal::decode(bytes).is_some()
+                        || libsqlite3_sys::native::decode(bytes).is_some()
+                    {
+                        let yaml = serde_saphyr::to_string(&Cell(SqlValue::Blob(bytes.to_vec())))?;
+                        writer.write_all(b"\n")?;
+                        for line in yaml.split_inclusive('\n') {
+                            writer.write_all(b"    ")?;
+                            writer.write_all(line.as_bytes())?;
+                        }
+                        continue;
+                    }
                     writer.write_all(b"\n    blob: '")?;
                     let mut hex = [0u8; 8192];
                     for chunk in bytes.chunks(4096) {
@@ -588,7 +638,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
     // Import restores data, so it must not replay application update effects.
     let types = schema::load(&db)?;
     schema::install(&db, &types)?;
-    schema::normalize_instants(&db, &types)?;
+    schema::normalize_arrays(&db, &types)?;
     schema::uninstall(&db)?;
     for record in &records {
         match record {

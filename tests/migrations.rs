@@ -56,7 +56,7 @@ fn up_preserves_extended_types_and_does_not_apply_a_version_twice() {
     let result: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(
         result["rows"],
-        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Decimal":"12.50"}]])
+        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000Z"},{"Decimal":"12.50"}]])
     );
 }
 
@@ -108,7 +108,7 @@ fn down_rolls_back_only_the_latest_version_in_both_storage_formats() {
         let result: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(
             result["rows"][0][0]["Instant"],
-            "2024-01-01T00:00:00.000000000Z"
+            "2024-01-01T00:00:00.000000Z"
         );
         success(cli(&[
             "migrate",

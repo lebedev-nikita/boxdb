@@ -114,12 +114,14 @@ materialized by the Rust core before `Rows` iteration.
 Use ordinary Go integers, floats, strings, booleans, `[]byte`, `nil`, `time.Time`,
 `sql.Null*` and `driver.Valuer` for parameters. Integers preserve the signed 64-bit
 range; non-finite floats and larger unsigned integers return errors.
-`time.Time` binds as a UTC INSTANT with nanosecond precision.
+`time.Time` binds as a UTC INSTANT; the core rounds finer input to microseconds.
+See [temporal precision](../../docs/temporal.md#precision-across-language-clients).
 
 Results use SQLite storage values: `int64`, `float64`, `string`, `[]byte` and `nil`.
 DECIMAL columns and calculated decimals return exact strings. Bind decimal
 strings for exact amounts; NUMERIC is not supported. JSON and arrays remain JSON
-strings, UUID remains text, INSTANT remains canonical UTC text, and BOOLEAN returns integer 0/1 (which `Scan` accepts into
+strings, UUID remains text, temporal values return canonical strings (INSTANT in UTC, DATETIME without a
+time zone), and BOOLEAN returns integer 0/1 (which `Scan` accepts into
 `bool`). Serialize JSON and arrays explicitly. Use `sql.Scanner` for application
 types. BoxDB validates logical values on both reads and writes.
 

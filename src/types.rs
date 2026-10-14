@@ -1,6 +1,5 @@
 use crate::{Error, Result};
 use bigdecimal::BigDecimal;
-use chrono::{DateTime, Datelike, SecondsFormat};
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +15,13 @@ pub enum Value {
     Bytea(Vec<u8>),
     Uuid(String),
     Json(serde_json::Value),
-    /// An RFC 3339 instant, normalized to UTC with nanosecond precision.
+    /// An RFC 3339 instant, normalized to UTC with microsecond precision.
     Instant(String),
+    Date(String),
+    /// Calendar date and time without a time zone, with microsecond precision.
+    DateTime(String),
+    /// Separate signed months, days and microseconds.
+    Interval(String),
     Array(Vec<Value>),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -42,10 +46,26 @@ pub enum Type {
     Uuid,
     Json,
     Instant,
+    Date,
+    DateTime,
+    Interval,
     Array(Box<Type>),
 }
 
 impl Type {
+    pub(crate) fn native_kind(&self) -> Option<libsqlite3_sys::native::Kind> {
+        use libsqlite3_sys::native::Kind;
+        match self {
+            Self::Decimal(_) => Some(Kind::Decimal),
+            Self::Uuid => Some(Kind::Uuid),
+            Self::Instant => Some(Kind::Instant),
+            Self::Date => Some(Kind::Date),
+            Self::DateTime => Some(Kind::DateTime),
+            Self::Interval => Some(Kind::Interval),
+            _ => None,
+        }
+    }
+
     pub fn parse(input: &str) -> Result<Self> {
         if input.len() > 4096
             || input.matches("[]").count() + input.to_uppercase().matches("ARRAY<").count() > 32
@@ -109,6 +129,9 @@ impl Type {
             "UUID" => Self::Uuid,
             "JSON" | "JSONB" => Self::Json,
             "INSTANT" => Self::Instant,
+            "DATE" => Self::Date,
+            "DATETIME" => Self::DateTime,
+            "INTERVAL" => Self::Interval,
             _ => return Err(Error::new(format!("unsupported or missing type: {input}"))),
         };
         if !args.is_empty() && !matches!(result, Self::Decimal(_) | Self::Varchar(_)) {
@@ -187,29 +210,23 @@ impl Type {
             {
                 Ok(value.clone())
             }
-            (Self::Uuid, Value::Uuid(s)) => uuid::Uuid::parse_str(s)
-                .map(|u| Value::Uuid(u.to_string()))
-                .map_err(|error| invalid().with_source(error)),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
-            (Self::Instant, Value::Instant(s)) => {
-                // Chrono accepts leap seconds and truncates extra fractional
-                // digits. Neither is part of this exact, nanosecond contract.
-                if s.split_once('.').is_some_and(|(_, fraction)| {
-                    fraction.chars().take_while(char::is_ascii_digit).count() > 9
-                }) {
-                    return Err(invalid());
-                }
-                let instant = DateTime::parse_from_rfc3339(&s.replace(' ', "T"))
-                    .map_err(|error| invalid().with_source(error))?
-                    .with_timezone(&chrono::Utc);
-                if !(0..=9999).contains(&instant.year())
-                    || instant.timestamp_subsec_nanos() >= 1_000_000_000
-                {
-                    return Err(invalid());
-                }
-                Ok(Value::Instant(
-                    instant.to_rfc3339_opts(SecondsFormat::Nanos, true),
-                ))
+            (Self::Uuid, Value::Uuid(s))
+            | (Self::Instant, Value::Instant(s))
+            | (Self::Date, Value::Date(s))
+            | (Self::DateTime, Value::DateTime(s))
+            | (Self::Interval, Value::Interval(s)) => {
+                let kind = self.native_kind().unwrap();
+                let text =
+                    libsqlite3_sys::native::canonical(kind, s).map_err(|e| Error::new(e.0))?;
+                Ok(match self {
+                    Self::Uuid => Value::Uuid(text),
+                    Self::Instant => Value::Instant(text),
+                    Self::Date => Value::Date(text),
+                    Self::DateTime => Value::DateTime(text),
+                    Self::Interval => Value::Interval(text),
+                    _ => unreachable!(),
+                })
             }
             (Self::Array(ty), Value::Array(values)) => Ok(Value::Array(
                 values
@@ -223,6 +240,22 @@ impl Type {
     pub fn cast(&self, value: Value) -> Result<Value> {
         if matches!(value, Value::Null) {
             return Ok(value);
+        }
+        let source = match &value {
+            Value::Decimal(_) => Some(libsqlite3_sys::native::Kind::Decimal),
+            Value::Uuid(_) => Some(libsqlite3_sys::native::Kind::Uuid),
+            Value::Instant(_) => Some(libsqlite3_sys::native::Kind::Instant),
+            Value::Date(_) => Some(libsqlite3_sys::native::Kind::Date),
+            Value::DateTime(_) => Some(libsqlite3_sys::native::Kind::DateTime),
+            Value::Interval(_) => Some(libsqlite3_sys::native::Kind::Interval),
+            _ => None,
+        };
+        if let (Some(target), Some(source)) = (self.native_kind(), source)
+            && target != source
+        {
+            let text = libsqlite3_sys::native::cast(target, source, &value.to_string())
+                .map_err(|e| Error::new(e.0))?;
+            return self.cast(Value::Text(text));
         }
         let text = if let (Self::Decimal(_), Value::Real(number)) = (self, &value) {
             BigDecimal::from_f64(*number)
@@ -254,6 +287,9 @@ impl Type {
             Self::Text | Self::Varchar(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
             Self::Instant => Value::Instant(text),
+            Self::Date => Value::Date(text),
+            Self::DateTime => Value::DateTime(text),
+            Self::Interval => Value::Interval(text),
             Self::Json => Value::Json(serde_json::from_str(&text).map_err(Error::validation)?),
             Self::Bytea | Self::Array(_) => value,
         };
@@ -269,7 +305,13 @@ impl std::fmt::Display for Value {
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),
-            Self::Decimal(s) | Self::Text(s) | Self::Uuid(s) | Self::Instant(s) => {
+            Self::Decimal(s)
+            | Self::Text(s)
+            | Self::Uuid(s)
+            | Self::Instant(s)
+            | Self::Date(s)
+            | Self::DateTime(s)
+            | Self::Interval(s) => {
                 write!(f, "{s}")
             }
             Self::Json(j) => write!(f, "{j}"),

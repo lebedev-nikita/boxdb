@@ -524,7 +524,7 @@ func TestBoxDBValuesAndValidation(t *testing.T) {
 	if err := db.QueryRow("SELECT * FROM values_test").Scan(&id, &amount, &enabled, &payload, &nullable, &instant, &data, &tags); err != nil {
 		t.Fatal(err)
 	}
-	if id != math.MaxInt64 || amount != "12.5" || !enabled || !bytes.Equal(payload, []byte{0, 255, 128}) || nullable.Valid || instant != "2026-10-14T08:30:00.123456789Z" || data != `{"name":"Ada"}` || tags != "[1,2]" {
+	if id != math.MaxInt64 || amount != "12.5" || !enabled || !bytes.Equal(payload, []byte{0, 255, 128}) || nullable.Valid || instant != "2026-10-14T08:30:00.123457Z" || data != `{"name":"Ada"}` || tags != "[1,2]" {
 		t.Fatalf("unexpected values: %d %s %v %v %v %s %s %s", id, amount, enabled, payload, nullable, instant, data, tags)
 	}
 	_, err = db.Exec("INSERT INTO values_test(tags) VALUES(?)", "[128]")

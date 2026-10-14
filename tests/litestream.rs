@@ -20,11 +20,11 @@ fn original_litestream_replicates_wal_and_restores_typed_metadata() {
     let replica = format!("file://{}", temp.path().join("replica").display());
     let mut db = Database::open(&path, Format::Binary).unwrap();
     db.execute(
-        "CREATE TABLE t(id INT64 PRIMARY KEY,d INSTANT); INSERT INTO t VALUES(1,'2024-01-01T00:00:00.000000000Z')",
+        "CREATE TABLE t(id INT64 PRIMARY KEY,d INSTANT); INSERT INTO t VALUES(1,'2024-01-01T00:00:00.000000Z')",
     )
     .unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);
-    db.execute("INSERT INTO t VALUES(2,'2024-02-29T00:00:00.000000000Z')")
+    db.execute("INSERT INTO t VALUES(2,'2024-02-29T00:00:00.000000Z')")
         .unwrap();
     run(&["replicate", "-once", path.to_str().unwrap(), &replica]);
     run(&["restore", "-o", restored.to_str().unwrap(), &replica]);
@@ -34,11 +34,11 @@ fn original_litestream_replicates_wal_and_restores_typed_metadata() {
         vec![
             vec![
                 Value::Integer(1),
-                Value::Instant("2024-01-01T00:00:00.000000000Z".into())
+                Value::Instant("2024-01-01T00:00:00.000000Z".into())
             ],
             vec![
                 Value::Integer(2),
-                Value::Instant("2024-02-29T00:00:00.000000000Z".into())
+                Value::Instant("2024-02-29T00:00:00.000000Z".into())
             ]
         ]
     );
