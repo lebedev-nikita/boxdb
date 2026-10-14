@@ -1,13 +1,16 @@
 default:
     @just --list
 
-# Count tracked project and test files separately, excluding vendored dependencies.
+# Count tracked project, test, and vendored SQLite files separately.
 count-lines:
     @echo 'Project files (excluding tests):'
     cloc --vcs=git --exclude-dir=vendor,test,tests
     @echo
     @echo 'Test files:'
     cloc --vcs=git --exclude-dir=vendor --match-d='(^|/)(test|tests)(/|$)'
+    @echo
+    @echo 'Vendor SQLite (vendor/libsqlite3-sys):'
+    cloc --vcs=git --match-d='(^|/)vendor/libsqlite3-sys(/|$)' --force-lang=C,inc
 
 ts-install:
     bun install --frozen-lockfile
