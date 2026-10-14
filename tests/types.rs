@@ -4,14 +4,14 @@ use rusqlite::Connection;
 #[test]
 fn rich_types_round_trip_through_sqlite_and_readable_storage() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n DECIMAL(20,4),u UUID,j JSON,ts INSTANT,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals DECIMAL(20,4)[],blobs BYTEA[])").unwrap();
+    db.execute("CREATE TABLE rich(id INT64 PRIMARY KEY,s INT16,i INT32,b BOOLEAN,word VARCHAR(3),n NUMERIC(20,4),u UUID,j JSON,ts INSTANT,bytes BYTEA,tags TEXT[],matrix INT64[][],f FLOAT4,decimals NUMERIC(20,4)[],blobs BYTEA[])").unwrap();
     let values = vec![
         Value::Integer(1),
         Value::Integer(i16::MIN.into()),
         Value::Integer(i32::MAX.into()),
         Value::Boolean(true),
         Value::Text("猫🙂".into()),
-        Value::Decimal("1234567890123456.1234".into()),
+        Value::Numeric("1234567890123456.1234".into()),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
         Value::Json(serde_json::json!({"x":[true,null,1]})),
         Value::Instant("2024-02-29T12:34:56.123456789Z".into()),
@@ -27,7 +27,7 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
         ]),
         Value::Real(0.5),
         Value::Array(vec![
-            Value::Decimal("1234567890123456.1234".into()),
+            Value::Numeric("1234567890123456.1234".into()),
             Value::Null,
         ]),
         Value::Array(vec![Value::Bytea(vec![0, 255]), Value::Bytea(vec![])]),
@@ -86,7 +86,7 @@ fn invalid_rich_values_fail_without_committing_other_rows() {
         ("FLOAT4", Value::Real(1e40)),
         ("BOOLEAN", Value::Integer(2)),
         ("VARCHAR(2)", Value::Text("abc".into())),
-        ("DECIMAL(4,2)", Value::Decimal("1.234".into())),
+        ("NUMERIC(4,2)", Value::Numeric("1.234".into())),
         ("UUID", Value::Text("wrong".into())),
         ("JSON", Value::Text("{".into())),
         (
@@ -117,13 +117,13 @@ fn reopened_readable_files_preserve_rich_types_and_reject_invalid_writes() {
     let path = temp.path().join("typed.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
     db.execute(
-        "CREATE TABLE rich(id INT64 PRIMARY KEY,u UUID,n DECIMAL(8,2),d INSTANT,tags TEXT[])",
+        "CREATE TABLE rich(id INT64 PRIMARY KEY,u UUID,n NUMERIC(8,2),d INSTANT,tags TEXT[])",
     )
     .unwrap();
     let row = vec![
         Value::Integer(1),
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
-        Value::Decimal("123.45".into()),
+        Value::Numeric("123.45".into()),
         Value::Instant("2024-02-29T00:00:00.000000000Z".into()),
         Value::Array(vec![Value::Text("雪".into()), Value::Null]),
     ];
@@ -259,7 +259,7 @@ fn typed_alter_table_keeps_metadata_atomic_and_tracks_renames() {
         .unwrap();
     assert!(db.execute("UPDATE events SET day='wrong'").is_err());
     assert!(
-        db.execute("ALTER TABLE events ADD COLUMN bad DECIMAL(0,2)")
+        db.execute("ALTER TABLE events ADD COLUMN bad NUMERIC(0,2)")
             .is_err()
     );
     assert_eq!(

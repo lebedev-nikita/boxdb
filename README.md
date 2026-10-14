@@ -18,7 +18,7 @@ boxdb data.db -e "
   CREATE TABLE accounts (
     id INT64 PRIMARY KEY,
     name TEXT NOT NULL,
-    balance DECIMAL(12,2)
+    balance NUMERIC(12,2)
   );
   INSERT INTO accounts(name,balance) VALUES('Ada','12.50');
   SELECT * FROM accounts;

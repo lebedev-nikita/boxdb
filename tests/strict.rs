@@ -47,7 +47,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
         ("reversed", "WITHOUT ROWID, STRICT"),
     ] {
         db.execute(&format!(
-            "CREATE TABLE {name}(id TEXT PRIMARY KEY,d INSTANT,n DECIMAL(8,2)) {suffix}"
+            "CREATE TABLE {name}(id TEXT PRIMARY KEY,d INSTANT,n NUMERIC(8,2)) {suffix}"
         ))
         .unwrap();
         assert_eq!(
@@ -67,7 +67,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
             db.execute(&format!("SELECT d,n FROM {name}")).unwrap()[0].rows,
             vec![vec![
                 Value::Instant("2024-02-29T00:00:00.000000000Z".into()),
-                Value::Decimal("12.34".into())
+                Value::Numeric("12.34".into())
             ]]
         );
     }

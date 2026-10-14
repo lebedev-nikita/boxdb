@@ -16,13 +16,16 @@ connections and does not change other SQLite connections in the process.
 
 ## Exact decimals
 
-`DECIMAL(p,s)` and `NUMERIC(p,s)` are identical SQL type names. Rust uses
-`Type::Decimal` and `Value::Decimal`; serialized type/value tags are `Decimal`.
+`NUMERIC(p,s)` stores exact decimal text. Rust uses
+`Type::Numeric` and `Value::Numeric`; serialized type/value tags are `Numeric`.
+`DECIMAL` type declarations are unsupported; `decimal()` and `decimal_*` SQL
+functions remain available.
+Existing BoxDB metadata and snapshots with `Decimal` tags are unsupported.
 Bind decimal values as strings to avoid floating-point conversion before SQL
 receives them.
 
 ```sql
-CREATE TABLE prices(amount DECIMAL(12,2));
+CREATE TABLE prices(amount NUMERIC(12,2));
 INSERT INTO prices VALUES('10.00'),('2.00'),('0.10'),('0.20');
 SELECT decimal_sum(amount) FROM prices; -- text: 12.30
 SELECT amount FROM prices ORDER BY amount COLLATE decimal;
@@ -30,7 +33,7 @@ SELECT decimal_add('0.1','0.2'), decimal_mul('0.1','0.2'); -- 0.3, 0.02
 ```
 
 These functions return SQLite text. Ordinary `+`, `*`, `SUM`, comparison and
-ordering retain SQLite's storage semantics; declaring DECIMAL does not replace
+ordering retain SQLite's storage semantics; declaring NUMERIC does not replace
 them. The extension provides no decimal division function. Division would need
 an explicit precision and rounding policy.
 

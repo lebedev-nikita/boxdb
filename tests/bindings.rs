@@ -3,13 +3,13 @@ use boxdb::{Database, Type, Value};
 #[test]
 fn native_values_keep_validation_and_sqlite_storage_types() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE t(b BOOLEAN,j JSON,n DECIMAL(12,2)); INSERT INTO t VALUES(1,'{\"x\":1}','12.50')").unwrap();
+    db.execute("CREATE TABLE t(b BOOLEAN,j JSON,n NUMERIC(12,2)); INSERT INTO t VALUES(1,'{\"x\":1}','12.50')").unwrap();
     assert_eq!(
         db.execute("SELECT b,j,n FROM t").unwrap()[0].rows,
         vec![vec![
             Value::Boolean(true),
             Value::Json(serde_json::json!({"x":1})),
-            Value::Decimal("12.50".into())
+            Value::Numeric("12.50".into())
         ]]
     );
     assert_eq!(
@@ -67,7 +67,7 @@ fn preparation_reports_parameters_and_columns_without_executing_sql() {
 #[test]
 fn drizzle_serial_primary_keys_use_sqlite_rowids() {
     let mut db = Database::memory();
-    db.execute("CREATE TABLE __drizzle_migrations(id SERIAL PRIMARY KEY,hash TEXT NOT NULL,created_at DECIMAL); INSERT INTO __drizzle_migrations(hash,created_at) VALUES('hash',123)").unwrap();
+    db.execute("CREATE TABLE __drizzle_migrations(id SERIAL PRIMARY KEY,hash TEXT NOT NULL,created_at NUMERIC); INSERT INTO __drizzle_migrations(hash,created_at) VALUES('hash',123)").unwrap();
     assert_eq!(db.last_insert_rowid(), 1);
     assert_eq!(
         db.execute_native("SELECT id,created_at FROM __drizzle_migrations", &[])

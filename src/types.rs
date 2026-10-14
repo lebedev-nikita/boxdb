@@ -10,7 +10,7 @@ pub enum Value {
     Integer(i64),
     UnsignedInteger(u64),
     Real(f64),
-    Decimal(String),
+    Numeric(String),
     Boolean(bool),
     Text(String),
     Bytea(Vec<u8>),
@@ -34,7 +34,7 @@ pub enum Type {
     Uint32,
     Real,
     Double,
-    Decimal(Option<(u32, u32)>),
+    Numeric(Option<(u32, u32)>),
     Boolean,
     Text,
     Varchar(Option<usize>),
@@ -85,16 +85,16 @@ impl Type {
             "UINT32" => Self::Uint32,
             "FLOAT4" => Self::Real,
             "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
-            "DECIMAL" | "NUMERIC" => {
+            "NUMERIC" => {
                 if args.is_empty() {
-                    Self::Decimal(None)
+                    Self::Numeric(None)
                 } else {
                     let p = args[0];
                     let s = *args.get(1).unwrap_or(&0);
                     if args.len() > 2 || p == 0 || p > 1000 || s > p {
-                        return Err(Error::new("invalid DECIMAL precision/scale".into()));
+                        return Err(Error::new("invalid NUMERIC precision/scale".into()));
                     }
-                    Self::Decimal(Some((p, s)))
+                    Self::Numeric(Some((p, s)))
                 }
             }
             "BOOLEAN" | "BOOL" => Self::Boolean,
@@ -111,13 +111,13 @@ impl Type {
             "INSTANT" => Self::Instant,
             _ => return Err(Error::new(format!("unsupported or missing type: {input}"))),
         };
-        if !args.is_empty() && !matches!(result, Self::Decimal(_) | Self::Varchar(_)) {
+        if !args.is_empty() && !matches!(result, Self::Numeric(_) | Self::Varchar(_)) {
             return Err(Error::new("type does not accept parameters".into()));
         }
         Ok(result)
     }
     pub fn validate(&self, value: &Value) -> Result<Value> {
-        if matches!(self,Self::Decimal(Some((p,s))) if *p==0 || *p>1000 || s>p)
+        if matches!(self,Self::Numeric(Some((p,s))) if *p==0 || *p>1000 || s>p)
             || matches!(self, Self::Varchar(Some(0)))
         {
             return Err(Error::new("invalid type parameters".into()));
@@ -147,7 +147,7 @@ impl Type {
             (Self::Uint32, Value::UnsignedInteger(n)) if u32::try_from(*n).is_ok() => {
                 Ok(value.clone())
             }
-            (Self::Real | Self::Double, Value::Integer(_) | Value::Decimal(_) | Value::Real(_)) => {
+            (Self::Real | Self::Double, Value::Integer(_) | Value::Numeric(_) | Value::Real(_)) => {
                 let n: f64 = value
                     .to_string()
                     .parse()
@@ -162,12 +162,12 @@ impl Type {
                 }
                 Ok(Value::Real(n))
             }
-            (Self::Decimal(limits), Value::Integer(_) | Value::Decimal(_)) => {
+            (Self::Numeric(limits), Value::Integer(_) | Value::Numeric(_)) => {
                 let decimal = BigDecimal::from_str(&value.to_string())
                     .map_err(|error| invalid().with_source(error))?;
                 let (coefficient, exponent) = decimal.as_bigint_and_exponent();
                 if coefficient.to_string().len() > 4096 || exponent.unsigned_abs() > 4096 {
-                    return Err(Error::new("DECIMAL exceeds 4096-digit limit".into()));
+                    return Err(Error::new("NUMERIC exceeds 4096-digit limit".into()));
                 }
                 let text = decimal.normalized().to_plain_string();
                 let unsigned = text.trim_start_matches('-');
@@ -176,13 +176,13 @@ impl Type {
                     if frac.len() > *scale as usize
                         || whole.trim_start_matches('0').len() > (precision - scale) as usize
                     {
-                        return Err(Error::new("DECIMAL precision or scale overflow".into()));
+                        return Err(Error::new("NUMERIC precision or scale overflow".into()));
                     }
-                    Ok(Value::Decimal(
+                    Ok(Value::Numeric(
                         decimal.with_scale(*scale as i64).to_plain_string(),
                     ))
                 } else {
-                    Ok(Value::Decimal(text))
+                    Ok(Value::Numeric(text))
                 }
             }
             (Self::Boolean, Value::Boolean(_))
@@ -245,11 +245,11 @@ impl Type {
             Self::Real | Self::Double => Value::Real(text.parse().map_err(|error| {
                 Error::new("invalid floating-point cast".into()).with_source(error)
             })?),
-            Self::Decimal(_) => {
+            Self::Numeric(_) => {
                 BigDecimal::from_str(&text).map_err(|error| {
-                    Error::new("invalid decimal cast".into()).with_source(error)
+                    Error::new("invalid numeric cast".into()).with_source(error)
                 })?;
-                Value::Decimal(text)
+                Value::Numeric(text)
             }
             Self::Boolean => Value::Boolean(match text.to_lowercase().as_str() {
                 "true" => true,
@@ -274,7 +274,7 @@ impl std::fmt::Display for Value {
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),
-            Self::Decimal(s) | Self::Text(s) | Self::Uuid(s) | Self::Instant(s) => {
+            Self::Numeric(s) | Self::Text(s) | Self::Uuid(s) | Self::Instant(s) => {
                 write!(f, "{s}")
             }
             Self::Json(j) => write!(f, "{j}"),

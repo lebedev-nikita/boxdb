@@ -90,7 +90,7 @@ runs synchronously on the calling thread when the query starts. The supplied
 Integer results always use `bigint`, including IDs, BOOLEAN storage values,
 write counts and `lastInsertRowid`. REAL values use `number`; other storage
 values use `null`, `string` and `Buffer`. JSON and arrays remain JSON strings;
-DECIMAL/NUMERIC remains exact text. Bind decimal strings for exact amounts.
+NUMERIC remains exact text. Bind decimal strings for exact amounts.
 INSTANT remains canonical UTC text. The `safeIntegers` option and mode-switching
 methods are no longer supported.
 
@@ -171,7 +171,7 @@ mapping, use a custom decoder that accepts bigint or BoxDB's INSTANT text.
 BoxDB accepts `INTEGER` as signed 64-bit and the migration journal's `SERIAL`
 as an SQL alias for SQLite INTEGER. Other BoxDB typing rules still apply:
 unknown SQLite column types are not automatically accepted in STRICT tables,
-and DECIMAL/NUMERIC has BoxDB's exact text semantics. Use TEXT for application strings;
+and NUMERIC has BoxDB's exact text semantics. Use TEXT for application strings;
 use custom Drizzle column types for BoxDB-specific declarations.
 
 ## Built-in extensions

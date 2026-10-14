@@ -51,7 +51,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | VARCHAR(n) | TEXT with a length CHECK |
 | FLOAT4 | REAL with BoxDB's float32 validation |
 | BYTEA | BLOB with a storage-class CHECK |
-| DECIMAL, NUMERIC | Exact decimal text; identical SQL type names |
+| NUMERIC | Exact decimal text |
 | UUID and INSTANT | Text |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
@@ -60,7 +60,7 @@ Unsigned columns return `Value::UnsignedInteger`; signed columns return
 so native comparisons and sorting retain their numeric meaning. Typed arrays
 preserve these logical element types.
 
-Typed parameter values are normalized before binding. Prefer `Value::Decimal`
+Typed parameter values are normalized before binding. Prefer `Value::Numeric`
 for exact decimals and typed UUID/instant values for canonical representations.
 SQLite's ordinary SQL arithmetic and sorting still operate on physical storage
 classes. Extended CAST syntax from the former BoxDB executor is not supported.

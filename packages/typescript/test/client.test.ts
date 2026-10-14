@@ -154,9 +154,9 @@ describe("query interface", () => {
         ["9007199254740992.01", "0.02", "ПРИВЕТ", "order #123"],
       ),
     ).toEqual({ amount: "9007199254740992.03", word: "привет", digits: "123" });
-    db.exec("CREATE TABLE prices(n NUMERIC(12,2),d DECIMAL(12,2))");
-    db.run("INSERT INTO prices VALUES(?,?)", ["12.5", "12.5"]);
-    expect(db.get("SELECT * FROM prices")).toEqual({ n: "12.5", d: "12.5" });
+    db.exec("CREATE TABLE prices(n NUMERIC(12,2))");
+    db.run("INSERT INTO prices VALUES(?)", ["12.5"]);
+    expect(db.get("SELECT * FROM prices")).toEqual({ n: "12.5" });
     db.exec(
       "CREATE VIRTUAL TABLE vectors USING vec0(embedding float[2]); INSERT INTO vectors(rowid,embedding) VALUES(1,'[1,0]'),(2,'[0,1]')",
     );
@@ -273,7 +273,7 @@ describe("query interface", () => {
   it("validates extended types while returning SQLite storage values", () => {
     const db = open();
     db.exec(
-      "CREATE TABLE t(active BOOLEAN, payload JSON, amount DECIMAL(12,2), at INSTANT, small UINT8)",
+      "CREATE TABLE t(active BOOLEAN, payload JSON, amount NUMERIC(12,2), at INSTANT, small UINT8)",
     );
     db.run("INSERT INTO t VALUES(?,?,?,?,?)", [
       true,

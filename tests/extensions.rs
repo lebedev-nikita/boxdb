@@ -13,7 +13,7 @@ fn decimal_sql_keeps_arithmetic_aggregates_and_ordering_exact() {
             Value::Integer(1),
         ]]
     );
-    db.execute("CREATE TABLE prices(amount DECIMAL(20,2)); INSERT INTO prices VALUES('10.00'),('2.00'),('0.10'),('0.20')").unwrap();
+    db.execute("CREATE TABLE prices(amount NUMERIC(20,2)); INSERT INTO prices VALUES('10.00'),('2.00'),('0.10'),('0.20')").unwrap();
     assert_eq!(
         db.execute("SELECT decimal_sum(amount) FROM prices")
             .unwrap()[0]
@@ -24,7 +24,7 @@ fn decimal_sql_keeps_arithmetic_aggregates_and_ordering_exact() {
         db.execute("SELECT amount FROM prices ORDER BY amount COLLATE decimal DESC LIMIT 1")
             .unwrap()[0]
             .rows,
-        vec![vec![Value::Decimal("10.00".into())]]
+        vec![vec![Value::Numeric("10.00".into())]]
     );
 }
 
@@ -124,7 +124,7 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
     for format in [Format::Binary, Format::Readable] {
         let path = directory.path().join(format!("{format:?}"));
         let mut db = Database::open(&path, format).unwrap();
-        db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount DECIMAL(12,2), adjusted TEXT GENERATED ALWAYS AS (decimal_add(amount,'0.10')) STORED); CREATE INDEX folded ON terms(text_lower(name)); INSERT INTO terms(name,amount) VALUES('Ёж','0.20')").unwrap();
+        db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount NUMERIC(12,2), adjusted TEXT GENERATED ALWAYS AS (decimal_add(amount,'0.10')) STORED); CREATE INDEX folded ON terms(text_lower(name)); INSERT INTO terms(name,amount) VALUES('Ёж','0.20')").unwrap();
         let snapshot = db.export(format).unwrap();
         drop(db);
         for mut restored in [
@@ -143,7 +143,7 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
 }
 
 #[test]
-fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
+fn schema_file_exports_support_extension_functions_and_numeric_metadata() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("schema.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
@@ -152,7 +152,7 @@ fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     let sql =
         String::from_utf8(Database::dump_schema_file(&path, SchemaFormat::Sql).unwrap()).unwrap();
     assert!(sql.contains("text_lower"));
-    assert!(sql.contains("Decimal"));
+    assert!(sql.contains("Numeric"));
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
     let mut restored = Database::from_snapshot(&yaml).unwrap();
     restored
