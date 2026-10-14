@@ -15,9 +15,11 @@ SQLite JSON1/JSONB is omitted at compile time; BoxDB validates opaque JSON in Ru
 ## Adding a native type
 
 Add a Kind and descriptor to [native_types.rs](native_types.rs): its SQL name,
-contiguous affinity, wire tag and fixed payload size. The build generates C
+affinity, wire tag and fixed payload size. The build generates C
 descriptors, affinity constants and SQLite's declaration/type-check tables from
-that registry. Affinities currently occupy 0x47 through 0x4f, including DECIMAL.
+that registry. Affinities occupy 0x47 through 0x4f and 0x60; the 0x6f comparison
+mask excludes SQLite's JUMPIFNULL and NULLEQ bits. Affinity lookup uses the
+registry rather than assuming contiguous assignments.
 
 Implement parsing, formatting, casts, operators, comparison keys and hashing in
 Rust behind [native.rs](src/native.rs). Comparison and hashing must agree with
@@ -42,7 +44,11 @@ bundled build. System SQLite, SQLCipher, Gecko, and loadable-extension builds ar
 rejected instead of silently dropping native decimal support.
 
 The standard SQLite page and record format is preserved. Native values and
-ordinary BLOBs use single-byte type tags. The database codec version is stored
+ordinary BLOBs use single-byte type tags. UINT8/16/32 use INTEGER serial types
+when a column or index declaration supplies their width; OP_Column restores
+that width before evaluation. Runtime and untyped values keep their tag, while
+UINT64 always uses a tagged BLOB. `src/unsigned.rs` implements checked unsigned
+arithmetic and logical shifts. The database codec version is stored
 in `__boxdb_codec`, and readable headers also record it. Stock SQLite does not have
 compatible query or index semantics. See [the decimal contract](../../docs/native-decimal.md).
 

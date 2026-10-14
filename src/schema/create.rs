@@ -105,7 +105,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
     let logical = translate_column(&mut definition)?;
     if ![
         "INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY", "DECIMAL", "UUID", "INSTANT", "DATE",
-        "DATETIME", "INTERVAL",
+        "DATETIME", "INTERVAL", "UINT8", "UINT16", "UINT32", "UINT64",
     ]
     .iter()
     .any(|native| {

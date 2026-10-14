@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -228,6 +229,8 @@ func input(value driver.Value) (any, error) {
 		return "Null", nil
 	case int64:
 		return map[string]any{"Integer": value}, nil
+	case uint64:
+		return map[string]any{"UnsignedInteger": value}, nil
 	case float64:
 		if math.IsNaN(value) || math.IsInf(value, 0) {
 			return nil, validationError("SQL numbers must be finite")
@@ -251,6 +254,24 @@ func input(value driver.Value) (any, error) {
 	default:
 		return nil, validationError("unsupported parameter type %T", value)
 	}
+}
+
+// Preserve unsigned parameters before database/sql converts them to int64.
+func (c *conn) CheckNamedValue(value *driver.NamedValue) error {
+	switch n := value.Value.(type) {
+	case uint8:
+		value.Value = uint64(n)
+	case uint16:
+		value.Value = uint64(n)
+	case uint32:
+		value.Value = uint64(n)
+	case uint:
+		value.Value = uint64(n)
+	case uint64:
+	default:
+		return driver.ErrSkip
+	}
+	return nil
 }
 
 func (c *conn) execute(ctx context.Context, query string, args []driver.NamedValue) (*queryResult, error) {
@@ -413,6 +434,16 @@ func (r *rows) Next(dest []driver.Value) error {
 					return err
 				}
 				dest[i] = v
+			case "UnsignedInteger":
+				var v uint64
+				if err := json.Unmarshal(data, &v); err != nil {
+					return err
+				}
+				if v <= math.MaxInt64 {
+					dest[i] = int64(v)
+				} else {
+					dest[i] = strconv.FormatUint(v, 10)
+				}
 			case "Real":
 				var v float64
 				if err := json.Unmarshal(data, &v); err != nil {

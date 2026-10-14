@@ -8,6 +8,10 @@ pub enum Kind {
     Date = 4,
     DateTime = 5,
     Interval = 6,
+    Uint8 = 7,
+    Uint16 = 8,
+    Uint32 = 9,
+    Uint64 = 10,
 }
 
 #[allow(dead_code)] // Names/affinities are consumed by the build, payloads by Rust.
@@ -61,5 +65,33 @@ pub const TYPES: &[Descriptor] = &[
         affinity: 0x4c,
         tag: b'v',
         payload_size: 16,
+    },
+    Descriptor {
+        kind: Kind::Uint8,
+        name: "UINT8",
+        affinity: 0x4d,
+        tag: b'C',
+        payload_size: 1,
+    },
+    Descriptor {
+        kind: Kind::Uint16,
+        name: "UINT16",
+        affinity: 0x4e,
+        tag: b'S',
+        payload_size: 2,
+    },
+    Descriptor {
+        kind: Kind::Uint32,
+        name: "UINT32",
+        affinity: 0x4f,
+        tag: b'L',
+        payload_size: 4,
+    },
+    Descriptor {
+        kind: Kind::Uint64,
+        name: "UINT64",
+        affinity: 0x60,
+        tag: b'Q',
+        payload_size: 8,
     },
 ];

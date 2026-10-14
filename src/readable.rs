@@ -34,6 +34,10 @@ impl Serialize for Cell {
                 } else if let Some((kind, text)) = libsqlite3_sys::native::decode(bytes) {
                     let name = match kind {
                         libsqlite3_sys::native::Kind::Uuid => "uuid",
+                        libsqlite3_sys::native::Kind::Uint8 => "uint8",
+                        libsqlite3_sys::native::Kind::Uint16 => "uint16",
+                        libsqlite3_sys::native::Kind::Uint32 => "uint32",
+                        libsqlite3_sys::native::Kind::Uint64 => "uint64",
                         libsqlite3_sys::native::Kind::Instant => "instant",
                         libsqlite3_sys::native::Kind::Date => "date",
                         libsqlite3_sys::native::Kind::DateTime => "datetime",
@@ -94,6 +98,10 @@ impl<'de> Deserialize<'de> for Cell {
                     Blob(String),
                     Decimal(String),
                     Uuid(String),
+                    Uint8(String),
+                    Uint16(String),
+                    Uint32(String),
+                    Uint64(String),
                     Instant(String),
                     Date(String),
                     DateTime(String),
@@ -114,6 +122,10 @@ impl<'de> Deserialize<'de> for Cell {
                         )));
                     }
                     WireCell::Uuid(s) => (Kind::Uuid, s),
+                    WireCell::Uint8(s) => (Kind::Uint8, s),
+                    WireCell::Uint16(s) => (Kind::Uint16, s),
+                    WireCell::Uint32(s) => (Kind::Uint32, s),
+                    WireCell::Uint64(s) => (Kind::Uint64, s),
                     WireCell::Instant(s) => (Kind::Instant, s),
                     WireCell::Date(s) => (Kind::Date, s),
                     WireCell::DateTime(s) => (Kind::DateTime, s),

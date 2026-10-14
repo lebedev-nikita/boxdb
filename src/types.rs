@@ -36,6 +36,7 @@ pub enum Type {
     Uint8,
     Uint16,
     Uint32,
+    Uint64,
     Double,
     Decimal(Option<(u32, u32)>),
     Boolean,
@@ -57,6 +58,10 @@ impl Type {
         match self {
             Self::Decimal(_) => Some(Kind::Decimal),
             Self::Uuid => Some(Kind::Uuid),
+            Self::Uint8 => Some(Kind::Uint8),
+            Self::Uint16 => Some(Kind::Uint16),
+            Self::Uint32 => Some(Kind::Uint32),
+            Self::Uint64 => Some(Kind::Uint64),
             Self::Instant => Some(Kind::Instant),
             Self::Date => Some(Kind::Date),
             Self::DateTime => Some(Kind::DateTime),
@@ -102,6 +107,7 @@ impl Type {
             "UINT8" => Self::Uint8,
             "UINT16" => Self::Uint16,
             "UINT32" => Self::Uint32,
+            "UINT64" => Self::Uint64,
             "REAL" | "DOUBLE" => Self::Double,
             "DECIMAL" => {
                 if args.is_empty() {
@@ -155,7 +161,7 @@ impl Type {
             (Self::Int16, Value::Integer(n)) if i16::try_from(*n).is_ok() => Ok(value.clone()),
             (Self::Int32, Value::Integer(n)) if i32::try_from(*n).is_ok() => Ok(value.clone()),
             (Self::Int64, Value::Integer(_)) => Ok(value.clone()),
-            (Self::Uint8 | Self::Uint16 | Self::Uint32, Value::Integer(n)) => {
+            (Self::Uint8 | Self::Uint16 | Self::Uint32 | Self::Uint64, Value::Integer(n)) => {
                 let n = u64::try_from(*n).map_err(|error| invalid().with_source(error))?;
                 self.validate(&Value::UnsignedInteger(n))
             }
@@ -168,6 +174,7 @@ impl Type {
             (Self::Uint32, Value::UnsignedInteger(n)) if u32::try_from(*n).is_ok() => {
                 Ok(value.clone())
             }
+            (Self::Uint64, Value::UnsignedInteger(_)) => Ok(value.clone()),
             (Self::Double, Value::Integer(_) | Value::Decimal(_) | Value::Real(_)) => {
                 let n: f64 = value
                     .to_string()
@@ -178,7 +185,10 @@ impl Type {
                 }
                 Ok(Value::Real(n))
             }
-            (Self::Decimal(limits), Value::Integer(_) | Value::Decimal(_)) => {
+            (
+                Self::Decimal(limits),
+                Value::Integer(_) | Value::UnsignedInteger(_) | Value::Decimal(_),
+            ) => {
                 let decimal = crate::decimal::parse(&value.to_string())?;
                 let text = decimal.normalized().to_plain_string();
                 let unsigned = text.trim_start_matches('-');
@@ -250,9 +260,14 @@ impl Type {
                 .map_err(|e| Error::new(e.0))?;
             return self.cast(Value::Text(text));
         }
-        let text = if let (Self::Decimal(_), Value::Real(number)) = (self, &value) {
+        let text = if let (
+            Self::Decimal(_) | Self::Uint8 | Self::Uint16 | Self::Uint32 | Self::Uint64,
+            Value::Real(number),
+        ) = (self, &value)
+        {
             BigDecimal::from_f64(*number)
-                .ok_or_else(|| Error::new("non-finite REAL cannot be DECIMAL".into()))?
+                .ok_or_else(|| Error::new("non-finite REAL cannot be an exact number".into()))?
+                .normalized()
                 .to_plain_string()
         } else {
             value.to_string()
@@ -263,7 +278,7 @@ impl Type {
                     Error::new("invalid integer cast".into()).with_source(error)
                 })?)
             }
-            Self::Uint8 | Self::Uint16 | Self::Uint32 => {
+            Self::Uint8 | Self::Uint16 | Self::Uint32 | Self::Uint64 => {
                 Value::UnsignedInteger(text.parse().map_err(|error| {
                     Error::new("invalid unsigned integer cast".into()).with_source(error)
                 })?)

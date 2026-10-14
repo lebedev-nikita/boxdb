@@ -48,7 +48,9 @@ are translated into physical types and, where applicable, portable CHECKs:
 
 | Logical type | SQLite representation |
 | --- | --- |
-| INT8, INT16, INT32, UINT8, UINT16, UINT32 | INTEGER with a range CHECK |
+| INT8, INT16, INT32 | INTEGER with a range CHECK |
+| UINT8, UINT16, UINT32 | Native declarations; standard INTEGER cells in typed columns and indexes |
+| UINT64 | Native declaration; `Q` tag followed by eight unsigned big-endian bytes |
 | BOOLEAN | INTEGER with a 0/1 CHECK |
 | VARCHAR(n) | TEXT with a length CHECK |
 | DOUBLE | REAL with 64-bit floating-point values |
@@ -56,10 +58,37 @@ are translated into physical types and, where applicable, portable CHECKs:
 | DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
 
-Unsigned columns return `Value::UnsignedInteger`; signed columns return
-`Value::Integer`. Supported unsigned ranges fit in SQLite's signed INTEGER,
-so native comparisons and sorting retain their numeric meaning. Typed arrays
-preserve these logical element types.
+Unsigned columns and computed unsigned results return `Value::UnsignedInteger`;
+signed values return `Value::Integer`. All four unsigned widths are native SQL
+types. UINT8/16/32 column values use standard SQLite INTEGER serial types;
+reading a column or its covering index restores its unsigned width. UINT64 uses
+a typed BLOB for the full range from zero through 18446744073709551615.
+Expressions, ANY columns and materialized results retain tagged values where
+column declarations cannot reconstruct the type. Tags are `C`, `S`, `L`, and
+`Q` for UINT8/16/32/64, with 1/2/4/8-byte big-endian payloads. Typed arrays
+preserve unsigned values without passing through floating point.
+
+Comparisons, ordering and indexes compare unsigned values numerically, including
+mixed signed INTEGER, REAL and DECIMAL comparisons. Integer SQL literals above
+INT64_MAX are UINT64 values; values above UINT64_MAX are rejected.
+`Value::UnsignedInteger` parameters bind as UINT64. Use a SQL CAST to request a
+narrower parameter width. Values fitting INT64 may also be stored in INTEGER
+columns; larger unsigned values require UINT64 or ANY.
+
+Unsigned `+`, `-`, `*`, `/` and `%` retain the widest unsigned operand's width.
+Signed INTEGER operands participate exactly; a negative or out-of-range result
+is an error. Division truncates, and division by zero is an error. Mixing DECIMAL
+promotes the result to DECIMAL; arithmetic with REAL requires an explicit cast.
+Bitwise AND/OR/NOT and logical shifts operate within the unsigned width. Left
+shifts discard bits outside that width, and shifts of 64 or more produce zero.
+Negative bitwise operands and shift counts are rejected.
+
+SUM of unsigned inputs widens to UINT64, promoting to exact DECIMAL when its
+range is exceeded. AVG returns DECIMAL and follows native decimal division
+rules. Mixed signed or DECIMAL aggregates promote to DECIMAL. MIN/MAX retain
+the selected value's type. Unsigned CAST accepts finite integral REAL values in range and rejects
+fractional or overflowing values. CAST to INTEGER rejects values above INT64_MAX;
+CAST to REAL explicitly permits floating-point rounding.
 
 Typed parameter values are normalized before binding. Use `Value::Decimal` for
 native exact arithmetic.

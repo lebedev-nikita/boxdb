@@ -9,6 +9,8 @@ typedef struct BoxdbWireBlob { const char *data; int length; } BoxdbWireBlob;
 #define MEM_BoxdbText 0x0080
 static int boxdbNativeKind(const Mem*);
 static int boxdbKind(const Mem*);
+static int boxdbIsUnsigned(const Mem*);
+static u64 boxdbUnsignedValue(const Mem*);
 extern int boxdb_native_text(int,const char*,int,char**,int*);
 extern int boxdb_decimal_eval(int,int,const char*,int,int,const char*,int,char**,int*);
 extern int boxdb_decimal_compare(int,const char*,int,int,const char*,int);
@@ -102,6 +104,10 @@ static const void *boxdbValueText(Mem *p, u8 enc){
 }
 
 static int boxdbDecimalOperand(const Mem *p, const char **data, int *len, char *buf){
+  if( boxdbIsUnsigned(p) ){
+    sqlite3_snprintf(32,buf,"%llu",boxdbUnsignedValue(p));
+    *data=buf; *len=(int)strlen(buf); return 2;
+  }
   if( boxdbIsDecimal(p) ){
     *data = p->z + BOXDB_DECIMAL_PREFIX_LEN;
     *len = p->n - BOXDB_DECIMAL_PREFIX_LEN;

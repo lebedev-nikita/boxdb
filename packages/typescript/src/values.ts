@@ -4,8 +4,8 @@ import type { QueryResult } from "./types.js";
 
 export function value(parameter: unknown): NativeValue {
   if (typeof parameter === "bigint") {
-    if (parameter < -9223372036854775808n || parameter > 9223372036854775807n)
-      throw new RangeError("bigint is outside the BoxDB signed 64-bit range");
+    if (parameter < -9223372036854775808n || parameter > 18446744073709551615n)
+      throw new RangeError("bigint is outside the BoxDB 64-bit range");
     return parameter;
   }
   if (parameter === null || typeof parameter === "string") return parameter;

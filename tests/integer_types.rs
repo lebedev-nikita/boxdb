@@ -3,13 +3,13 @@ use boxdb::{Database, Format, Type, Value};
 #[test]
 fn integer_types_support_explicit_bit_widths_and_sqlite_integer() {
     for name in [
-        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64", "UINT128",
-        "INT24", "UINT24", "INT64(1)",
+        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT128", "INT24",
+        "UINT24", "INT64(1)",
     ] {
         assert!(Type::parse(name).is_err(), "{name}");
     }
     for name in [
-        "INTEGER", "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32",
+        "INTEGER", "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32", "UINT64",
     ] {
         assert!(Type::parse(name).is_ok(), "{name}");
         assert!(Type::parse(&format!("{name}[]")).is_ok(), "{name}[]");
@@ -61,8 +61,8 @@ fn sql_declarations_reject_unsized_and_unsupported_integers() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(body TEXT)").unwrap();
     for name in [
-        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT64", "UINT128",
-        "INT24", "INT64(1)",
+        "INT", "UINT", "SMALLINT", "BIGINT", "INT2", "INT4", "INT128", "UINT128", "INT24",
+        "INT64(1)",
     ] {
         for sql in [
             format!("CREATE TABLE bad(n {name})"),
@@ -169,7 +169,7 @@ fn unsigned_arrays_and_integers_survive_snapshots_and_reopening() {
         assert_eq!(db.execute("SELECT * FROM t").unwrap()[0].rows, expected);
         assert_eq!(
             db.execute("SELECT n+0 FROM t").unwrap()[0].rows,
-            vec![vec![Value::Integer(4294967295)]]
+            vec![vec![Value::UnsignedInteger(4294967295)]]
         );
         assert!(
             db.execute_params(

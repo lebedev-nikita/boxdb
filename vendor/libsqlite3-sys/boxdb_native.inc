@@ -1,4 +1,4 @@
-/* Shared native-value dispatch. Persistent cells remain ordinary BLOBs. */
+/* Shared native-value dispatch using SQLite's standard record storage classes. */
 /* Reject removed declarations and CAST targets before affinity can erase the
 ** spelling. Whitespace and optional parameters do not restore an alias. */
 static int boxdbRemovedType(const char *z, int length){
@@ -44,8 +44,9 @@ static int boxdbKind(const Mem *p){
   return kind ? kind : boxdbIsDecimal(p);
 }
 static int boxdbNativeAffinityKind(u8 affinity){
-  if( affinity<boxdbTypes[1].affinity || affinity>boxdbTypes[ArraySize(boxdbTypes)-1].affinity ) return 0;
-  return boxdbTypes[affinity-boxdbTypes[0].affinity].kind;
+  unsigned i;
+  for(i=1;i<ArraySize(boxdbTypes);i++) if(boxdbTypes[i].affinity==affinity) return boxdbTypes[i].kind;
+  return 0;
 }
 static int boxdbNativeText(Mem *p){
   char *text=0; int length=0;
@@ -92,6 +93,7 @@ static void boxdbTemporalFunction(sqlite3_context *context, int argc, sqlite3_va
 }
 static int boxdbNativeOp(Mem *out, int operation, int target, Mem *a, Mem *b, char **error){
   const char *za,*zb=""; int na,nb=0,ka,kb=-3,nresult=0,rc,resultKind=0; char *result=0;
+  if( !target && b && (boxdbIsUnsigned(a) || boxdbIsUnsigned(b)) && (boxdbIsDecimal(a) || boxdbIsDecimal(b)) ) return boxdbDecimalOp(out,operation,a,b,error);
   ka=boxdbNativeOperand(a,&za,&na);
   if( b ) kb=boxdbNativeOperand(b,&zb,&nb);
   if( !za || !zb ) return SQLITE_NOMEM;
@@ -110,7 +112,7 @@ static int boxdbNativeCompare(const Mem *a, const Mem *b){
 }
 static int boxdbRank(const Mem *p){
   int kind=boxdbKind(p);
-  if( kind ) return kind==1 ? 1 : (kind==5 ? 5 : kind+1);
+  if( kind ) return (kind==1 || kind>=7) ? 1 : (kind==5 ? 5 : kind+1);
   if( p->flags&(MEM_Int|MEM_IntReal|MEM_Real) ) return 1;
   return p->flags&MEM_Str ? 100 : 101;
 }
@@ -127,4 +129,23 @@ static int boxdbNativeAffinityCompare(Mem *left, Mem *right, CollSeq *coll, u8 a
   rc=sqlite3MemCompare(&a,&b,coll);
   sqlite3VdbeMemRelease(&a); sqlite3VdbeMemRelease(&b);
   return rc;
+}
+
+static int boxdbIsUnsigned(const Mem *p){ return boxdbNativeKind(p)>=7; }
+static int boxdbNumeric(const Mem *p){
+  return boxdbIsUnsigned(p) || boxdbIsDecimal(p) || (p->flags&(MEM_Int|MEM_IntReal|MEM_Real));
+}
+static int boxdbUnsignedCompare(const Mem *left, const Mem *right){
+  Mem a,b; int rc;
+  if(!boxdbNumeric(left) || !boxdbNumeric(right)) return boxdbNumeric(left) ? -1 : 1;
+  memset(&a,0,sizeof(a)); memset(&b,0,sizeof(b)); a.db=left->db; b.db=right->db;
+  sqlite3VdbeMemShallowCopy(&a,left,MEM_Ephem); sqlite3VdbeMemShallowCopy(&b,right,MEM_Ephem);
+  if(boxdbIsUnsigned(&a)){boxdbNativeText(&a);boxdbDecimalCoerce(&a);}
+  if(boxdbIsUnsigned(&b)){boxdbNativeText(&b);boxdbDecimalCoerce(&b);}
+  rc=boxdbDecimalCompare(&a,&b);
+  sqlite3VdbeMemRelease(&a);sqlite3VdbeMemRelease(&b);return rc;
+}
+
+static u64 boxdbUnsignedValue(const Mem *p){
+  u64 n=0; int i; for(i=1;i<p->n;i++) n=(n<<8)|(unsigned char)p->z[i]; return n;
 }

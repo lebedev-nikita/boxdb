@@ -144,3 +144,8 @@ through `errors.Is`; an interrupted native call also retains its BoxDB error
 through `errors.As`. A completed unrelated failure is not replaced by a racing
 cancellation. Transaction completion and cleanup can return joined errors.
 See the [error contract](../../docs/client-errors.md).
+
+Unsigned Go parameters (`uint`, `uint8`, `uint16`, `uint32`, `uint64`) bind as
+UINT64 without loss. Unsigned results fitting INT64 are driver `int64` values;
+larger results are decimal strings because `database/sql/driver.Value` has no
+uint64 representation. Both forms can be scanned into `uint64`.

@@ -133,15 +133,13 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             return Ok(None);
         }
         let storage = match ty {
-            Type::Int8
-            | Type::Int16
-            | Type::Int32
-            | Type::Uint8
-            | Type::Uint16
-            | Type::Uint32
-            | Type::Boolean => "INTEGER",
+            Type::Int8 | Type::Int16 | Type::Int32 | Type::Boolean => "INTEGER",
             Type::Decimal(_) => "DECIMAL",
             Type::Uuid => "UUID",
+            Type::Uint8 => "UINT8",
+            Type::Uint16 => "UINT16",
+            Type::Uint32 => "UINT32",
+            Type::Uint64 => "UINT64",
             Type::Instant => "INSTANT",
             Type::Date => "DATE",
             Type::DateTime => "DATETIME",
@@ -477,6 +475,10 @@ pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
 fn native_value(kind: libsqlite3_sys::native::Kind, text: String) -> Value {
     match kind {
         libsqlite3_sys::native::Kind::Uuid => Value::Uuid(text),
+        libsqlite3_sys::native::Kind::Uint8
+        | libsqlite3_sys::native::Kind::Uint16
+        | libsqlite3_sys::native::Kind::Uint32
+        | libsqlite3_sys::native::Kind::Uint64 => Value::UnsignedInteger(text.parse().unwrap()),
         libsqlite3_sys::native::Kind::Decimal => Value::Decimal(text),
         libsqlite3_sys::native::Kind::Instant => Value::Instant(text),
         libsqlite3_sys::native::Kind::Date => Value::Date(text),
@@ -526,9 +528,10 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     Ok(match value {
         Value::Null => SqlValue::Null,
         Value::Integer(n) => SqlValue::Integer(*n),
-        Value::UnsignedInteger(n) => SqlValue::Integer(i64::try_from(*n).map_err(|error| {
-            Error::new("unsigned value exceeds SQLite INTEGER range".into()).with_source(error)
-        })?),
+        Value::UnsignedInteger(n) => SqlValue::Blob(
+            libsqlite3_sys::native::encode(libsqlite3_sys::native::Kind::Uint64, &n.to_string())
+                .map_err(|e| Error::new(e.0))?,
+        ),
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
@@ -608,6 +611,7 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
         J::Number(n) => n
             .as_i64()
             .map(Value::Integer)
+            .or_else(|| n.as_u64().map(Value::UnsignedInteger))
             .or_else(|| n.as_f64().map(Value::Real))
             .ok_or_else(|| Error::new("invalid array number".into()))?,
         J::String(s) if matches!(ty, Type::Bytea) => {

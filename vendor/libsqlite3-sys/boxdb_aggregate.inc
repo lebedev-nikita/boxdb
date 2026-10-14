@@ -28,6 +28,14 @@ static int boxdbSumUpdate(sqlite3_context *ctx, SumCtx *p, Mem *value, int op){
 static int boxdbSumStep(sqlite3_context *ctx, SumCtx *p, Mem *value, int type){
   int kind=boxdbNativeKind(value);
   if( !p || type==SQLITE_NULL ) return 0;
+  if( kind>=7 ){
+    if( !p->decimalMode ) p->decimalMode=p->cnt ? 1 : 7;
+    if( boxdbSumUpdate(ctx,p,value,1)==SQLITE_OK ){p->cnt++;p->approx=0;p->ovrfl=0;}
+    return 1;
+  }
+  if( p->decimalMode==7 ){
+    if( type!=SQLITE_NULL ) p->decimalMode=1;
+  }
   if( kind || p->decimalMode==6 ){
     if( kind!=6 || strcmp(ctx->pFunc->zName,"total")==0 || (p->cnt && p->decimalMode!=6) ){
       sqlite3_result_error(ctx,"aggregate requires numeric inputs or homogeneous INTERVAL values",-1); return 1;
