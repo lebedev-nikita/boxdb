@@ -115,7 +115,7 @@ jobs:
           cp vendor/sqlean/regexp/pcre2/LICENSE "$boxdb_release_stage/licenses/pcre2.txt"
           cp vendor/sqlite-vec/LICENSE-MIT "$boxdb_release_stage/licenses/sqlite-vec-MIT.txt"
           cp vendor/sqlite-vec/LICENSE-APACHE "$boxdb_release_stage/licenses/sqlite-vec-APACHE.txt"
-          tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
+          COPYFILE_DISABLE=1 tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
             boxdb README.md LICENSE docs/replication.md assets/icon.svg \
             licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt
       - name: Upload CLI archive
