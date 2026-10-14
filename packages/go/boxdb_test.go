@@ -441,6 +441,122 @@ func TestStorageFormatsReopenAndClose(t *testing.T) {
 	}
 }
 
+func TestBeginReservesWriterBeforeFirstQuery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	db, err := boxdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE item(id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	other, err := boxdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := other.ExecContext(ctx, "INSERT INTO item VALUES(1)"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("competing writer = %v; expected to wait until its deadline", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Exec("INSERT INTO item VALUES(2)"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReadOnlySnapshotDoesNotBlockWriterAfterExternalChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	db, err := boxdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE item(id INT64, at INSTANT)"); err != nil {
+		t.Fatal(err)
+	}
+	other, err := boxdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if _, err := other.Exec("INSERT INTO item VALUES(1,'2026-10-14T10:00:00Z')"); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var before, after int
+	if err := tx.QueryRow("SELECT count(*) FROM item").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if _, err := other.ExecContext(ctx, "INSERT INTO item VALUES(2,'2026-10-14T11:00:00Z')"); err != nil {
+		t.Fatalf("read-only transaction blocked writer: %v", err)
+	}
+	if err := tx.QueryRow("SELECT count(*) FROM item").Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if before != 1 || after != 1 {
+		t.Fatalf("read snapshot changed: before=%d, after=%d", before, after)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT count(*) FROM item").Scan(&after); err != nil || after != 2 {
+		t.Fatalf("committed rows = %d, %v", after, err)
+	}
+	if _, err := db.Exec("INSERT INTO item VALUES(3,'not-an-instant')"); err == nil {
+		t.Fatal("typed validation was lost after the read-only transaction")
+	}
+}
+
+func TestReadOnlyCannotBeDisabledBySQLScript(t *testing.T) {
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("CREATE TABLE item(id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec("PRAGMA query_only=OFF; INSERT INTO item VALUES(1)")
+	var failure *boxdb.Error
+	if !errors.As(err, &failure) || failure.Code != "BOXDB_READONLY" {
+		t.Fatalf("read-only script write = %v", err)
+	}
+	if _, err := tx.Exec("PRAGMA query_only=OFF"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO item VALUES(?)", 2); !errors.As(err, &failure) || failure.Code != "BOXDB_READONLY" {
+		t.Fatalf("read-only bound write = %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO item VALUES(3)"); err != nil {
+		t.Fatalf("read-only state leaked after rollback: %v", err)
+	}
+}
+
 func TestTransactionsCommitRollbackAndReadOnly(t *testing.T) {
 	db, err := boxdb.Open(":memory:")
 	if err != nil {

@@ -109,8 +109,9 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 }
 
 type conn struct {
-	native  *nativeDB
-	invalid bool
+	native   *nativeDB
+	invalid  bool
+	readOnly bool
 }
 
 func (c *conn) Close() error {
@@ -137,12 +138,12 @@ func (c *conn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx
 	if options.Isolation != driver.IsolationLevel(sql.LevelDefault) && options.Isolation != driver.IsolationLevel(sql.LevelSerializable) {
 		return nil, validationError("only default and serializable isolation are supported")
 	}
-	if options.ReadOnly {
-		if _, err := c.run(ctx, "PRAGMA query_only=ON", nil); err != nil {
-			return nil, err
-		}
+	c.readOnly = options.ReadOnly
+	query := "BEGIN IMMEDIATE"
+	if c.readOnly {
+		query = "BEGIN DEFERRED"
 	}
-	if _, err := c.run(ctx, "BEGIN", nil); err != nil {
+	if _, err := c.run(ctx, query, nil); err != nil {
 		return nil, errors.Join(err, c.reset(context.Background()))
 	}
 	return &transaction{conn: c}, nil
@@ -166,7 +167,9 @@ func (c *conn) reset(ctx context.Context) error {
 		return &Error{Code: "BOXDB_UNAVAILABLE", Message: "connection is unavailable"}
 	}
 	var result struct{}
-	if err := c.native.callContext(ctx, command{Operation: "reset"}, &result); err != nil {
+	c.readOnly = false
+	// Cleanup must finish even if the next request's deadline expires meanwhile.
+	if err := c.native.callContext(context.Background(), command{Operation: "reset"}, &result); err != nil {
 		c.invalid = true
 		return err
 	}
@@ -198,6 +201,7 @@ type command struct {
 	Operation  string `json:"operation,omitempty"`
 	SQL        string `json:"sql"`
 	Parameters []any  `json:"parameters,omitempty"`
+	ReadOnly   bool   `json:"read_only,omitempty"`
 }
 type statementInfo struct {
 	Parameters []*string `json:"parameters"`
@@ -211,7 +215,7 @@ func (c *conn) prepare(ctx context.Context, query string) (*statementInfo, error
 		return nil, driver.ErrBadConn
 	}
 	var info statementInfo
-	err := c.native.callContext(ctx, command{Operation: "prepare", SQL: query}, &info)
+	err := c.native.callContext(ctx, command{Operation: "prepare", SQL: query, ReadOnly: c.readOnly}, &info)
 	return &info, err
 }
 
@@ -287,7 +291,7 @@ func (c *conn) run(ctx context.Context, query string, parameters []any) (*queryR
 		parameters = []any{}
 	}
 	var result queryResult
-	err := c.native.callContext(ctx, command{SQL: query, Parameters: parameters}, &result)
+	err := c.native.callContext(ctx, command{SQL: query, Parameters: parameters, ReadOnly: c.readOnly}, &result)
 	return &result, err
 }
 
@@ -368,7 +372,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 			return nil, driver.ErrBadConn
 		}
 		var result queryResult
-		err := c.native.callContext(ctx, command{Operation: "exec", SQL: query}, &result)
+		err := c.native.callContext(ctx, command{Operation: "exec", SQL: query, ReadOnly: c.readOnly}, &result)
 		return &result, err
 	}
 	return c.execute(ctx, query, args)

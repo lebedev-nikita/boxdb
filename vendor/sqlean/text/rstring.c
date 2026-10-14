@@ -214,7 +214,7 @@ bool rstring_like(RuneString pattern, RuneString str) {
 
         if (prune == '%') {
             star_idx = ++pidx;
-            match = ++sidx;
+            match = sidx;
             if (pidx == pattern.length) {
                 return true;
             }
@@ -223,7 +223,7 @@ bool rstring_like(RuneString pattern, RuneString str) {
             sidx++;
         } else if (star_idx != SIZE_MAX) {
             pidx = star_idx;
-            sidx = match++;
+            sidx = ++match;
         } else {
             return false;
         }

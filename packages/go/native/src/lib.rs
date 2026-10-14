@@ -50,12 +50,22 @@ struct Command {
     sql: String,
     #[serde(default)]
     parameters: Vec<Value>,
+    #[serde(default)]
+    read_only: bool,
 }
 
 fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, Error> {
     let command: Command = serde_json::from_str(request)?;
+    if command.read_only {
+        database.query_only(true)?;
+    }
     if command.operation == "exec" {
-        let results = database.execute(&command.sql)?;
+        let results = database.execute_with_hook(&command.sql, |db| {
+            if command.read_only {
+                db.query_only(true)?;
+            }
+            Ok(())
+        })?;
         return Ok(json!({
             "columns": [], "rows": [],
             "affected": results.last().map_or(0, |result| result.affected),
@@ -66,7 +76,7 @@ fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, 
         if database.in_transaction() {
             database.execute_native("ROLLBACK", &[])?;
         }
-        database.execute_native("PRAGMA query_only=OFF", &[])?;
+        database.query_only(false)?;
         return Ok(json!({}));
     }
     if command.operation == "prepare" {

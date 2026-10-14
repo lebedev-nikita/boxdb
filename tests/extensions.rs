@@ -39,6 +39,70 @@ fn unicode_text_functions_and_collation_work_in_sql() {
 }
 
 #[test]
+fn text_like_matches_unicode_substrings_at_the_start() {
+    let mut db = Database::memory();
+    assert_eq!(
+        db.execute("SELECT text_like('%донат%', 'ДОНАТ')").unwrap()[0].rows,
+        vec![vec![Value::Integer(1)]]
+    );
+}
+
+#[test]
+fn text_like_wildcards_match_empty_spans_and_backtrack_over_unicode_characters() {
+    let mut db = Database::memory();
+    let cases = [
+        ("%abc%", "ABC", 1),
+        ("%донат%", "первый ДОНАТ!", 1),
+        ("%ёж%", "ЁЖ", 1),
+        ("%cóm_ está_%", "CÓMO ESTÁS", 1),
+        ("a%b", "ab", 1),
+        ("a%%b", "ab", 1),
+        ("%%a", "a", 1),
+        ("a%", "a", 1),
+        ("%ab", "aab", 1),
+        ("%aab", "aaab", 1),
+        ("%ab%bc", "abbc", 1),
+        ("%ab%bc", "abc", 0),
+        ("%aa", "a", 0),
+        ("%a%a", "a", 0),
+        ("a%b", "ac", 0),
+        ("%x", "abc", 0),
+        ("%_%", "я", 1),
+        ("%_%", "", 0),
+        ("_", "😀", 1),
+        ("_", "ёж", 0),
+        ("%_ж", "ЁЖ", 1),
+        ("%__", "я", 0),
+        ("%", "", 1),
+        ("%%", "", 1),
+        ("%", "abc", 1),
+        ("", "", 1),
+        ("", "a", 0),
+        ("a", "", 0),
+        ("abc", "ABC", 1),
+        ("abc", "xabc", 0),
+    ];
+    for (pattern, text, expected) in cases {
+        assert_eq!(
+            db.execute_params(
+                "SELECT text_like(?, ?)",
+                &[Value::Text(pattern.into()), Value::Text(text.into())],
+            )
+            .unwrap()[0]
+                .rows,
+            vec![vec![Value::Integer(expected)]],
+            "pattern {pattern:?}, text {text:?}"
+        );
+    }
+    assert_eq!(
+        db.execute("SELECT text_like(NULL, 'a'), text_like('%', NULL), text_like(NULL, NULL)")
+            .unwrap()[0]
+            .rows,
+        vec![vec![Value::Null, Value::Null, Value::Null]]
+    );
+}
+
+#[test]
 fn sqlite_text_functions_preserve_embedded_nul_characters() {
     let mut db = Database::memory();
     assert_eq!(
