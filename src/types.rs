@@ -79,7 +79,7 @@ impl Type {
             "INT8" => Self::Int8,
             "INT16" => Self::Int16,
             "INT32" => Self::Int32,
-            "INT64" => Self::Int64,
+            "INT64" | "INTEGER" => Self::Int64,
             "UINT8" => Self::Uint8,
             "UINT16" => Self::Uint16,
             "UINT32" => Self::Uint32,

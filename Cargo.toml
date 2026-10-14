@@ -6,6 +6,11 @@ description = "An extended SQLite client with typed columns and readable storage
 license = "MIT"
 repository = "https://github.com/lebedev-nikita/boxdb"
 
+[workspace]
+members = ["packages/typescript/native"]
+default-members = ["."]
+resolver = "3"
+
 [dependencies]
 sqlparser = "=0.53.0"
 serde = { version = "1", features = ["derive"] }

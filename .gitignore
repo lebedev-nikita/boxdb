@@ -1,6 +1,10 @@
 /target/
 *.lock
 !Cargo.lock
+!bun.lock
+node_modules/
+packages/typescript/dist/
+*.node
 *.tmp
 .tmp*
 __pycache__/

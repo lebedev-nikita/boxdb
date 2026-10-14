@@ -29,10 +29,10 @@ including either ordering with WITHOUT ROWID. Standard types follow SQLite's
 [STRICT conversion rules](https://www.sqlite.org/stricttables.html): lossless
 conversions such as text `'42'` into an integer are allowed; incompatible values
 are rejected. ANY preserves each value's storage class. A column without a
-declared type becomes ANY. Integer declarations require an explicit bit width
-(see [supported types](../README.md#sql-and-types)); floating-point aliases map
-to REAL. INT64 maps to INTEGER, including SQLite's rowid alias and
-AUTOINCREMENT behavior for INT64 PRIMARY KEY.
+declared type becomes ANY. Integer declarations accept SQLite INTEGER or an
+explicit bit width (see [supported types](../README.md#sql-and-types));
+floating-point aliases map to REAL. INT64 and the SQL alias SERIAL map to
+INTEGER, including SQLite's rowid alias and AUTOINCREMENT behavior.
 
 The policy applies to table creation through BoxDB. Opening or importing an
 existing database preserves its schema and recognizes legacy integer metadata

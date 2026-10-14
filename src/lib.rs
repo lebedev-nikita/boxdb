@@ -52,6 +52,13 @@ pub struct QueryResult {
     pub rows: Vec<Vec<Value>>,
     pub affected: usize,
 }
+/// Metadata used by language bindings without executing the statement.
+#[derive(Clone, Debug)]
+pub struct StatementInfo {
+    pub columns: Vec<String>,
+    pub parameters: Vec<Option<String>>,
+    pub readonly: bool,
+}
 pub struct Database {
     connection: Connection,
     format: Option<Format>,
@@ -309,16 +316,66 @@ impl Database {
             return if sql.trim().is_empty() {
                 Ok(vec![])
             } else {
-                Ok(vec![self.execute_one(sql, &[])?])
+                Ok(vec![self.execute_one(sql, &[], true)?])
             };
         }
         let mut results = vec![];
         for statement in split(sql)? {
-            results.push(self.execute_one(statement, &[])?);
+            results.push(self.execute_one(statement, &[], true)?);
         }
         Ok(results)
     }
     pub fn execute_params(&mut self, sql: &str, params: &[Value]) -> Result<Vec<QueryResult>> {
+        self.execute_bound(sql, params, true)
+            .map(|result| vec![result])
+    }
+    /// Execute one statement with SQLite storage values, retaining BoxDB validation.
+    /// Language drivers use this when an ORM handles logical type conversions.
+    pub fn execute_native(&mut self, sql: &str, params: &[Value]) -> Result<QueryResult> {
+        self.execute_bound(sql, params, false)
+    }
+    /// The rowid of the last successful INSERT on this connection.
+    pub fn last_insert_rowid(&self) -> i64 {
+        self.connection.last_insert_rowid()
+    }
+    /// Prepare a statement for validation and metadata, without running it.
+    /// Execution uses the same connection's SQLite prepared statement cache.
+    pub fn statement_info(&mut self, sql: &str) -> Result<StatementInfo> {
+        if self.poisoned {
+            return Err(Error(
+                "connection must be reopened after a publication failure".into(),
+            ));
+        }
+        let statements = split(sql)?;
+        let [sql] = statements.as_slice() else {
+            return Err(Error("preparation requires one statement".into()));
+        };
+        self.refresh(false)?;
+        let declaration = schema::declaration(sql)?;
+        let alteration = if schema::keyword(sql).eq_ignore_ascii_case("ALTER") {
+            schema::alteration(sql)?
+        } else {
+            None
+        };
+        let translated = declaration
+            .as_ref()
+            .map(|d| d.sql.as_str())
+            .or_else(|| alteration.as_ref().map(|a| a.sql.as_str()))
+            .unwrap_or(sql);
+        let statement = self.connection.prepare_cached(translated)?;
+        Ok(StatementInfo {
+            columns: statement
+                .column_names()
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            parameters: (1..=statement.parameter_count())
+                .map(|i| statement.parameter_name(i).map(String::from))
+                .collect(),
+            readonly: statement.readonly(),
+        })
+    }
+    fn execute_bound(&mut self, sql: &str, params: &[Value], typed: bool) -> Result<QueryResult> {
         let statements = split(sql)?;
         let [sql] = statements.as_slice() else {
             return Err(Error(
@@ -329,9 +386,9 @@ impl Database {
             .iter()
             .map(schema::encode)
             .collect::<Result<Vec<_>>>()?;
-        Ok(vec![self.execute_one(sql, &values)?])
+        self.execute_one(sql, &values, typed)
     }
-    fn execute_one(&mut self, sql: &str, params: &[SqlValue]) -> Result<QueryResult> {
+    fn execute_one(&mut self, sql: &str, params: &[SqlValue], typed: bool) -> Result<QueryResult> {
         if self.poisoned {
             return Err(Error(
                 "connection must be reopened after a publication failure".into(),
@@ -339,7 +396,7 @@ impl Database {
         }
         let keyword = schema::keyword(sql);
         if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("VALUES") {
-            return self.run(sql, params);
+            return self.run(sql, params, typed);
         }
         let keyword = keyword.to_ascii_uppercase();
         let declaration = schema::declaration(sql)?;
@@ -429,7 +486,7 @@ impl Database {
         // VACUUM rebuilds the complete database, including reserved metadata.
         let _vacuum_guard = (keyword == "VACUUM").then(|| InternalGuard::enter(&self.internal));
         let result = self
-            .run(sql, params)
+            .run(sql, params, typed)
             .map(|result| if ddl { empty() } else { result });
         if result.is_err() {
             if guarded && !self.connection.is_autocommit() {
@@ -519,7 +576,7 @@ impl Database {
         }
         Ok(())
     }
-    fn run(&self, sql: &str, params: &[SqlValue]) -> Result<QueryResult> {
+    fn run(&self, sql: &str, params: &[SqlValue], typed: bool) -> Result<QueryResult> {
         let mut statement = self.connection.prepare_cached(sql)?;
         let before = self.connection.total_changes();
         let readonly = statement.readonly();
@@ -566,7 +623,12 @@ impl Database {
                     let value = row.get::<_, SqlValue>(i)?;
                     values.push(
                         if let Some(Some(ty)) = hints.as_ref().and_then(|h| h.get(i)) {
-                            schema::decode(ty, value)?
+                            if typed {
+                                schema::decode(ty, value)?
+                            } else {
+                                schema::decode(ty, value.clone())?;
+                                schema::native(value)
+                            }
                         } else {
                             schema::native(value)
                         },
@@ -613,12 +675,14 @@ fn split(sql: &str) -> Result<Vec<&str>> {
             let text = CString::new(prefix).map_err(|_| Error("SQL contains NUL".into()))?;
             // SAFETY: CString provides a valid NUL-terminated string for this call.
             if unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) } != 0 {
-                statements.push(prefix);
+                if !schema::keyword(prefix).is_empty() {
+                    statements.push(prefix);
+                }
                 start = i + 1;
             }
         }
     }
-    if !sql[start..].trim().is_empty() {
+    if !schema::keyword(&sql[start..]).is_empty() {
         statements.push(&sql[start..]);
     }
     Ok(statements)
