@@ -3,7 +3,7 @@
 !Cargo.lock
 !bun.lock
 node_modules/
-packages/typescript/dist/
+packages/*/dist/
 packages/go/native/lib/
 packages/go/native_build.go
 *.node

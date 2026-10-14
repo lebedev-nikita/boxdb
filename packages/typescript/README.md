@@ -1,210 +1,159 @@
 # BoxDB for TypeScript
 
-A synchronous Node.js and Bun client backed by the BoxDB Rust library through
-Node-API. SQL execution, extended type validation, SQLite files and readable
-YAML storage all use the same Rust implementation.
+An asynchronous Node.js and Bun SQLite client backed by the BoxDB Rust core.
+Each connection owns a native worker: SQL execution and lock waits leave the
+JavaScript event loop free. Binary SQLite files, readable YAML storage, extended
+column types and built-in SQL extensions use the same core.
 
-## Build from this checkout
+## Build
 
-Requires Node.js 22.18+, Bun, Rust, native build tools and libclang, as described
-in the [repository README](../../README.md). No prebuilt npm binaries are
-published yet. Builds produce a native addon for the current OS and architecture;
-this package does not run in browsers.
-
-From the repository root:
+Requires Node.js 22.18+, Bun, Rust, native build tools and libclang; see the
+[repository README](../../README.md). From the repository root:
 
 ```sh
-just ts-build
-just ts-check ts-test
+bun install --frozen-lockfile
+bun run build
+bun run check
+bun run test
 ```
 
-Without Just, run `bun install --cwd packages/typescript --frozen-lockfile`, then
-`bun run --cwd packages/typescript build`. For an optimized native addon, run
-`bun run --cwd packages/typescript build:release`.
-
-After building, add the local package to your application with
-`bun add /absolute/path/to/boxdb/packages/typescript` and import `@boxdb/client`.
-Rebuild the addon when changing the Rust core or moving to another platform.
+`just ts-build` and `just ts-check ts-test` also build and verify all packages.
+For an optimized addon, run `bun run --cwd packages/typescript build:release`,
+then build the adapter packages. Builds target the current OS and architecture;
+prebuilt npm binaries are not published yet. This client does not run in browsers.
 
 ## Queries
 
 ```ts
 import { Database } from "@boxdb/client";
 
-using db = new Database("data.db");
-db.exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT)");
-db.run("INSERT INTO users(name) VALUES (?)", ["Ada"]);
+await using db = await Database.open("data.db", { busyTimeoutMs: 5000 });
+await db.exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT)");
+const inserted = await db.query`INSERT INTO users(name) VALUES(${"Ada"})`.run();
 
-const result = db.query("SELECT * FROM users WHERE name = :name", { name: "Ada" });
-console.log(result.rows);
-```
-
-`query` executes one statement and returns `rows`, `columns`, `changes` and
-`lastInsertRowid`. `all`, `get` and `run` are shortcuts for rows, the first row
-(or `undefined`), and write metadata. `exec` executes SQL scripts without bound
-parameters. Use `close()` or `using` to release the connection (`using` requires
-runtime support or TypeScript compilation).
-
-For readable storage, pass `{ format: "readable" }` to the constructor. Existing
-file contents determine the format when reopening, just as in Rust.
-
-## Postgres.js-style adapter
-
-```ts
-import { Database } from "@boxdb/client";
-import { adapter } from "@boxdb/client/adapters/postgres";
-
-using db = new Database("data.db");
-const sql = adapter(db);
-const name = "Ada";
-
-const users = await sql<{ id: bigint; name: string }[]>`
-  SELECT id, name FROM users WHERE name = ${name}
+const rows = await db.query<{ id: bigint; name: string }>`
+  SELECT * FROM ${db.identifier("users")}
+  ${db.fragment`WHERE id = ${inserted.lastInsertRowid}`}
+  LIMIT ${100}
 `;
 ```
 
-Interpolated values are bound parameters. Write `${name}` without SQL quotes.
-For dynamic identifiers, use `sql("users")` or `sql("users.name")`; each dotted
-component is quoted separately. Compose queries with nested tagged fragments:
+Scalar interpolations become bound parameters; do not put SQL quotes around
+them. `identifier("main", "users")` quotes separate components;
+`identifier("user.name")` quotes one name containing a dot. Fragments snapshot
+parameters and compose without executing SQL.
+
+Queries execute once, lazily. `await query` and `query.execute({ signal })`
+return row objects. `query.get({ signal })` returns the first row or `undefined`;
+`query.values({ signal })` returns positional rows, preserving duplicate column
+names. `query.run({ signal })` returns `{ changes, lastInsertRowid }` and requires
+a statement without returned columns. These methods share the execution result
+or error; the first execution chooses its signal. `query.compile()` returns a
+copy of `{ sql, parameters }` without executing.
+
+For SQL from an adapter or migration tool:
 
 ```ts
-const condition = sql`WHERE name = ${name}`;
-const rows = await sql`SELECT * FROM ${sql("users")} ${condition}`;
-console.log(rows.count, rows.columns);
+const result = await db.execute("SELECT name FROM users WHERE id=:id", { id: 1 });
+// { rows, columns, changes, lastInsertRowid }
+const positional = await db.execute("SELECT 1 AS x, 2 AS x", [], { raw: true });
+await db.exec("CREATE INDEX IF NOT EXISTS users_name ON users(name);");
 ```
 
-Queries are lazy: `await`, `.then()`, `.catch()` or `.finally()` starts execution;
-`.execute()` starts it immediately and returns a Promise. Reusing a query object
-reuses its result or error. `.values()` returns a lazy view with positional array
-rows, preserving column order and duplicate column names, without repeating the
-query. Results are arrays with nonenumerable `count` and `columns` properties;
-`count` is the returned row count for queries or affected row count for writes,
-and `columns` contains `{ name }` objects.
+`execute` accepts one statement and positional or named bindings. `exec` accepts
+scripts without parameters. Query generics describe row types; they do not
+validate application schemas. Explicit prepared statements and streaming are
+not part of this API.
 
-This adapter uses BoxDB's SQLite SQL and value representations. Execution still
-runs synchronously on the calling thread when the query starts. The supplied
-`db` owns the connection and its synchronous transaction interface.
+## Transactions and cancellation
 
-## Values and errors
-
-Integer results always use `bigint`, including IDs, BOOLEAN storage values,
-write counts and `lastInsertRowid`. REAL values use `number`; other storage
-values use `null`, `string` and `Buffer`. JSON and arrays remain JSON strings;
-DECIMAL columns and calculated decimals return exact strings. Native operators,
-aggregates, indexes, and ORDER BY use numeric decimal semantics. Bind decimal
-strings for exact amounts. NUMERIC is not supported.
-INSTANT remains canonical UTC text. The `safeIntegers` option and mode-switching
-methods are no longer supported.
-
-Parameters accept signed int64 `bigint`, safe integer `number`, finite real
-`number`, boolean, `Uint8Array`, string and null. Safe integer numbers and
-booleans bind as integers. Unsafe integer numbers and bigint values outside
-int64 throw `RangeError`; invalid types and non-finite numbers throw `TypeError`.
-Serialize objects explicitly. JSON serialization of bigint results requires
-an application-defined conversion, such as a replacer that writes decimal strings.
-Result generics describe the expected row shape; they do not validate it.
-
-Database failures throw `BoxDBError` with a symbolic `BOXDB_*` code, optional
-numeric `resultCode` and `extendedCode`, and the native exception as `cause`.
-For example, a UNIQUE violation has `BOXDB_CONSTRAINT_UNIQUE`, `19` and `2067`.
-BoxDB validation, I/O, closed and unavailable connections, and internal failures
-have distinct categories; failures outside the engine have no numeric codes.
-See the [error contract](../../docs/client-errors.md).
-
-ORMs may wrap the error. Use `findBoxDBError` to inspect direct errors, `cause`
-chains and `AggregateError` members:
+Use TypeScript 5.2+; transpile `await using` for runtimes without native syntax
+support (including Node.js 22).
 
 ```ts
-import { findBoxDBError } from "@boxdb/client";
-
-try {
-  db.run("INSERT INTO users(name) VALUES(?)", ["Ada"]);
-} catch (error) {
-  const failure = findBoxDBError(error);
-  if (failure?.code === "BOXDB_CONSTRAINT_UNIQUE") console.log("Name already exists");
-  else throw error;
+await using tx = await db.begin({ mode: "immediate", signal });
+await tx.query`INSERT INTO users(name) VALUES(${"Grace"})`;
+{
+  await using nested = await tx.begin();
+  await nested.query`INSERT INTO users(name) VALUES(${"temporary"})`;
+  // Exiting without commit rolls back this savepoint.
 }
+await tx.commit();
 ```
 
-## Prepared statements and transactions
+Commit is explicit. Disposal and `rollback()` discard unfinished work. Root
+transactions support `deferred` (default), `immediate`, and `exclusive`; nested
+transactions use savepoints and have no mode. Use the innermost transaction
+handle: root SQL and parent-handle SQL fail promptly while another handle owns
+the connection. SQL transaction-control statements must use handles too.
+
+`tx.active` reports whether its transaction still exists. A failed commit leaves
+an active SQLite transaction available for repair or retry. If SQLite itself
+rolls back a transaction after an interrupt, further work through that handle
+fails instead of escaping into autocommit.
 
 ```ts
-const insert = db.prepare("INSERT INTO users(name) VALUES (?)");
-const insertMany = db.transaction((names: string[]) => {
-  for (const name of names) insert.run(name);
-});
-insertMany.immediate(["Grace", "Linus"]);
+const controller = new AbortController();
+const pending = db.query`SELECT * FROM users`.execute({ signal: controller.signal });
+controller.abort(new Error("request no longer needed"));
+await pending; // Rejects with the cancellation reason if cancellation wins.
 ```
 
-Prepared statements accept variadic parameters, arrays or named parameter
-objects. They expose `run`, `all`, `get`, `iterate`, `raw`,
-`reader`, `readonly`, and `source`. `raw()` returns arrays instead of row
-objects. Queries use Rust's SQLite statement cache; `get` and `iterate` currently
-materialize the complete result. This is a compatibility subset, not a complete
-replacement for better-sqlite3 (no dynamic extension loading, user functions or backup API).
+Signals cancel queued requests before execution and interrupt running SQL or
+lock waits. A transaction inherits its signal; aborting an idle transaction also
+rolls it back. Rollback cleanup cannot be cancelled by that signal. Cancellation
+cannot undo a statement that has already committed; use a transaction for atomic
+multi-statement work.
 
-Transactions commit on return and roll back on exceptions. Nested transactions
-use savepoints. Callbacks must be synchronous; async callbacks and returned
-thenables are rejected. Long queries block the current JavaScript thread.
+`close()` rejects new root requests, drains accepted work and waits for active
+transactions to finish. Their handles can still commit or roll back.
+`close({ mode: "abort" })` cancels pending and running work, rolls back active
+transactions and waits for cleanup. An existing draining close can be escalated
+to abort. `await using db` performs a draining close.
 
-## Drizzle
+## Options, values and diagnostics
 
-Install the optional peer `drizzle-orm` 0.45.x. The BoxDB adapter reuses Drizzle's
-synchronous SQLite session without loading or requiring better-sqlite3:
+`Database.open(path, options)` accepts `format: "binary" | "readable"`,
+`readOnly`, `busyTimeoutMs`, `maxPendingQueries`, and `signal`.
+Existing contents determine the format. A read-only readable connection reads
+an opening snapshot without taking the writer's lock.
 
-```ts
-import { drizzle } from "@boxdb/client/drizzle";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+Inputs accept `null`, strings, finite numbers, signed 64-bit bigint, boolean and
+`Uint8Array`. Safe integer numbers and booleans bind as integers; fractional
+numbers bind as REAL. Serialize objects explicitly. Every integer cell, write
+count and row ID returns as bigint; REAL remains number. Convert bigint
+explicitly when serializing JSON. Unsafe integer inputs throw instead of rounding.
 
-const users = sqliteTable("users", {
-  id: integer().$type<bigint>().primaryKey({ autoIncrement: true }),
-  name: text().notNull(),
-});
-const orm = drizzle(db, { schema: { users } });
-orm.insert(users).values({ name: "Ada" }).run();
-const rows = orm.select().from(users).all();
-```
+Results retain native decimal values as exact text. DECIMAL arithmetic, comparisons
+and ordering run in the engine; NUMERIC is not supported. JSON and arrays remain
+strings, INSTANT is UTC text with nanoseconds, and blobs are `Buffer` values. See
+the [native decimal guide](../../docs/native-decimal.md) for exact arithmetic.
 
-Use `orm.$migrate({ migrationsFolder: "./drizzle" })` to run Drizzle migrations.
-This uses Drizzle's migration engine with INTEGER journal timestamps and without
-the better-sqlite3 result types, which assume numeric write counts. Integer
-columns should use `$type<bigint>()`
-to match their runtime values. Boolean column mapping is supported; for date
-mapping, use a custom decoder that accepts bigint or BoxDB's INSTANT text.
-BoxDB accepts `INTEGER` as signed 64-bit and the migration journal's `SERIAL`
-as an SQL alias for SQLite INTEGER. Other BoxDB typing rules still apply:
-unknown SQLite column types are not automatically accepted in STRICT tables,
-and DECIMAL uses native exact arithmetic. Use TEXT for application strings;
-use custom Drizzle column types for BoxDB-specific declarations.
+`BoxDBError` preserves `code`, `resultCode`, `extendedCode` and `cause`. Engine
+failures have `BOXDB_*` names, such as `BOXDB_CONSTRAINT_UNIQUE`. Validation,
+closed connections and native infrastructure failures have separate categories;
+an exhausted queue uses `BOXDB_QUEUE_FULL`. `findBoxDBError(error)` follows causes
+and aggregate members without looping on cycles. Invalid arguments throw
+`TypeError` or `RangeError`. See the [client error contract](../../docs/client-errors.md).
 
-## Built-in extensions
+The optional queue limit bounds waiting operations; cleanup always gets through.
+`db.diagnostics` reports pending/active/completed operations and the last queue
+wait and execution durations in milliseconds. A duration covers a complete
+scheduled operation, including preparation and native execution.
 
-Every connection includes native decimal arithmetic, Unicode text functions,
-regular expressions, sqlite-vec, FTS5 and R*Tree:
+## Integrations
 
-```ts
-const db = new Database();
-const result = db.get("SELECT CAST(? AS DECIMAL)+CAST(? AS DECIMAL) AS amount, text_lower(?) AS name", [
-  "0.1", "0.2", "ПРИВЕТ",
-]);
-// { amount: "0.3", name: "привет" }
-```
+Adapters are independent npm packages with their libraries as peer dependencies.
+They borrow the client and do not close it:
 
-Bind decimals as strings and vectors as JSON strings or packed `Buffer` values.
-Virtual tables require an in-memory or binary database; readable YAML does not
-support them. See the [SQL extension guide](../../docs/extensions.md) for examples.
+- [Drizzle adapter](../drizzle-adapter/README.md): asynchronous queries, transactions,
+  batches and migrations.
+- [Better Auth adapter](../better-auth-adapter/README.md): direct database adapter,
+  schema generation and native atomic credential/counter operations.
+- [db0 adapter](../db0-adapter/README.md): a SQLite connector accepting a database
+  or transaction handle.
 
-## Kysely
-
-Kysely's built-in dialect accepts the client without a custom adapter:
-
-```ts
-import { Kysely, SqliteDialect } from "kysely";
-
-const kysely = new Kysely<MySchema>({
-  dialect: new SqliteDialect({ database: db }),
-});
-```
-
-`kysely.destroy()` closes the underlying connection. Integration tests cover
-Kysely 0.29.6, Drizzle 0.45.4, migration replay, transactions and type conversions.
+Every connection includes decimal arithmetic, Unicode text functions, regular
+expressions, sqlite-vec, FTS5 and R*Tree; see the
+[SQL extension guide](../../docs/extensions.md). Virtual tables require memory
+or binary storage.

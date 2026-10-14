@@ -1,49 +1,37 @@
 import assert from "node:assert/strict";
-import { BoxDBError, Database } from "../dist/index.js";
-import { drizzle } from "../dist/drizzle.js";
-import { adapter } from "../dist/adapters/postgres.js";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { Kysely, SqliteDialect } from "kysely";
+import { Database, BoxDBError } from "../dist/index.js";
 
-const client = new Database();
-try {
-  assert.deepEqual(
-    client.get(
-      "SELECT CAST(? AS DECIMAL)+CAST(? AS DECIMAL) AS amount, text_lower(?) AS word, regexp_substr(?,'\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance",
-      ["0.1", "0.2", "ПРИВЕТ", "order #123"],
-    ),
-    { amount: "0.3", word: "привет", digits: "123", distance: 1 },
-  );
-  client.exec("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)");
-  assert.throws(
-    () => client.get("SELECT * FROM missing"),
-    (error: unknown) => {
-      assert.ok(error instanceof BoxDBError);
-      assert.equal(error.code, "BOXDB_ERROR");
-      assert.equal(error.resultCode, 1);
-      assert.equal(error.extendedCode, 1);
-      assert.ok(error.cause instanceof Error);
-      return true;
-    },
-  );
-  const users = sqliteTable("users", { id: integer().$type<bigint>().primaryKey(), name: text() });
-  const orm = drizzle(client);
-  orm.insert(users).values({ name: "Ada" }).run();
-  assert.deepEqual(client.query("SELECT * FROM users").rows, [{ id: 1n, name: "Ada" }]);
-  assert.deepEqual(orm.select().from(users).all(), [{ id: 1n, name: "Ada" }]);
-  const sql = adapter(client);
-  const rows = await sql`SELECT name FROM users WHERE id = ${1}`;
-  assert.deepEqual(rows, [{ name: "Ada" }]);
-  assert.equal(rows.count, 1n);
-  assert.deepEqual(await sql`SELECT ${1} AS x, ${2} AS x`.values(), [[1n, 2n]]);
-  const queryBuilder = new Kysely<{ users: { id: bigint; name: string } }>({
-    dialect: new SqliteDialect({ database: client }),
-  });
-  assert.deepEqual(await queryBuilder.selectFrom("users").selectAll().execute(), [
-    { id: 1n, name: "Ada" },
-  ]);
-  await queryBuilder.destroy();
-  console.log("BoxDB runtime smoke passed");
-} finally {
-  client.close();
+await using db = await Database.open();
+assert.deepEqual(
+  await db.query`SELECT CAST(${"0.1"} AS DECIMAL)+CAST(${"0.2"} AS DECIMAL) AS amount,text_lower(${"ПРИВЕТ"}) AS word`.get(),
+  { amount: "0.3", word: "привет" },
+);
+await db.exec("CREATE TABLE users(name TEXT UNIQUE)");
+{
+  await using tx = await db.begin({ mode: "immediate" });
+  await tx.query`INSERT INTO users VALUES(${"Ada"})`;
+  await tx.commit();
 }
+{
+  await using tx = await db.begin();
+  await tx.query`INSERT INTO users VALUES(${"rollback"})`;
+}
+assert.deepEqual(await db.query`SELECT * FROM users`, [{ name: "Ada" }]);
+await assert.rejects(
+  db.query`INSERT INTO users VALUES(${"Ada"})`.execute(),
+  (error) => error instanceof BoxDBError && error.code === "BOXDB_CONSTRAINT_UNIQUE",
+);
+const controller = new AbortController();
+const reason = new Error("cancelled");
+const pending =
+  db.query`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000000) SELECT sum(x) FROM n`.execute(
+    { signal: controller.signal },
+  );
+const timer = setTimeout(() => controller.abort(reason), 30);
+try {
+  await assert.rejects(pending, (error) => error === reason);
+} finally {
+  clearTimeout(timer);
+}
+assert.deepEqual(await db.query`SELECT 42 AS answer`.get(), { answer: 42n });
+console.log("BoxDB async runtime smoke passed");

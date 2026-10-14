@@ -13,7 +13,7 @@ people and must not be parsed to identify failures.
 
 The [Rust error type](../src/error.rs) owns engine-code naming and the serialized
 error object used by the [Go bridge](../packages/go/native/src/lib.rs).
-[TypeScript](../packages/typescript/src/index.ts) preserves the native code and
+[TypeScript](../packages/typescript/src/error.ts) preserves the native code and
 exception. A UNIQUE violation has code `BOXDB_CONSTRAINT_UNIQUE`, primary code
 `19`, and extended code `2067`. Numeric codes are absent when the engine did not
 report the failure; zero is not a placeholder for missing information.
@@ -43,27 +43,35 @@ operation may have executed. See the Go contracts for
 [`errors.Join`](https://pkg.go.dev/errors#Join) and
 [`ErrBadConn`](https://pkg.go.dev/database/sql/driver#ErrBadConn).
 
-TypeScript transactions preserve callback failures and combine them with
-rollback failures in `AggregateError`. Argument errors use `TypeError` or
-`RangeError`; both unsafe integer numbers and bigint outside signed int64 use
-`RangeError`.
+TypeScript transactions use explicit handles and `await using`: unfinished
+transactions roll back during disposal. A failed commit keeps a still-active
+native transaction available for repair or retry. Disposal retains operation and
+rollback failures through JavaScript's explicit resource management protocol.
+Argument errors use `TypeError` or `RangeError`; both unsafe integer numbers and
+bigint outside signed int64 use `RangeError`.
+
+Signals reject cancelled TypeScript requests with the caller's reason. Rollback
+and connection-close cleanup are not cancelled by the same signal. SQL runs on
+a dedicated native worker, including busy waits. See the client guide for the
+transaction ownership and close contracts.
 
 ## TypeScript integers and integrations
 
 Integer storage values always return as `bigint`; REAL values return as `number`.
-`lastInsertRowid`, write counts, and Postgres-style result counts also use bigint.
-There is no precision mode switch. Safe integer numbers and booleans bind as
-integers. Applications must explicitly convert bigint when serializing JSON.
+`lastInsertRowid` and write counts also use bigint. There is no precision mode
+switch. Safe integer numbers and booleans bind as integers. Applications must
+explicitly convert bigint when serializing JSON. Tagged-query result methods
+reuse the same native execution and rejected error.
 
-Kysely and the [Postgres-style adapter](../packages/typescript/src/adapters/postgres.ts)
-preserve BoxDB query errors directly. Reusing a tagged query, including its
-`.values()` view, preserves the same rejected error object.
-
-[Drizzle](../packages/typescript/src/drizzle.ts) may return `BoxDBError` directly
+[Drizzle](../packages/drizzle-adapter/README.md) may return `BoxDBError` directly
 or put it in an ORM error's `cause`, depending on the API used.
-`findBoxDBError()` handles both, as well as `AggregateError`, and avoids cycles.
-Use bigint schema types for integer values and `orm.$migrate(config)` for
-Drizzle migrations with BoxDB's bigint result metadata.
+`findBoxDBError()` handles both, as well as aggregates, and avoids cycles.
+Use bigint schema types for integer values and the adapter's `migrate()` helper
+for an INTEGER migration journal and bigint result metadata.
+
+[Better Auth](../packages/better-auth-adapter/README.md) maps booleans and numeric
+fields to its expected application types. [db0](../packages/db0-adapter/README.md)
+preserves bigint values and write metadata. All adapters borrow the client.
 
 See the [TypeScript](../packages/typescript/README.md) and
 [Go](../packages/go/README.md) guides for usage. Contract coverage lives in the

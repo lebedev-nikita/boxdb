@@ -1,0 +1,14 @@
+{
+  "name": "boxdb-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/typescript",
+    "packages/*-adapter"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "bun run --cwd packages/typescript build && bun run --filter \"@boxdb/*-adapter\" build",
+    "test": "bun run --cwd packages/typescript test && bun run --filter \"@boxdb/*-adapter\" test",
+    "check": "bun run --cwd packages/typescript check && bun run --filter \"@boxdb/*-adapter\" check"
+  }
+}

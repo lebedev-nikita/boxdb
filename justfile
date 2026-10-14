@@ -10,18 +10,18 @@ count-lines:
     cloc --vcs=git --exclude-dir=vendor --match-d='(^|/)(test|tests)(/|$)'
 
 ts-install:
-    bun install --cwd packages/typescript --frozen-lockfile
+    bun install --frozen-lockfile
 
 ts-build: ts-install
-    bun run --cwd packages/typescript build
+    bun run build
 
 ts-check: ts-build
-    bun run --cwd packages/typescript check
+    bun run check
 
 ts-test: ts-build
-    bun run --cwd packages/typescript test
-    cd packages/typescript && node test/runtime.ts
-    cd packages/typescript && bun run test/runtime.ts
+    bun run test
+    cd packages/typescript && node .tmp-runtime/runtime.js
+    cd packages/typescript && bun run .tmp-runtime/runtime.js
 
 go-build:
     go run packages/go/build.go
