@@ -17,6 +17,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - name: Performance report checker contract tests
+        run: python3 -m unittest discover -s tests -p 'test_performance.py'
       - name: Benchmark correctness smoke test
         run: >-
           cargo test --locked --bench sqlite_vs_boxdb --
@@ -29,3 +31,68 @@ jobs:
         run: >-
           cargo test --locked --bench sqlite_vs_boxdb --
           --boxdb-format yaml --rows 30 --samples 1 --reads 3 --batch-size 7 --writes 4 --typed
+
+  performance:
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event.before != '0000000000000000000000000000000000000000'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [binary, yaml]
+        typed: [false, true]
+    defaults:
+      run:
+        shell: bash
+    env:
+      BOXDB_BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+      BOXDB_BENCH_FORMAT: ${{ matrix.format }}
+      BOXDB_BENCH_TYPED: ${{ matrix.typed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install SQLite binding build dependency
+        run: sudo apt-get update && sudo apt-get install --yes libclang-dev
+      - name: Prepare base revision with the same benchmark harness
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/boxdb-baseline" "$BOXDB_BASE_REVISION"
+          cp benches/sqlite_vs_boxdb.rs "$RUNNER_TEMP/boxdb-baseline/benches/sqlite_vs_boxdb.rs"
+          mkdir -p target/performance
+          git rev-parse HEAD > target/performance/current-revision.txt
+          git rev-parse "$BOXDB_BASE_REVISION" > target/performance/base-revision.txt
+      - name: Build both release benchmark executables before measuring
+        run: |
+          cargo bench --locked --bench sqlite_vs_boxdb --no-run
+          cargo bench --locked --manifest-path "$RUNNER_TEMP/boxdb-baseline/Cargo.toml" \
+            --bench sqlite_vs_boxdb --no-run
+      - name: Measure base and current revisions on this runner
+        run: |
+          boxdb_typed_args=()
+          if [[ "$BOXDB_BENCH_TYPED" == true ]]; then boxdb_typed_args=(--typed); fi
+          for boxdb_revision in baseline current; do
+            boxdb_manifest="$GITHUB_WORKSPACE/Cargo.toml"
+            if [[ "$boxdb_revision" == baseline ]]; then
+              boxdb_manifest="$RUNNER_TEMP/boxdb-baseline/Cargo.toml"
+            fi
+            cargo bench --locked --manifest-path "$boxdb_manifest" --bench sqlite_vs_boxdb -- \
+              --boxdb-format "$BOXDB_BENCH_FORMAT" "${boxdb_typed_args[@]}" \
+              --rows 1000 --samples 7 --reads 100 --read-repetitions 20 \
+              --batch-size 100 --writes 20 --directory "$RUNNER_TEMP" \
+              --json "$GITHUB_WORKSPACE/target/performance/$boxdb_revision.json"
+          done
+      - name: Reject performance regressions
+        run: |
+          python3 tools/check_performance.py target/performance/baseline.json \
+            target/performance/current.json 2>&1 | tee target/performance/comparison.txt
+      - name: Retain timings and revision IDs even when the check fails
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: performance-${{ matrix.format }}-typed-${{ matrix.typed }}
+          path: target/performance/
+          if-no-files-found: warn
