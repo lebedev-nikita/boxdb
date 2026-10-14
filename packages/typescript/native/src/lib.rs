@@ -45,7 +45,7 @@ fn output(value: Value) -> napi::Result<Cell> {
         Value::Null => Either5::A(Null),
         Value::Integer(value) => Either5::C(value.into()),
         Value::Real(value) => Either5::B(value),
-        Value::Text(value) => Either5::D(value),
+        Value::Text(value) | Value::Decimal(value) => Either5::D(value),
         Value::Bytea(value) => Either5::E(value.into()),
         _ => return Err(failure("expected a SQLite storage value")),
     })

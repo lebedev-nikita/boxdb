@@ -85,8 +85,8 @@ for id in ['insert-1.5','insert-1.5b','insert-1.5c','insert-1.6','insert-1.6b','
     c = insert[id]; groups['insert'].append(case(c,base)); base += c['sql']
 base = ''
 for id in ['insert-2.1','insert-2.2','insert-2.3','insert-2.4','insert-2.10','insert-2.11','insert-2.12']:
-    c = insert[id]; sql = c['sql'].replace('f4 int default 7.89','f4 NUMERIC default 7.89').replace('text default hi',"text default 'hi'").replace('f2 real','f2 DOUBLE PRECISION')
-    groups['insert'].append(case(c,base,sql,adaptations=['Fractional default column explicitly NUMERIC','Bare TEXT default quoted','REAL setup column widened to DOUBLE PRECISION'])); base += sql
+    c = insert[id]; sql = c['sql'].replace('f4 int default 7.89','f4 DOUBLE PRECISION default 7.89').replace('text default hi',"text default 'hi'").replace('f2 real','f2 DOUBLE PRECISION')
+    groups['insert'].append(case(c,base,sql,adaptations=['Fractional default column widened to DOUBLE PRECISION','Bare TEXT default quoted','REAL setup column widened to DOUBLE PRECISION'])); base += sql
 c = insert['insert-4.1']; groups['insert'].append(case(c,sql=c['sql'].replace('t3(a,b,c)','t3(a INT,b INT,c INT)'),adaptations=['Explicit INT column types']))
 trans = tests('trans.test'); groups['transaction'] = [case(trans['trans-1.0']),case(trans['trans-1.1'])]
 setup = trans['trans-1.0']['sql'] + trans['trans-1.1']['sql']

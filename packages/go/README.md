@@ -117,9 +117,9 @@ range; non-finite floats and larger unsigned integers return errors.
 `time.Time` binds as a UTC INSTANT with nanosecond precision.
 
 Results use SQLite storage values: `int64`, `float64`, `string`, `[]byte` and `nil`.
-DECIMAL/NUMERIC remains exact text: bind decimal strings, never floats for exact
-amounts. JSON and arrays remain JSON strings, UUID remains text, INSTANT remains
-canonical UTC text, and BOOLEAN returns integer 0/1 (which `Scan` accepts into
+DECIMAL columns and calculated decimals return exact strings. Bind decimal
+strings for exact amounts; NUMERIC is not supported. JSON and arrays remain JSON
+strings, UUID remains text, INSTANT remains canonical UTC text, and BOOLEAN returns integer 0/1 (which `Scan` accepts into
 `bool`). Serialize JSON and arrays explicitly. Use `sql.Scanner` for application
 types. BoxDB validates logical values on both reads and writes.
 

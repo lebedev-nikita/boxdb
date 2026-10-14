@@ -84,7 +84,7 @@ fn suite_mode(group: &str, format: Option<Format>) {
                     );
                     continue;
                 }
-                if matches!(value, Value::Integer(_) | Value::Numeric(_))
+                if matches!(value, Value::Integer(_) | Value::Decimal(_))
                     && let (Ok(a), Ok(b)) = (
                         actual.parse::<bigdecimal::BigDecimal>(),
                         expected.parse::<bigdecimal::BigDecimal>(),

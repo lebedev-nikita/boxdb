@@ -90,7 +90,9 @@ runs synchronously on the calling thread when the query starts. The supplied
 Integer results always use `bigint`, including IDs, BOOLEAN storage values,
 write counts and `lastInsertRowid`. REAL values use `number`; other storage
 values use `null`, `string` and `Buffer`. JSON and arrays remain JSON strings;
-NUMERIC remains exact text. Bind decimal strings for exact amounts.
+DECIMAL columns and calculated decimals return exact strings. Native operators,
+aggregates, indexes, and ORDER BY use numeric decimal semantics. Bind decimal
+strings for exact amounts. NUMERIC is not supported.
 INSTANT remains canonical UTC text. The `safeIntegers` option and mode-switching
 methods are no longer supported.
 
@@ -164,24 +166,25 @@ const rows = orm.select().from(users).all();
 ```
 
 Use `orm.$migrate({ migrationsFolder: "./drizzle" })` to run Drizzle migrations.
-This uses Drizzle's migration engine without the better-sqlite3 result types,
-which assume numeric write counts. Integer columns should use `$type<bigint>()`
+This uses Drizzle's migration engine with INTEGER journal timestamps and without
+the better-sqlite3 result types, which assume numeric write counts. Integer
+columns should use `$type<bigint>()`
 to match their runtime values. Boolean column mapping is supported; for date
 mapping, use a custom decoder that accepts bigint or BoxDB's INSTANT text.
 BoxDB accepts `INTEGER` as signed 64-bit and the migration journal's `SERIAL`
 as an SQL alias for SQLite INTEGER. Other BoxDB typing rules still apply:
 unknown SQLite column types are not automatically accepted in STRICT tables,
-and NUMERIC has BoxDB's exact text semantics. Use TEXT for application strings;
+and DECIMAL uses native exact arithmetic. Use TEXT for application strings;
 use custom Drizzle column types for BoxDB-specific declarations.
 
 ## Built-in extensions
 
-Every connection includes decimal arithmetic, Unicode text functions, regular
-expressions, sqlite-vec, FTS5 and R*Tree:
+Every connection includes native decimal arithmetic, Unicode text functions,
+regular expressions, sqlite-vec, FTS5 and R*Tree:
 
 ```ts
 const db = new Database();
-const result = db.get("SELECT decimal_add(?,?) AS amount, text_lower(?) AS name", [
+const result = db.get("SELECT CAST(? AS DECIMAL)+CAST(? AS DECIMAL) AS amount, text_lower(?) AS name", [
   "0.1", "0.2", "ПРИВЕТ",
 ]);
 // { amount: "0.3", name: "привет" }

@@ -577,7 +577,9 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 .rowid
                 .map(|_| &rowid)
                 .into_iter()
-                .chain(plan.columns.iter().map(|name| &values[name].0));
+                .chain(plan.columns.iter().map(|name| &values[name].0))
+                .cloned()
+                .map(crate::decimal::WireValue::new);
             db.prepare_cached(&plan.sql)?
                 .execute(rusqlite::params_from_iter(parameters))?;
         }

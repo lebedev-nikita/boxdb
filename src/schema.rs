@@ -1,6 +1,6 @@
-//! Logical BoxDB types stored in ordinary SQLite tables. Validation triggers
-//! live in TEMP, so other SQLite clients never require BoxDB functions.
-use crate::{Error, Result, Type, Value};
+//! Logical BoxDB types and native decimal declarations. Most validation triggers
+//! live in TEMP; native decimal precision checks are part of the stored schema.
+use crate::{Error, Result, Type, Value, decimal};
 use rusqlite::{
     Connection,
     functions::FunctionFlags,
@@ -49,8 +49,7 @@ fn extension(input: &str) -> Result<Option<Type>> {
     ) {
         return Ok(None);
     }
-    // Drizzle's SQLite migration journal declares SERIAL PRIMARY KEY.
-    // Treat it as SQLite's rowid-backed INTEGER rather than a new logical type.
+    // SERIAL uses SQLite's rowid-backed INTEGER.
     if name == "SERIAL" {
         return Ok(Some(Type::Int64));
     }
@@ -62,7 +61,7 @@ fn extension(input: &str) -> Result<Option<Type>> {
                 || name == "SMALLINT"
                 || name == "BIGINT"
                 || name.starts_with("NUMERIC")
-                // Reject the removed type even in non-STRICT tables.
+                // Decimal declarations must use supported parameters.
                 || name.starts_with("DECIMAL")
                 || name.starts_with("VARCHAR")
                 || name.contains("[]") =>
@@ -97,13 +96,18 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             | Type::Uint16
             | Type::Uint32
             | Type::Boolean => "INTEGER",
+            Type::Decimal(_) => "DECIMAL",
             Type::Real => "REAL",
             Type::Bytea => "BLOB",
             _ => "TEXT",
         };
         column.data_type = DataType::Custom(ObjectName(vec![Ident::new(storage)]), vec![]);
-        // Portable constraints protect these rules even in external clients.
+        // Store constraints in the schema; decimal precision is checked by the engine.
         let check = match &ty {
+            Type::Decimal(Some((precision, scale))) => Some(format!(
+                "__boxdb_decimal_valid({},{precision},{scale})",
+                quote(&column.name.value)
+            )),
             Type::Int8 => Some(format!(
                 "{} BETWEEN -128 AND 127",
                 quote(&column.name.value)
@@ -195,12 +199,14 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
         if let AlterTableOperation::AddColumn { column_def, .. } = op {
             let original = column_def.data_type.clone();
             if let Some(ty) = translate_column(column_def)? {
-                if !main {
+                if !main && !matches!(ty, Type::Decimal(_)) {
                     return Err(Error::new(
                         "extended types require main database tables".into(),
                     ));
                 }
-                columns.push((column_def.name.value.clone(), ty));
+                if main {
+                    columns.push((column_def.name.value.clone(), ty));
+                }
             }
             rewritten |= original != column_def.data_type;
         }
@@ -324,6 +330,18 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
             ));
         }
         let ty: Type = serde_json::from_str(&text)?;
+        if matches!(ty, Type::Decimal(_)) {
+            let physical: String = db.query_row(
+                "SELECT type FROM pragma_table_xinfo(?1) WHERE name=?2",
+                rusqlite::params![table, column],
+                |row| row.get(0),
+            )?;
+            if !physical.eq_ignore_ascii_case("DECIMAL") {
+                return Err(Error::new(format!(
+                    "native DECIMAL requires DECIMAL storage: {table}.{column}"
+                )));
+            }
+        }
         ty.validate(&Value::Null)?;
         types.insert((table, column), ty);
     }
@@ -360,6 +378,14 @@ pub(crate) fn install(db: &Connection, types: &Types) -> Result<()> {
                 // strings or large blobs just to validate a write.
                 match (&ty, ctx.get_raw(0)) {
                     (_, ValueRef::Null) | (Type::Bytea, ValueRef::Blob(_)) => return Ok(1i64),
+                    (Type::Decimal(_), ValueRef::Blob(bytes)) => {
+                        let text = std::str::from_utf8(bytes)
+                            .map_err(|e| rusqlite::Error::UserFunctionError(Box::new(e)))?;
+                        return ty
+                            .cast(Value::Text(text.into()))
+                            .map(|_| 1)
+                            .map_err(|e| rusqlite::Error::UserFunctionError(Box::new(e)));
+                    }
                     (Type::Boolean, ValueRef::Integer(0 | 1)) => return Ok(1),
                     (Type::Int16, ValueRef::Integer(n)) if i16::try_from(n).is_ok() => {
                         return Ok(1);
@@ -394,12 +420,15 @@ pub(crate) fn native(value: SqlValue) -> Value {
         SqlValue::Integer(n) => Value::Integer(n),
         SqlValue::Real(n) => Value::Real(n),
         SqlValue::Text(s) => Value::Text(s),
-        SqlValue::Blob(b) => Value::Bytea(b),
+        SqlValue::Blob(b) => match decimal::decode(&b) {
+            Some(text) => Value::Decimal(text.into()),
+            None => Value::Bytea(decimal::unescape_blob(b)),
+        },
     }
 }
 pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
     let rich = match value {
-        Value::Numeric(_) => Some(Type::Numeric(None)),
+        Value::Decimal(text) => return Ok(SqlValue::Blob(decimal::encode(text)?)),
         Value::Uuid(_) => Some(Type::Uuid),
         Value::Instant(_) => Some(Type::Instant),
         _ => None,
@@ -416,7 +445,7 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
-        Value::Bytea(b) => SqlValue::Blob(b.clone()),
+        Value::Bytea(b) => SqlValue::Blob(decimal::escape_blob(b)),
         Value::Json(j) => SqlValue::Text(j.to_string()),
         Value::Array(a) => SqlValue::Text(array_json(a, 0)?.to_string()),
         _ => SqlValue::Text(value.to_string()),
@@ -440,6 +469,10 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                     Value::Boolean(b) => J::from(*b),
                     Value::Array(a) => array_json(a, depth + 1)?,
                     Value::Json(j) => j.clone(),
+                    Value::Bytea(bytes) => J::String(hex::encode(bytes)),
+                    Value::Decimal(text) => {
+                        J::String(decimal::parse(text)?.normalized().to_plain_string())
+                    }
                     _ => match encode(v)? {
                         SqlValue::Text(s) => J::String(s),
                         SqlValue::Blob(b) => J::String(hex::encode(b)),
@@ -479,6 +512,7 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
         J::String(s) if matches!(ty, Type::Bytea) => {
             return Ok(Value::Bytea(hex::decode(s).map_err(Error::validation)?));
         }
+        J::String(s) if matches!(ty, Type::Decimal(_)) => return ty.cast(Value::Text(s)),
         J::String(s) => return decode(ty, SqlValue::Text(s)),
         _ => return Err(Error::new("invalid array cell".into())),
     };
@@ -494,8 +528,12 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
             let json: serde_json::Value = serde_json::from_str(&s)?;
             array_value(&Type::Array(inner.clone()), json)
         }
-        (Type::Numeric(_), SqlValue::Text(s)) => ty.validate(&Value::Numeric(s)),
-        (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(bytes)),
+        (Type::Decimal(_), SqlValue::Blob(bytes)) => {
+            let text = decimal::decode(&bytes)
+                .ok_or_else(|| Error::new("invalid DECIMAL encoding".into()))?;
+            ty.validate(&Value::Decimal(text.into()))
+        }
+        (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(decimal::unescape_blob(bytes))),
         (Type::Varchar(limit), SqlValue::Text(text)) => {
             if limit.is_some_and(|n| text.chars().count() > n) {
                 return Err(Error::new("VARCHAR length exceeded".into()));

@@ -17,7 +17,6 @@ fn c_sources(directory: &Path) -> Vec<PathBuf> {
 fn main() {
     println!("cargo:rerun-if-changed=vendor");
     cc::Build::new()
-        .file("vendor/sqlite/decimal.c")
         .files(c_sources(Path::new("vendor/sqlean/text")))
         .files(c_sources(Path::new("vendor/sqlean/regexp")))
         .include("vendor/sqlean")

@@ -3308,13 +3308,13 @@
       "id": "insert-2.1",
       "file": "insert.test",
       "line": 90,
-      "sql": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;",
+      "sql": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;",
       "expected": [],
       "caught": false,
       "setup": "",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3332,10 +3332,10 @@
         "7.89"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3353,10 +3353,10 @@
         "-3.45"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3374,10 +3374,10 @@
         "3.45"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3390,10 +3390,10 @@
       "sql": "DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
       "expected": [],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3412,10 +3412,10 @@
         ""
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],
@@ -3439,10 +3439,10 @@
         ""
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 NUMERIC default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;INSERT INTO test2(f2,f4) VALUES(-2.22,'hi!');\nSELECT * FROM test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;INSERT INTO test2(f2,f4) VALUES(-2.22,'hi!');\nSELECT * FROM test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column explicitly NUMERIC",
+        "Fractional default column widened to DOUBLE PRECISION",
         "Bare TEXT default quoted",
         "REAL setup column widened to DOUBLE PRECISION"
       ],

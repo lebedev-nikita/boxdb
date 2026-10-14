@@ -1,30 +1,33 @@
 use boxdb::{Database, Format, SchemaFormat, Value};
 
 #[test]
-fn decimal_sql_keeps_arithmetic_aggregates_and_ordering_exact() {
+fn decimal_sql_api_exposes_only_native_rounding_and_division() {
     let mut db = Database::memory();
-    let rows = db.execute("SELECT decimal_add('9007199254740992.01','0.02'), decimal_sub('1.00','0.99'), decimal_mul('0.1','0.2'), decimal_cmp('10','2')").unwrap();
     assert_eq!(
-        rows[0].rows,
+        db.execute(
+            "SELECT name,narg FROM pragma_function_list WHERE name GLOB 'decimal*' ORDER BY name"
+        )
+        .unwrap()[0]
+            .rows,
+        vec![
+            vec![Value::Text("decimal_div".into()), Value::Integer(4)],
+            vec![Value::Text("decimal_round".into()), Value::Integer(3)],
+        ]
+    );
+    assert_eq!(
+        db.execute(
+            "SELECT decimal_round('123.456',2,'half_even'),decimal_div('1','3',2,'half_even')"
+        )
+        .unwrap()[0]
+            .rows,
         vec![vec![
-            Value::Text("9007199254740992.03".into()),
-            Value::Text("0.01".into()),
-            Value::Text("0.02".into()),
-            Value::Integer(1),
+            Value::Decimal("123.46".into()),
+            Value::Decimal("0.33".into())
         ]]
     );
-    db.execute("CREATE TABLE prices(amount NUMERIC(20,2)); INSERT INTO prices VALUES('10.00'),('2.00'),('0.10'),('0.20')").unwrap();
-    assert_eq!(
-        db.execute("SELECT decimal_sum(amount) FROM prices")
-            .unwrap()[0]
-            .rows,
-        vec![vec![Value::Text("12.30".into())]]
-    );
-    assert_eq!(
-        db.execute("SELECT amount FROM prices ORDER BY amount COLLATE decimal DESC LIMIT 1")
-            .unwrap()[0]
-            .rows,
-        vec![vec![Value::Numeric("10.00".into())]]
+    assert!(
+        db.execute("SELECT value FROM (SELECT '2' AS value) ORDER BY value COLLATE decimal")
+            .is_err()
     );
 }
 
@@ -124,7 +127,7 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
     for format in [Format::Binary, Format::Readable] {
         let path = directory.path().join(format!("{format:?}"));
         let mut db = Database::open(&path, format).unwrap();
-        db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount NUMERIC(12,2), adjusted TEXT GENERATED ALWAYS AS (decimal_add(amount,'0.10')) STORED); CREATE INDEX folded ON terms(text_lower(name)); INSERT INTO terms(name,amount) VALUES('Ёж','0.20')").unwrap();
+        db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount DECIMAL(12,2), adjusted DECIMAL(12,2) GENERATED ALWAYS AS (decimal_round(amount+CAST('0.10' AS DECIMAL),2,'half_even')) STORED); CREATE INDEX folded ON terms(text_lower(name)); INSERT INTO terms(name,amount) VALUES('Ёж','0.20')").unwrap();
         let snapshot = db.export(format).unwrap();
         drop(db);
         for mut restored in [
@@ -136,23 +139,23 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
                     .execute("SELECT adjusted FROM terms WHERE name='ёж'")
                     .unwrap()[0]
                     .rows,
-                vec![vec![Value::Text("0.30".into())]]
+                vec![vec![Value::Decimal("0.30".into())]]
             );
         }
     }
 }
 
 #[test]
-fn schema_file_exports_support_extension_functions_and_numeric_metadata() {
+fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("schema.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
-    db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount NUMERIC(12,2), adjusted TEXT GENERATED ALWAYS AS (decimal_add(amount,'0.10')) STORED); CREATE INDEX folded ON terms(text_lower(name))").unwrap();
+    db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount DECIMAL(12,2), adjusted DECIMAL(12,2) GENERATED ALWAYS AS (decimal_round(amount+CAST('0.10' AS DECIMAL),2,'half_even')) STORED); CREATE INDEX folded ON terms(text_lower(name))").unwrap();
     drop(db);
     let sql =
         String::from_utf8(Database::dump_schema_file(&path, SchemaFormat::Sql).unwrap()).unwrap();
     assert!(sql.contains("text_lower"));
-    assert!(sql.contains("Numeric"));
+    assert!(sql.contains("Decimal"));
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
     let mut restored = Database::from_snapshot(&yaml).unwrap();
     restored
@@ -163,7 +166,7 @@ fn schema_file_exports_support_extension_functions_and_numeric_metadata() {
             .execute("SELECT adjusted FROM terms WHERE name='ёж'")
             .unwrap()[0]
             .rows,
-        vec![vec![Value::Text("0.30".into())]]
+        vec![vec![Value::Decimal("0.30".into())]]
     );
 }
 

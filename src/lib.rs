@@ -30,6 +30,7 @@ pub mod migrations;
 pub mod types;
 pub use rusqlite::InterruptHandle;
 pub use types::{Type, Value};
+mod decimal;
 mod extensions;
 mod readable;
 mod schema;
@@ -609,15 +610,20 @@ impl Database {
         Ok(())
     }
     fn run(&self, sql: &str, params: &[SqlValue], typed: bool) -> Result<QueryResult> {
+        let params: Vec<_> = params
+            .iter()
+            .cloned()
+            .map(decimal::WireValue::new)
+            .collect();
         let mut statement = self.connection.prepare_cached(sql)?;
         let before = self.connection.total_changes();
         let readonly = statement.readonly();
         let mut rows = vec![];
         if statement.column_count() == 0 {
-            statement.execute(rusqlite::params_from_iter(params))?;
+            statement.execute(rusqlite::params_from_iter(&params))?;
         } else {
             let mut hints: Option<Rc<[Option<Type>]>> = None;
-            let mut cursor = statement.query(rusqlite::params_from_iter(params))?;
+            let mut cursor = statement.query(rusqlite::params_from_iter(&params))?;
             while let Some(row) = cursor.next()? {
                 // SQLite may reprepare a cached statement on its first step.
                 // Read metadata after that step, including a changed SELECT *.

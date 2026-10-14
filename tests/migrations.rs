@@ -35,7 +35,7 @@ fn up_preserves_extended_types_and_does_not_apply_a_version_twice() {
     migration(
         &dir,
         "20261014000000",
-        "CREATE TABLE events(id INT64 PRIMARY KEY,at INSTANT,n NUMERIC(12,2)); INSERT INTO events VALUES(1,'2024-01-01T00:00:00Z','12.50');",
+        "CREATE TABLE events(id INT64 PRIMARY KEY,at INSTANT,n DECIMAL(12,2)); INSERT INTO events VALUES(1,'2024-01-01T00:00:00Z','12.50');",
         "DROP TABLE events;",
     );
     for _ in 0..2 {
@@ -56,7 +56,7 @@ fn up_preserves_extended_types_and_does_not_apply_a_version_twice() {
     let result: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(
         result["rows"],
-        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Numeric":"12.50"}]])
+        serde_json::json!([[{"Instant":"2024-01-01T00:00:00.000000000Z"},{"Decimal":"12.50"}]])
     );
 }
 

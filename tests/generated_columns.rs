@@ -118,7 +118,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
             amount_source TEXT,
             enabled BOOLEAN AS (json_extract(payload,'$.enabled')),
             code UINT8 AS (enabled+7) STORED,
-            amount NUMERIC(6,2) AS (amount_source) STORED
+            amount DECIMAL(6,2) AS (amount_source) STORED
         );
         INSERT INTO derived(id,payload,amount_source) VALUES(1,'{\"enabled\":1}','12.50')",
     )
@@ -150,7 +150,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
             vec![vec![
                 Value::Boolean(true),
                 Value::UnsignedInteger(8),
-                Value::Numeric("12.50".into())
+                Value::Decimal("12.50".into())
             ]],
             "{format:?}"
         );
@@ -170,7 +170,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
             vec![vec![
                 Value::Boolean(false),
                 Value::UnsignedInteger(7),
-                Value::Numeric("20.00".into())
+                Value::Decimal("20.00".into())
             ]],
             "{format:?}"
         );
@@ -183,8 +183,8 @@ fn failed_generated_column_additions_leave_the_existing_schema_usable() {
     db.execute("CREATE TABLE amounts(input TEXT); INSERT INTO amounts VALUES('12.50'),('1.234')")
         .unwrap();
     for definition in [
-        "amount NUMERIC(6,2) AS (input)",
-        "amount NUMERIC(6,2) AS (input) STORED",
+        "amount DECIMAL(6,2) AS (input)",
+        "amount DECIMAL(6,2) AS (input) STORED",
     ] {
         assert!(
             db.execute(&format!("ALTER TABLE amounts ADD COLUMN {definition}"))
@@ -200,15 +200,15 @@ fn failed_generated_column_additions_leave_the_existing_schema_usable() {
             ]
         );
     }
-    db.execute("UPDATE amounts SET input='1.23' WHERE input='1.234'; ALTER TABLE amounts ADD COLUMN amount NUMERIC(6,2) AS (input)")
+    db.execute("UPDATE amounts SET input='1.23' WHERE input='1.234'; ALTER TABLE amounts ADD COLUMN amount DECIMAL(6,2) AS (input)")
         .unwrap();
     assert_eq!(
         db.execute("SELECT amount FROM amounts ORDER BY input")
             .unwrap()[0]
             .rows,
         vec![
-            vec![Value::Numeric("1.23".into())],
-            vec![Value::Numeric("12.50".into())]
+            vec![Value::Decimal("1.23".into())],
+            vec![Value::Decimal("12.50".into())]
         ]
     );
 }
@@ -219,14 +219,14 @@ fn adding_and_renaming_generated_columns_preserves_values_and_logical_types() {
     db.execute(
         "CREATE TABLE amounts(id INT64 PRIMARY KEY,input TEXT);
         INSERT INTO amounts VALUES(1,'12.50'),(2,NULL);
-        ALTER TABLE amounts ADD COLUMN amount NUMERIC(6,2) AS (input)",
+        ALTER TABLE amounts ADD COLUMN amount DECIMAL(6,2) AS (input)",
     )
     .unwrap();
     assert_eq!(
         db.execute("SELECT amount FROM amounts ORDER BY id")
             .unwrap()[0]
             .rows,
-        vec![vec![Value::Numeric("12.50".into())], vec![Value::Null]]
+        vec![vec![Value::Decimal("12.50".into())], vec![Value::Null]]
     );
     db.execute(
         "ALTER TABLE amounts RENAME COLUMN input TO source;
@@ -239,7 +239,7 @@ fn adding_and_renaming_generated_columns_preserves_values_and_logical_types() {
         db.execute("SELECT computed AS amount FROM prices ORDER BY id")
             .unwrap()[0]
             .rows,
-        vec![vec![Value::Numeric("25.75".into())], vec![Value::Null]]
+        vec![vec![Value::Decimal("25.75".into())], vec![Value::Null]]
     );
     assert!(
         db.execute("UPDATE prices SET source='25.751' WHERE id=1")
@@ -251,7 +251,7 @@ fn adding_and_renaming_generated_columns_preserves_values_and_logical_types() {
             .rows,
         vec![vec![
             Value::Text("25.75".into()),
-            Value::Numeric("25.75".into())
+            Value::Decimal("25.75".into())
         ]]
     );
 }
@@ -359,9 +359,9 @@ fn generated_columns_apply_logical_types_to_reads_and_atomic_writes() {
             Value::Text("long".into()),
         ),
         (
-            "NUMERIC(6,2)",
+            "DECIMAL(6,2)",
             Value::Text("12.50".into()),
-            Value::Numeric("12.50".into()),
+            Value::Decimal("12.50".into()),
             Value::Text("12.345".into()),
         ),
         (
