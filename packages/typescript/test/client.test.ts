@@ -25,6 +25,103 @@ afterEach(() => {
 });
 
 describe("query interface", () => {
+  it("preserves SQLite UNIQUE error codes and the native cause", () => {
+    const db = open();
+    db.exec("CREATE TABLE users(name TEXT UNIQUE); INSERT INTO users VALUES('Ada')");
+    expect(() => db.run("INSERT INTO users VALUES(?)", ["Ada"])).toThrowError(
+      expect.objectContaining({
+        name: "BoxDBError",
+        message: "UNIQUE constraint failed: users.name",
+        code: "SQLITE_CONSTRAINT_UNIQUE",
+        sqliteCode: 19,
+        sqliteExtendedCode: 2067,
+        cause: expect.objectContaining({
+          code: "SQLITE_CONSTRAINT_UNIQUE",
+          sqliteCode: 19,
+          sqliteExtendedCode: 2067,
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ["INSERT INTO t VALUES(1,'Grace',1)", "SQLITE_CONSTRAINT_PRIMARYKEY", 1555],
+    ["INSERT INTO t VALUES(2,NULL,1)", "SQLITE_CONSTRAINT_NOTNULL", 1299],
+    ["INSERT INTO t VALUES(2,'Grace',0)", "SQLITE_CONSTRAINT_CHECK", 275],
+    ["SELECT * FROM missing", "SQLITE_ERROR", 1],
+    ["SELECT FROM", "SQLITE_ERROR", 1],
+  ])("exposes structured errors from query: %s", (sql, code, extended) => {
+    const db = open();
+    db.exec(
+      "CREATE TABLE t(id INTEGER PRIMARY KEY,name TEXT NOT NULL,n INTEGER CHECK(n>0)); INSERT INTO t VALUES(1,'Ada',1)",
+    );
+    expect(() => db.query(sql)).toThrowError(
+      expect.objectContaining({
+        code,
+        sqliteCode: extended === 1 ? 1 : 19,
+        sqliteExtendedCode: extended,
+      }),
+    );
+  });
+
+  it.each(["binary", "readable"] as const)(
+    "preserves deferred foreign-key codes from %s scripts",
+    (format) => {
+      const db = open(join(directory(), "data.db"), { format });
+      db.exec(
+        "CREATE TABLE parents(id INTEGER PRIMARY KEY); CREATE TABLE children(parent INTEGER REFERENCES parents(id) DEFERRABLE INITIALLY DEFERRED)",
+      );
+      expect(() => db.exec("INSERT INTO children VALUES(99)")).toThrowError(
+        expect.objectContaining({
+          code: "SQLITE_CONSTRAINT_FOREIGNKEY",
+          sqliteCode: 19,
+          sqliteExtendedCode: 787,
+        }),
+      );
+    },
+  );
+
+  it("keeps BoxDB failures distinct from SQLite errors", () => {
+    const db = open();
+    expect(() => db.prepare("SELECT 1; SELECT 2")).toThrowError(
+      expect.objectContaining({
+        code: "BOXDB_ERROR",
+        sqliteCode: undefined,
+        sqliteExtendedCode: undefined,
+      }),
+    );
+    db.close();
+    expect(() => db.get("SELECT 1")).toThrowError(
+      expect.objectContaining({ code: "BOXDB_ERROR", cause: expect.any(Error) }),
+    );
+  });
+
+  it("preserves SQLite codes when opening a database fails", () => {
+    expect(() => new Database(join(directory(), "missing", "data.db"))).toThrowError(
+      expect.objectContaining({ code: "SQLITE_CANTOPEN", sqliteCode: 14, sqliteExtendedCode: 14 }),
+    );
+  });
+
+  it("distinguishes busy and read-only SQLite failures", () => {
+    const path = join(directory(), "data.db");
+    const writer = open(path);
+    writer.exec("CREATE TABLE t(n INTEGER)");
+    const db = open(path);
+    db.pragma("busy_timeout = 0");
+    writer.exec("BEGIN IMMEDIATE");
+    try {
+      expect(() => db.run("INSERT INTO t VALUES(1)")).toThrowError(
+        expect.objectContaining({ code: "SQLITE_BUSY", sqliteCode: 5, sqliteExtendedCode: 5 }),
+      );
+    } finally {
+      writer.exec("ROLLBACK");
+    }
+    db.pragma("query_only = ON");
+    expect(() => db.run("INSERT INTO t VALUES(1)")).toThrowError(
+      expect.objectContaining({ code: "SQLITE_READONLY", sqliteCode: 8, sqliteExtendedCode: 8 }),
+    );
+  });
+
   it("provides decimal, Unicode, regexp, vector, full-text and spatial extensions", () => {
     const db = open();
     expect(

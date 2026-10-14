@@ -30,11 +30,22 @@ export interface Transaction<A extends unknown[], R> {
   exclusive: (...args: A) => R;
 }
 
+export interface BoxDBErrorOptions extends ErrorOptions {
+  code?: string;
+  sqliteCode?: number;
+  sqliteExtendedCode?: number;
+}
+
 export class BoxDBError extends Error {
-  readonly code = "BOXDB_ERROR";
-  constructor(message: string, options?: ErrorOptions) {
+  readonly code: string;
+  readonly sqliteCode: number | undefined;
+  readonly sqliteExtendedCode: number | undefined;
+  constructor(message: string, options?: BoxDBErrorOptions) {
     super(message, options);
     this.name = "BoxDBError";
+    this.code = options?.code ?? "BOXDB_ERROR";
+    this.sqliteCode = options?.sqliteCode;
+    this.sqliteExtendedCode = options?.sqliteExtendedCode;
   }
 }
 
@@ -43,7 +54,19 @@ function call<T>(operation: () => T): T {
     return operation();
   } catch (error) {
     if (error instanceof BoxDBError) throw error;
-    throw new BoxDBError(error instanceof Error ? error.message : String(error), { cause: error });
+    const options: BoxDBErrorOptions = { cause: error };
+    if (
+      record(error) &&
+      typeof error.code === "string" &&
+      error.code.startsWith("SQLITE_") &&
+      typeof error.sqliteCode === "number" &&
+      typeof error.sqliteExtendedCode === "number"
+    ) {
+      options.code = error.code;
+      options.sqliteCode = error.sqliteCode;
+      options.sqliteExtendedCode = error.sqliteExtendedCode;
+    }
+    throw new BoxDBError(error instanceof Error ? error.message : String(error), options);
   }
 }
 

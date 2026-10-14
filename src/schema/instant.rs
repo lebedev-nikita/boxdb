@@ -162,7 +162,7 @@ pub(super) fn install(db: &Connection, types: &Types) -> Result<()> {
                         connection
                             .query_row(&check, rusqlite::params_from_iter(&params), |r| r.get(0))?;
                     if dirty {
-                        return Err(rusqlite::Error::UserFunctionError(Box::new(Error(
+                        return Err(rusqlite::Error::UserFunctionError(Box::new(Error::new(
                             "INSTANT normalization failed".into(),
                         ))));
                     }
@@ -209,7 +209,7 @@ pub(crate) fn normalize(db: &Connection, types: &Types) -> Result<()> {
             |r| r.get(0),
         )?;
         if dirty {
-            return Err(Error("generated INSTANT must be canonical UTC".into()));
+            return Err(Error::new("generated INSTANT must be canonical UTC".into()));
         }
     }
     Ok(())

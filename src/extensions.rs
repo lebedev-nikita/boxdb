@@ -27,9 +27,10 @@ pub(crate) fn register(db: &Connection) -> Result<()> {
         // SAFETY: the statically linked modules use this live SQLite connection.
         let code = unsafe { init(db.handle()) };
         if code != ffi::SQLITE_OK {
-            return Err(Error(format!(
-                "cannot register {name} extension: SQLite error {code}"
-            )));
+            return Err(Error::sqlite(
+                code,
+                format!("cannot register {name} extension: SQLite error {code}"),
+            ));
         }
     }
     register_api(db, "decimal", sqlite3_decimal_init)?;
@@ -57,7 +58,10 @@ fn register_api(db: &Connection, name: &str, init: ExtensionInit) -> Result<()> 
         }
     };
     if code != ffi::SQLITE_OK {
-        return Err(Error(format!("cannot register {name} extension: {detail}")));
+        return Err(Error::sqlite(
+            code,
+            format!("cannot register {name} extension: {detail}"),
+        ));
     }
     Ok(())
 }

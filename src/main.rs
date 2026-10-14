@@ -154,7 +154,7 @@ fn run(cli: Cli) -> Result<()> {
                     println!("\n{applied} applied, {} pending", statuses.len() - applied);
                 }
                 if check && statuses.iter().any(|s| s.state == MigrationState::Pending) {
-                    return Err(Error("pending migrations".into()));
+                    return Err(Error::new("pending migrations".into()));
                 }
                 Ok(())
             }
@@ -167,7 +167,7 @@ fn run(cli: Cli) -> Result<()> {
                     },
             } => {
                 if !database.is_file() {
-                    return Err(Error("database not found".into()));
+                    return Err(Error::new("database not found".into()));
                 }
                 let migrations = MigrationSet::read(dir)?;
                 let mut db = Database::open(database, Format::Binary)?;
@@ -208,7 +208,7 @@ fn run(cli: Cli) -> Result<()> {
                 format,
             } => {
                 if !source.is_file() {
-                    return Err(Error("source database not found".into()));
+                    return Err(Error::new("source database not found".into()));
                 }
                 let db = Database::open(&source, Format::Binary)?;
                 Database::restore(destination, &db.export(format)?)?;
@@ -239,12 +239,14 @@ fn run(cli: Cli) -> Result<()> {
                     "   ...> "
                 }
             );
-            io::stdout().flush().map_err(|e| Error(e.to_string()))?;
+            io::stdout()
+                .flush()
+                .map_err(|e| Error::new(e.to_string()))?;
         }
         let mut line = String::new();
         if input
             .read_line(&mut line)
-            .map_err(|e| Error(e.to_string()))?
+            .map_err(|e| Error::new(e.to_string()))?
             == 0
         {
             break;
@@ -267,7 +269,7 @@ fn run(cli: Cli) -> Result<()> {
                     cli.json,
                 )?,
                 _ if interactive => eprintln!("unknown command; use .help"),
-                _ => return Err(Error("unknown shell command".into())),
+                _ => return Err(Error::new("unknown shell command".into())),
             }
             continue;
         }
@@ -308,7 +310,7 @@ fn print_result(result: &QueryResult, json: bool) -> Result<()> {
     if json {
         println!(
             "{}",
-            serde_json::to_string(result).map_err(|e| Error(e.to_string()))?
+            serde_json::to_string(result).map_err(|e| Error::new(e.to_string()))?
         );
     } else {
         println!("{}", result.columns.join("\t"));

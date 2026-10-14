@@ -52,7 +52,7 @@ impl MigrationSet {
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
         {
-            return Err(Error(
+            return Err(Error::new(
                 "migration name must use lowercase letters, digits and underscores".into(),
             ));
         }
@@ -74,9 +74,9 @@ impl MigrationSet {
         }
         if latest.as_str() >= time.format("%Y%m%d%H%M%S").to_string().as_str() {
             time = chrono::NaiveDateTime::parse_from_str(&latest, "%Y%m%d%H%M%S")
-                .map_err(|e| Error(e.to_string()))?
+                .map_err(|e| Error::new(e.to_string()))?
                 .checked_add_signed(chrono::Duration::seconds(1))
-                .ok_or_else(|| Error("migration version overflow".into()))?;
+                .ok_or_else(|| Error::new("migration version overflow".into()))?;
         }
         loop {
             let path = directory.join(format!("{}_{}.sql", time.format("%Y%m%d%H%M%S"), name));
@@ -92,7 +92,7 @@ impl MigrationSet {
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     time = time
                         .checked_add_signed(chrono::Duration::seconds(1))
-                        .ok_or_else(|| Error("migration version overflow".into()))?;
+                        .ok_or_else(|| Error::new("migration version overflow".into()))?;
                 }
                 Err(e) => return Err(e.into()),
             }
@@ -131,9 +131,11 @@ impl MigrationSet {
                 .binary_search_by(|m| m.info.version.cmp(version))
                 .ok()
                 .map(|index| &self.migrations[index])
-                .ok_or_else(|| Error(format!("missing applied migration: {version}")))?;
+                .ok_or_else(|| Error::new(format!("missing applied migration: {version}")))?;
             if &migration.checksum != checksum || &migration.info.name != name {
-                return Err(Error(format!("applied migration has changed: {version}")));
+                return Err(Error::new(format!(
+                    "applied migration has changed: {version}"
+                )));
             }
         }
         if let Some(latest) = applied.keys().next_back()
@@ -142,7 +144,7 @@ impl MigrationSet {
                 .iter()
                 .find(|m| m.info.version < *latest && !applied.contains_key(&m.info.version))
         {
-            return Err(Error(format!(
+            return Err(Error::new(format!(
                 "out-of-order migration: {} precedes applied version {latest}",
                 migration.info.version
             )));
@@ -171,28 +173,28 @@ impl MigrationSet {
             let stem = path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| Error("invalid migration filename".into()))?;
+                .ok_or_else(|| Error::new("invalid migration filename".into()))?;
             let (version, name) = stem
                 .split_once('_')
-                .ok_or_else(|| Error(format!("invalid migration filename: {stem}")))?;
+                .ok_or_else(|| Error::new(format!("invalid migration filename: {stem}")))?;
             if version.len() != 14
                 || !version.bytes().all(|b| b.is_ascii_digit())
                 || name.is_empty()
             {
-                return Err(Error(format!(
+                return Err(Error::new(format!(
                     "expected VERSION_NAME.sql with a 14-digit version: {stem}"
                 )));
             }
             let sql = fs::read_to_string(&path)?.replace("\r\n", "\n");
             let (up, down) =
-                sections(&sql).map_err(|e| Error(format!("migration {version}: {e}")))?;
+                sections(&sql).map_err(|e| e.with_context(format!("migration {version}")))?;
             if !has_sql(up)? {
-                return Err(Error(format!(
+                return Err(Error::new(format!(
                     "migration {version}: empty migrate:up section"
                 )));
             }
-            validate_sql(up).map_err(|e| Error(format!("migration {version} up: {e}")))?;
-            validate_sql(down).map_err(|e| Error(format!("migration {version} down: {e}")))?;
+            validate_sql(up).map_err(|e| e.with_context(format!("migration {version} up")))?;
+            validate_sql(down).map_err(|e| e.with_context(format!("migration {version} down")))?;
             migrations.push(Migration {
                 info: MigrationInfo {
                     version: version.into(),
@@ -206,7 +208,7 @@ impl MigrationSet {
         migrations.sort_by(|a, b| a.info.version.cmp(&b.info.version));
         for pair in migrations.windows(2) {
             if pair[0].info.version == pair[1].info.version {
-                return Err(Error(format!(
+                return Err(Error::new(format!(
                     "duplicate migration version: {}",
                     pair[0].info.version
                 )));
@@ -259,8 +261,9 @@ impl MigrationSet {
                     db.execute("COMMIT")?;
                     Ok(())
                 })();
-                apply
-                    .map_err(|e| Error(format!("migration {} up: {e}", migration.info.version)))?;
+                apply.map_err(|e| {
+                    e.with_context(format!("migration {} up", migration.info.version))
+                })?;
                 Ok(Some(migration.info.clone()))
             })();
             match result {
@@ -305,14 +308,14 @@ impl MigrationSet {
                 .migrations
                 .iter()
                 .find(|m| m.info.version == version)
-                .ok_or_else(|| Error(format!("missing applied migration: {version}")))?;
+                .ok_or_else(|| Error::new(format!("missing applied migration: {version}")))?;
             if !has_sql(&migration.down)? {
-                return Err(Error(format!(
+                return Err(Error::new(format!(
                     "migration {version}: empty migrate:down section; cannot roll back"
                 )));
             }
             execute_sql(db, &migration.down)
-                .map_err(|e| Error(format!("migration {version} down: {e}")))?;
+                .map_err(|e| e.with_context(format!("migration {version} down")))?;
             {
                 let _guard = InternalGuard::enter(&db.internal);
                 db.connection.execute(
@@ -346,7 +349,7 @@ fn validate_sql(sql: &str) -> Result<()> {
                 | "DETACH"
                 | "PRAGMA"
         ) {
-            return Err(Error(format!(
+            return Err(Error::new(format!(
                 "{keyword} is not allowed inside a migration; BoxDB manages the connection and transaction"
             )));
         }
@@ -374,7 +377,7 @@ fn sections(sql: &str) -> Result<(&str, &str)> {
     };
     let tokens = Tokenizer::new(&SQLiteDialect {}, sql)
         .tokenize_with_location()
-        .map_err(|e| Error(e.to_string()))?;
+        .map_err(|e| Error::new(e.to_string()))?;
     let mut offsets = vec![0];
     for (i, byte) in sql.bytes().enumerate() {
         if byte == b'\n' {
@@ -406,7 +409,7 @@ fn sections(sql: &str) -> Result<(&str, &str)> {
         // A comment inside an unfinished trigger body is SQL, not a directive.
         if !crate::schema::keyword(previous).is_empty() {
             let text = std::ffi::CString::new(format!("{previous};"))
-                .map_err(|_| Error("SQL contains NUL".into()))?;
+                .map_err(|_| Error::new("SQL contains NUL".into()))?;
             // SAFETY: CString remains alive and is NUL-terminated.
             if unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) } == 0 {
                 continue;
@@ -414,14 +417,14 @@ fn sections(sql: &str) -> Result<(&str, &str)> {
         }
         match comment.trim() {
             "migrate:up" if up_start.is_none() && down_range.is_none() => {
-                if !crate::schema::keyword(&sql[..start]).is_empty() { return Err(Error("SQL before migrate:up".into())); }
+                if !crate::schema::keyword(&sql[..start]).is_empty() { return Err(Error::new("SQL before migrate:up".into())); }
                 up_start = Some(end);
             },
             "migrate:down" if up_start.is_some() && down_range.is_none() => down_range = Some((start, end)),
-            _ => return Err(Error("expected exactly one migrate:up followed by migrate:down; directive options are unsupported".into())),
+            _ => return Err(Error::new("expected exactly one migrate:up followed by migrate:down; directive options are unsupported".into())),
         }
     }
-    let start = up_start.ok_or_else(|| Error("missing migrate:up".into()))?;
-    let (end, down) = down_range.ok_or_else(|| Error("missing migrate:down".into()))?;
+    let start = up_start.ok_or_else(|| Error::new("missing migrate:up".into()))?;
+    let (end, down) = down_range.ok_or_else(|| Error::new("missing migrate:down".into()))?;
     Ok((&sql[start..end], &sql[down..]))
 }

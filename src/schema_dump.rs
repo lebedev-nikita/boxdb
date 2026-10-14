@@ -10,7 +10,9 @@ pub enum SchemaFormat {
 
 pub(crate) fn dump(db: &Connection, format: SchemaFormat) -> Result<Vec<u8>> {
     if !db.is_autocommit() {
-        return Err(Error("schema dump requires no active transaction".into()));
+        return Err(Error::new(
+            "schema dump requires no active transaction".into(),
+        ));
     }
     let transaction = db.unchecked_transaction()?;
     schema::load(&transaction)?;
@@ -39,7 +41,9 @@ fn sql(db: &Connection) -> Result<Vec<u8>> {
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (_, _, sql) in &objects {
         if sql.to_ascii_uppercase().starts_with("CREATE VIRTUAL TABLE") {
-            return Err(Error("schema dump of virtual tables is unsupported".into()));
+            return Err(Error::new(
+                "schema dump of virtual tables is unsupported".into(),
+            ));
         }
         output.push_str(sql);
         output.push_str(";\n");
@@ -81,7 +85,7 @@ fn sql(db: &Connection) -> Result<Vec<u8>> {
     }
     output.push_str("COMMIT;\n");
     if output.len() > storage::MAX_SNAPSHOT {
-        return Err(Error("schema dump exceeds 256 MiB limit".into()));
+        return Err(Error::new("schema dump exceeds 256 MiB limit".into()));
     }
     Ok(output.into_bytes())
 }
@@ -91,7 +95,7 @@ fn literal(value: Value) -> Result<String> {
         Value::Null => "NULL".into(),
         Value::Integer(n) => n.to_string(),
         Value::Real(n) if n.is_finite() => n.to_string(),
-        Value::Real(_) => return Err(Error("non-finite schema metadata value".into())),
+        Value::Real(_) => return Err(Error::new("non-finite schema metadata value".into())),
         Value::Text(text) if text.contains('\0') => {
             format!("CAST(X'{}' AS TEXT)", hex::encode(text))
         }

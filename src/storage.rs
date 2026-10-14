@@ -42,7 +42,7 @@ impl ReadableFile {
         } else {
             fs::canonicalize(parent)?.join(
                 path.file_name()
-                    .ok_or_else(|| Error("invalid path".into()))?,
+                    .ok_or_else(|| Error::new("invalid path".into()))?,
             )
         };
         let mut lock = path.as_os_str().to_os_string();
@@ -54,7 +54,7 @@ impl ReadableFile {
             .truncate(false)
             .open(PathBuf::from(lock))?;
         lock.try_lock_exclusive()
-            .map_err(|_| Error("readable database is locked".into()))?;
+            .map_err(|_| Error::new("readable database is locked".into()))?;
         Ok(Self {
             path,
             _lock: lock,
@@ -77,7 +77,8 @@ impl ReadableFile {
                 writer.flush()?;
             }
             temp.as_file().sync_all()?;
-            temp.persist(&self.path).map_err(|e| Error(e.to_string()))?;
+            temp.persist(&self.path)
+                .map_err(|e| Error::new(e.to_string()))?;
             File::open(parent)?.sync_all()?;
             Ok(())
         })
@@ -87,14 +88,14 @@ pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<
     let backup = Backup::new(source, destination)?;
     match backup.step(-1)? {
         StepResult::Done => Ok(()),
-        _ => Err(Error(
+        _ => Err(Error::new(
             "SQLite snapshot is busy; retry after the transaction completes".into(),
         )),
     }
 }
 pub(crate) fn snapshot(db: &Connection) -> Result<Vec<u8>> {
     if !db.is_autocommit() {
-        return Err(Error("export requires no active transaction".into()));
+        return Err(Error::new("export requires no active transaction".into()));
     }
     let temp = tempfile::NamedTempFile::new()?;
     let mut target = Connection::open(temp.path())?;
@@ -102,16 +103,18 @@ pub(crate) fn snapshot(db: &Connection) -> Result<Vec<u8>> {
     target.pragma_update(None, "journal_mode", "DELETE")?;
     drop(target);
     if fs::metadata(temp.path())?.len() > MAX_SNAPSHOT as u64 {
-        return Err(Error("snapshot exceeds 256 MiB limit".into()));
+        return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
     }
     Ok(fs::read(temp.path())?)
 }
 pub(crate) fn import(bytes: &[u8]) -> Result<Connection> {
     if bytes.len() > MAX_SNAPSHOT {
-        return Err(Error("snapshot exceeds 256 MiB limit".into()));
+        return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
     }
     if bytes.starts_with(b"BOXDB\0") {
-        return Err(Error("obsolete BoxDB binary format is unsupported".into()));
+        return Err(Error::new(
+            "obsolete BoxDB binary format is unsupported".into(),
+        ));
     }
     if !bytes.starts_with(SQLITE_HEADER) {
         return readable::decode(bytes);
@@ -122,7 +125,7 @@ pub(crate) fn import(bytes: &[u8]) -> Result<Connection> {
     crate::extensions::register(&source)?;
     let check: String = source.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
     if check != "ok" {
-        return Err(Error(format!("invalid SQLite snapshot: {check}")));
+        return Err(Error::new(format!("invalid SQLite snapshot: {check}")));
     }
     let mut destination = Connection::open_in_memory()?;
     crate::extensions::register(&destination)?;
@@ -145,7 +148,10 @@ pub(crate) fn data_version(db: &Connection) -> Result<u32> {
         )
     };
     if code != rusqlite::ffi::SQLITE_OK {
-        return Err(Error(format!("cannot inspect SQLite pager: {code}")));
+        return Err(Error::sqlite(
+            code,
+            format!("cannot inspect SQLite pager: {code}"),
+        ));
     }
     Ok(version)
 }
@@ -167,12 +173,16 @@ pub(crate) fn check_commit_constraints(db: &Connection) -> Result<()> {
         )
     };
     if code != rusqlite::ffi::SQLITE_OK {
-        return Err(Error(format!(
-            "cannot inspect pending SQLite constraints: {code}"
-        )));
+        return Err(Error::sqlite(
+            code,
+            format!("cannot inspect pending SQLite constraints: {code}"),
+        ));
     }
     if unresolved != 0 {
-        return Err(Error("FOREIGN KEY constraint failed".into()));
+        return Err(Error::sqlite(
+            rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY,
+            "FOREIGN KEY constraint failed".into(),
+        ));
     }
     Ok(())
 }
