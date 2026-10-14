@@ -1,4 +1,7 @@
-use boxdb::{Database, Error, Format, QueryResult, Result};
+use boxdb::{
+    Database, Error, Format, QueryResult, Result, SchemaFormat,
+    migrations::{MigrationSet, MigrationState},
+};
 use clap::{Parser, Subcommand};
 use std::{
     io::{self, BufRead, IsTerminal, Write},
@@ -30,12 +33,69 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect and export database schemas.
+    Schema {
+        #[command(subcommand)]
+        command: SchemaCommand,
+    },
+    /// Create and apply versioned SQL migrations.
+    Migrate {
+        #[command(subcommand)]
+        command: MigrationCommand,
+    },
     /// Copy a database into a different storage format. Destination must be new.
     Convert {
         source: PathBuf,
         destination: PathBuf,
         #[arg(long, value_enum)]
         format: Format,
+    },
+}
+#[derive(Subcommand)]
+enum SchemaCommand {
+    /// Export schema and type metadata without application rows.
+    Dump {
+        database: PathBuf,
+        #[arg(long, value_enum, default_value = "sql")]
+        format: SchemaFormat,
+    },
+}
+#[derive(Subcommand)]
+enum MigrationCommand {
+    /// Create a VERSION_NAME.sql template without opening a database.
+    New {
+        name: String,
+        #[arg(long, default_value = "db/migrations")]
+        dir: PathBuf,
+    },
+    /// List applied and pending migrations without changing the database.
+    Status {
+        database: PathBuf,
+        #[arg(long, default_value = "db/migrations")]
+        dir: PathBuf,
+        #[arg(long)]
+        json: bool,
+        /// Exit with status 1 if migrations are pending.
+        #[arg(long)]
+        check: bool,
+    },
+    /// Roll back the latest applied migration. The database must exist.
+    Down {
+        database: PathBuf,
+        #[arg(long, default_value = "db/migrations")]
+        dir: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Apply all pending migrations, creating the database if necessary.
+    Up {
+        database: PathBuf,
+        #[arg(long, default_value = "db/migrations")]
+        dir: PathBuf,
+        #[arg(long, value_enum, default_value = "binary")]
+        format: Format,
+        #[arg(long)]
+        json: bool,
     },
 }
 fn main() {
@@ -47,6 +107,101 @@ fn main() {
 fn run(cli: Cli) -> Result<()> {
     if let Some(command) = cli.command {
         return match command {
+            Command::Schema {
+                command: SchemaCommand::Dump { database, format },
+            } => {
+                io::stdout()
+                    .lock()
+                    .write_all(&Database::dump_schema_file(database, format)?)?;
+                Ok(())
+            }
+            Command::Migrate {
+                command: MigrationCommand::New { name, dir },
+            } => {
+                println!("{}", MigrationSet::create(dir, &name)?.display());
+                Ok(())
+            }
+            Command::Migrate {
+                command:
+                    MigrationCommand::Status {
+                        database,
+                        dir,
+                        json,
+                        check,
+                    },
+            } => {
+                let statuses = MigrationSet::read(dir)?.status_file(database)?;
+                if json {
+                    println!("{}", serde_json::to_string(&statuses)?);
+                } else {
+                    println!("VERSION\tNAME\tSTATE");
+                    for status in &statuses {
+                        println!(
+                            "{}\t{}\t{}",
+                            status.migration.version,
+                            status.migration.name,
+                            if status.state == MigrationState::Applied {
+                                "applied"
+                            } else {
+                                "pending"
+                            }
+                        );
+                    }
+                    let applied = statuses
+                        .iter()
+                        .filter(|s| s.state == MigrationState::Applied)
+                        .count();
+                    println!("\n{applied} applied, {} pending", statuses.len() - applied);
+                }
+                if check && statuses.iter().any(|s| s.state == MigrationState::Pending) {
+                    return Err(Error("pending migrations".into()));
+                }
+                Ok(())
+            }
+            Command::Migrate {
+                command:
+                    MigrationCommand::Down {
+                        database,
+                        dir,
+                        json,
+                    },
+            } => {
+                if !database.is_file() {
+                    return Err(Error("database not found".into()));
+                }
+                let migrations = MigrationSet::read(dir)?;
+                let mut db = Database::open(database, Format::Binary)?;
+                let reverted: Vec<_> = migrations.down(&mut db)?.into_iter().collect();
+                if json {
+                    println!("{}", serde_json::to_string(&reverted)?);
+                } else {
+                    for migration in reverted {
+                        println!("Reverted {} {}", migration.version, migration.name);
+                    }
+                }
+                Ok(())
+            }
+            Command::Migrate {
+                command:
+                    MigrationCommand::Up {
+                        database,
+                        dir,
+                        format,
+                        json,
+                    },
+            } => {
+                let migrations = MigrationSet::read(dir)?;
+                let mut db = Database::open(database, format)?;
+                let applied = migrations.up(&mut db)?;
+                if json {
+                    println!("{}", serde_json::to_string(&applied)?);
+                } else {
+                    for migration in applied {
+                        println!("Applied {} {}", migration.version, migration.name);
+                    }
+                }
+                Ok(())
+            }
             Command::Convert {
                 source,
                 destination,

@@ -28,6 +28,23 @@ boxdb data.db -e "
 Run `boxdb data.db` for the interactive shell; `.help` lists shell commands.
 Use `boxdb --help` for CLI options, including JSON output and format conversion.
 
+## Migrations and schema export
+
+```sh
+boxdb migrate new create_accounts
+# Edit the generated SQL file, then:
+boxdb migrate up data.db
+boxdb migrate status data.db --check
+boxdb migrate down data.db
+boxdb schema dump data.db > schema.sql
+boxdb schema dump data.db --format=yaml > schema.yaml
+```
+
+Migrations run through BoxDB and preserve extended types. Each version commits
+atomically; applied files are checked for changes. Schema dumps include type and
+migration metadata without application rows. SQL is the default export format;
+YAML uses the readable database stream. See [migration and restoration usage](docs/migrations.md).
+
 ## SQL and types
 
 SQLite executes queries directly. Tables created through BoxDB are STRICT by
