@@ -625,10 +625,10 @@
         "11"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -641,10 +641,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -658,10 +658,10 @@
         "11"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -675,10 +675,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -692,10 +692,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -711,10 +711,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -730,10 +730,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -751,10 +751,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -770,10 +770,10 @@
         "2.2"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -790,10 +790,10 @@
         "hi"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -815,10 +815,10 @@
         "2.2"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -832,10 +832,10 @@
         "1.1"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -849,10 +849,10 @@
         "1.1"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -868,10 +868,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -887,10 +887,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -904,10 +904,10 @@
         "2.2"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     },
@@ -921,10 +921,10 @@
         "22"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);",
+      "setup": "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);",
       "affected": null,
       "adaptations": [
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ],
       "error": null
     }
@@ -934,7 +934,7 @@
       "id": "expr-1.1",
       "file": "expr.test",
       "line": 41,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i1+i2 FROM test1; ROLLBACK;",
       "expected": [
         "30"
@@ -942,14 +942,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.2",
       "file": "expr.test",
       "line": 42,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i1-i2 FROM test1; ROLLBACK;",
       "expected": [
         "-10"
@@ -957,14 +957,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.3",
       "file": "expr.test",
       "line": 43,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i1*i2 FROM test1; ROLLBACK;",
       "expected": [
         "200"
@@ -972,14 +972,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.4",
       "file": "expr.test",
       "line": 44,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i1/i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -987,14 +987,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.5",
       "file": "expr.test",
       "line": 45,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2/i1 FROM test1; ROLLBACK;",
       "expected": [
         "2"
@@ -1002,14 +1002,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.6",
       "file": "expr.test",
       "line": 46,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2<i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1017,14 +1017,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.7",
       "file": "expr.test",
       "line": 47,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2<=i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1032,14 +1032,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.8",
       "file": "expr.test",
       "line": 48,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2>i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1047,14 +1047,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.9",
       "file": "expr.test",
       "line": 49,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2>=i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1062,14 +1062,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.10",
       "file": "expr.test",
       "line": 50,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2!=i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1077,14 +1077,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.11",
       "file": "expr.test",
       "line": 51,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2=i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1092,14 +1092,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.12",
       "file": "expr.test",
       "line": 52,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2<>i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1107,14 +1107,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.13",
       "file": "expr.test",
       "line": 53,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=10, i2=20; SELECT i2==i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1122,14 +1122,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.14",
       "file": "expr.test",
       "line": 54,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2<i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1137,14 +1137,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.15",
       "file": "expr.test",
       "line": 55,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2<=i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1152,14 +1152,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.16",
       "file": "expr.test",
       "line": 56,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2>i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1167,14 +1167,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.17",
       "file": "expr.test",
       "line": 57,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2>=i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1182,14 +1182,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.18",
       "file": "expr.test",
       "line": 58,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2!=i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1197,14 +1197,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.19",
       "file": "expr.test",
       "line": 59,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2=i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1212,14 +1212,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.20",
       "file": "expr.test",
       "line": 60,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2<>i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1227,14 +1227,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.21",
       "file": "expr.test",
       "line": 61,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=20, i2=20; SELECT i2==i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1242,14 +1242,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.22",
       "file": "expr.test",
       "line": 63,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2, r1=3.0; SELECT i1+i2*r1 FROM test1; ROLLBACK;",
       "expected": [
         "7.0"
@@ -1257,14 +1257,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.23",
       "file": "expr.test",
       "line": 64,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2, r1=3.0; SELECT (i1+i2)*r1 FROM test1; ROLLBACK;",
       "expected": [
         "9.0"
@@ -1272,14 +1272,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.24",
       "file": "expr.test",
       "line": 66,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT min(i1,i2,i1+i2,i1-i2) FROM test1; ROLLBACK;",
       "expected": [
         "-1"
@@ -1287,14 +1287,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.25",
       "file": "expr.test",
       "line": 67,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT max(i1,i2,i1+i2,i1-i2) FROM test1; ROLLBACK;",
       "expected": [
         "3"
@@ -1302,14 +1302,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.26",
       "file": "expr.test",
       "line": 68,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT max(i1,i2,i1+i2,i1-i2) FROM test1; ROLLBACK;",
       "expected": [
         "3"
@@ -1317,14 +1317,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.27",
       "file": "expr.test",
       "line": 69,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1==1 AND i2=2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1332,14 +1332,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.28",
       "file": "expr.test",
       "line": 70,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=2 AND i2=1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1347,14 +1347,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.29",
       "file": "expr.test",
       "line": 71,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=1 AND i2=1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1362,14 +1362,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.30",
       "file": "expr.test",
       "line": 72,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=2 AND i2=2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1377,14 +1377,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.31",
       "file": "expr.test",
       "line": 73,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1==1 OR i2=2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1392,14 +1392,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.31b",
       "file": "expr.test",
       "line": 74,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT 0 OR 2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1407,14 +1407,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.31c",
       "file": "expr.test",
       "line": 75,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT false OR true FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1422,14 +1422,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.31d",
       "file": "expr.test",
       "line": 76,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT 99 OR false FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1437,14 +1437,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.32",
       "file": "expr.test",
       "line": 77,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=2 OR i2=1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1452,14 +1452,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.33",
       "file": "expr.test",
       "line": 78,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=1 OR i2=1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1467,14 +1467,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.34",
       "file": "expr.test",
       "line": 79,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1=2 OR i2=2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1482,14 +1482,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.35",
       "file": "expr.test",
       "line": 80,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1-i2=-1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1497,14 +1497,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.36",
       "file": "expr.test",
       "line": 81,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=0; SELECT not i1 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1512,14 +1512,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.37",
       "file": "expr.test",
       "line": 82,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=0; SELECT not i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1527,14 +1527,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.38",
       "file": "expr.test",
       "line": 83,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT -i1 FROM test1; ROLLBACK;",
       "expected": [
         "-1"
@@ -1542,14 +1542,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.39",
       "file": "expr.test",
       "line": 84,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT +i1 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1557,14 +1557,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.40",
       "file": "expr.test",
       "line": 85,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT +(i2+i1) FROM test1; ROLLBACK;",
       "expected": [
         "3"
@@ -1572,14 +1572,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.41",
       "file": "expr.test",
       "line": 86,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT -(i2+i1) FROM test1; ROLLBACK;",
       "expected": [
         "-3"
@@ -1587,14 +1587,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.42",
       "file": "expr.test",
       "line": 87,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1|i2 FROM test1; ROLLBACK;",
       "expected": [
         "3"
@@ -1602,14 +1602,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.42b",
       "file": "expr.test",
       "line": 88,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT 4|2 FROM test1; ROLLBACK;",
       "expected": [
         "6"
@@ -1617,14 +1617,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.43",
       "file": "expr.test",
       "line": 89,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT i1&i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1632,14 +1632,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.43b",
       "file": "expr.test",
       "line": 90,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=2; SELECT 4&5 FROM test1; ROLLBACK;",
       "expected": [
         "4"
@@ -1647,14 +1647,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.44",
       "file": "expr.test",
       "line": 91,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1; SELECT ~i1 FROM test1; ROLLBACK;",
       "expected": [
         "-2"
@@ -1662,14 +1662,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.44b",
       "file": "expr.test",
       "line": 92,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL; SELECT ~i1 FROM test1; ROLLBACK;",
       "expected": [
         ""
@@ -1677,14 +1677,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45a",
       "file": "expr.test",
       "line": 93,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=3; SELECT i1<<i2 FROM test1; ROLLBACK;",
       "expected": [
         "8"
@@ -1692,14 +1692,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45b",
       "file": "expr.test",
       "line": 94,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=-3; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "8"
@@ -1707,14 +1707,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45c",
       "file": "expr.test",
       "line": 95,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=0; SELECT i1<<i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1722,14 +1722,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45d",
       "file": "expr.test",
       "line": 96,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=62; SELECT i1<<i2 FROM test1; ROLLBACK;",
       "expected": [
         "4611686018427387904"
@@ -1737,14 +1737,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45e",
       "file": "expr.test",
       "line": 97,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=63; SELECT i1<<i2 FROM test1; ROLLBACK;",
       "expected": [
         "-9223372036854775808"
@@ -1752,14 +1752,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45f",
       "file": "expr.test",
       "line": 98,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=64; SELECT i1<<i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1767,14 +1767,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.45g",
       "file": "expr.test",
       "line": 99,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=-9223372036854775808; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1782,14 +1782,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.46a",
       "file": "expr.test",
       "line": 100,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=3; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "4"
@@ -1797,14 +1797,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.46b",
       "file": "expr.test",
       "line": 101,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=6; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1812,14 +1812,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.46c",
       "file": "expr.test",
       "line": 102,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=-32, i2=3; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "-4"
@@ -1827,14 +1827,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.46d",
       "file": "expr.test",
       "line": 103,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=-32, i2=100; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "-1"
@@ -1842,14 +1842,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.46e",
       "file": "expr.test",
       "line": 104,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=-3; SELECT i1>>i2 FROM test1; ROLLBACK;",
       "expected": [
         "256"
@@ -1857,14 +1857,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.47",
       "file": "expr.test",
       "line": 105,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=9999999999, i2=8888888888; SELECT i1<i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1872,14 +1872,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.48",
       "file": "expr.test",
       "line": 106,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=9999999999, i2=8888888888; SELECT i1=i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1887,14 +1887,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.49",
       "file": "expr.test",
       "line": 107,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=9999999999, i2=8888888888; SELECT i1>i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1902,14 +1902,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.50",
       "file": "expr.test",
       "line": 108,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=99999999999, i2=99999999998; SELECT i1<i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1917,14 +1917,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.51",
       "file": "expr.test",
       "line": 109,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=99999999999, i2=99999999998; SELECT i1=i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1932,14 +1932,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.52",
       "file": "expr.test",
       "line": 110,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=99999999999, i2=99999999998; SELECT i1>i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1947,14 +1947,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.53",
       "file": "expr.test",
       "line": 111,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=099999999999, i2=99999999999; SELECT i1<i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1962,14 +1962,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.54",
       "file": "expr.test",
       "line": 112,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=099999999999, i2=99999999999; SELECT i1=i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -1977,14 +1977,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.55",
       "file": "expr.test",
       "line": 113,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=099999999999, i2=99999999999; SELECT i1>i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -1992,14 +1992,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.56",
       "file": "expr.test",
       "line": 114,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=25, i2=11; SELECT i1%i2 FROM test1; ROLLBACK;",
       "expected": [
         "3"
@@ -2007,14 +2007,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.58",
       "file": "expr.test",
       "line": 115,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1+i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2022,14 +2022,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.59",
       "file": "expr.test",
       "line": 116,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1+i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2037,14 +2037,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.60",
       "file": "expr.test",
       "line": 117,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1+i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2052,14 +2052,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.61",
       "file": "expr.test",
       "line": 118,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1-i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2067,14 +2067,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.62",
       "file": "expr.test",
       "line": 119,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1-i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2082,14 +2082,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.63",
       "file": "expr.test",
       "line": 120,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1-i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2097,14 +2097,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.64",
       "file": "expr.test",
       "line": 121,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1*i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2112,14 +2112,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.65",
       "file": "expr.test",
       "line": 122,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1*i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2127,14 +2127,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.66",
       "file": "expr.test",
       "line": 123,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1*i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2142,14 +2142,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.67",
       "file": "expr.test",
       "line": 124,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1/i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2157,14 +2157,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.68",
       "file": "expr.test",
       "line": 125,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1/i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2172,14 +2172,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.69",
       "file": "expr.test",
       "line": 126,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1/i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2187,14 +2187,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.70",
       "file": "expr.test",
       "line": 127,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1<i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2202,14 +2202,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.71",
       "file": "expr.test",
       "line": 128,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1>i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2217,14 +2217,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.72",
       "file": "expr.test",
       "line": 129,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1<=i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2232,14 +2232,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.73",
       "file": "expr.test",
       "line": 130,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=1; SELECT coalesce(i1>=i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2247,14 +2247,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.74",
       "file": "expr.test",
       "line": 131,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=1, i2=NULL; SELECT coalesce(i1!=i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2262,14 +2262,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.75",
       "file": "expr.test",
       "line": 132,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1==i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2277,14 +2277,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.76",
       "file": "expr.test",
       "line": 133,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(not i1,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2292,14 +2292,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.77",
       "file": "expr.test",
       "line": 134,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(-i1,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2307,14 +2307,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.78",
       "file": "expr.test",
       "line": 135,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1 IS NULL AND i2=5,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2322,14 +2322,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.79",
       "file": "expr.test",
       "line": 136,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1 IS NULL OR i2=5,99) FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2337,14 +2337,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.80",
       "file": "expr.test",
       "line": 137,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1=5 AND i2 IS NULL,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2352,14 +2352,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.81",
       "file": "expr.test",
       "line": 138,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1=5 OR i2 IS NULL,99) FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2367,14 +2367,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.82",
       "file": "expr.test",
       "line": 139,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=3; SELECT coalesce(min(i1,i2,1),99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2382,14 +2382,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.83",
       "file": "expr.test",
       "line": 140,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=3; SELECT coalesce(max(i1,i2,1),99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2397,14 +2397,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.84",
       "file": "expr.test",
       "line": 141,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT coalesce(min(i1,i2,1),99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2412,14 +2412,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.85",
       "file": "expr.test",
       "line": 142,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT coalesce(max(i1,i2,1),99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2427,14 +2427,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.86",
       "file": "expr.test",
       "line": 143,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=8; SELECT 5 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2442,14 +2442,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.87",
       "file": "expr.test",
       "line": 144,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=8; SELECT 5 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -2457,14 +2457,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.88",
       "file": "expr.test",
       "line": 145,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=8; SELECT 55 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -2472,14 +2472,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.89",
       "file": "expr.test",
       "line": 146,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=8; SELECT 55 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2487,14 +2487,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.90",
       "file": "expr.test",
       "line": 147,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT 5 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         ""
@@ -2502,14 +2502,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.91",
       "file": "expr.test",
       "line": 148,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT 5 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         ""
@@ -2517,14 +2517,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.92",
       "file": "expr.test",
       "line": 149,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT 2 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -2532,14 +2532,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.93",
       "file": "expr.test",
       "line": 150,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=3, i2=NULL; SELECT 2 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2547,14 +2547,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.94",
       "file": "expr.test",
       "line": 151,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=8; SELECT 2 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         ""
@@ -2562,14 +2562,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.95",
       "file": "expr.test",
       "line": 152,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=8; SELECT 2 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         ""
@@ -2577,14 +2577,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.94",
       "file": "expr.test",
       "line": 153,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=8; SELECT 55 between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "0"
@@ -2592,14 +2592,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.95",
       "file": "expr.test",
       "line": 154,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=8; SELECT 55 not between i1 and i2 FROM test1; ROLLBACK;",
       "expected": [
         "1"
@@ -2607,14 +2607,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.96",
       "file": "expr.test",
       "line": 155,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=3; SELECT coalesce(i1<<i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2622,14 +2622,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.97",
       "file": "expr.test",
       "line": 156,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=NULL; SELECT coalesce(i1>>i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2637,14 +2637,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.98",
       "file": "expr.test",
       "line": 157,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=NULL, i2=NULL; SELECT coalesce(i1|i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2652,14 +2652,14 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     },
     {
       "id": "expr-1.99",
       "file": "expr.test",
       "line": 158,
-      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
+      "setup": "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');",
       "sql": "BEGIN; UPDATE test1 SET i1=32, i2=NULL; SELECT coalesce(i1&i2,99) FROM test1; ROLLBACK;",
       "expected": [
         "99"
@@ -2667,7 +2667,7 @@
       "affected": null,
       "adaptations": [
         "INT setup columns widened to BIGINT for original 64-bit cases",
-        "REAL setup columns widened to DOUBLE PRECISION"
+        "REAL setup columns renamed to DOUBLE"
       ]
     }
   ],
@@ -3308,15 +3308,15 @@
       "id": "insert-2.1",
       "file": "insert.test",
       "line": 90,
-      "sql": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;",
+      "sql": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;",
       "expected": [],
       "caught": false,
       "setup": "",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3332,12 +3332,12 @@
         "7.89"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3353,12 +3353,12 @@
         "-3.45"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3374,12 +3374,12 @@
         "3.45"
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3387,15 +3387,15 @@
       "id": "insert-2.10",
       "file": "insert.test",
       "line": 113,
-      "sql": "DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
+      "sql": "DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
       "expected": [],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3412,12 +3412,12 @@
         ""
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },
@@ -3439,12 +3439,12 @@
         ""
       ],
       "caught": false,
-      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE PRECISION default +4.32,\n      f3 int default +222,\n      f4 DOUBLE PRECISION default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE PRECISION default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;INSERT INTO test2(f2,f4) VALUES(-2.22,'hi!');\nSELECT * FROM test2;",
+      "setup": "CREATE TABLE test2(\n      f1 int default -111, \n      f2 DOUBLE default +4.32,\n      f3 int default +222,\n      f4 DOUBLE default 7.89\n    );\nSELECT * from test2;INSERT INTO test2(f1,f3) VALUES(+10,-10);\nSELECT * FROM test2;INSERT INTO test2(f2,f4) VALUES(1.23,-3.45);\nSELECT * FROM test2 WHERE f1==-111;INSERT INTO test2(f1,f2,f4) VALUES(77,+1.23,3.45);\nSELECT * FROM test2 WHERE f1==77;DROP TABLE test2;\n    CREATE TABLE test2(\n      f1 int default 111, \n      f2 DOUBLE default -4.32,\n      f3 text default 'hi',\n      f4 text default 'abc-123',\n      f5 varchar(10)\n    );\nSELECT * from test2;INSERT INTO test2(f2,f4) VALUES(-2.22,'hi!');\nSELECT * FROM test2;",
       "affected": null,
       "adaptations": [
-        "Fractional default column widened to DOUBLE PRECISION",
+        "Fractional default column widened to DOUBLE",
         "Bare TEXT default quoted",
-        "REAL setup column widened to DOUBLE PRECISION"
+        "REAL setup column widened to DOUBLE"
       ],
       "error": null
     },

@@ -59,10 +59,10 @@ null = tests('null.test')
 null_setup = null['null-1.0']['sql'].replace('create table t1(a,b,c)', 'create table t1(a INTEGER,b INTEGER,c INTEGER)')
 groups['null'] = [case(c, '' if key=='null-1.0' else null_setup, sql=null_setup if key=='null-1.0' else None, adaptations=['Explicit INTEGER column types in setup']) for key,c in null.items() if re.fullmatch(r'null-[1-5]\.\d+',key) or key in ('null-6.1','null-6.2','null-6.3')]
 select = tests('select1.test')
-select_setup = "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE PRECISION,r2 DOUBLE PRECISION); INSERT INTO test2 VALUES(1.1,2.2);"
-groups['select'] = [case(c,select_setup,adaptations=['REAL setup columns widened to DOUBLE PRECISION']) for key,c in select.items() if re.fullmatch(r'select1-1\.(?:[4-9](?:\.[1-3])?|1[0-3](?:\.[12])?)',key)]
+select_setup = "CREATE TABLE test1(f1 INT,f2 INT); INSERT INTO test1 VALUES(11,22); CREATE TABLE test2(r1 DOUBLE,r2 DOUBLE); INSERT INTO test2 VALUES(1.1,2.2);"
+groups['select'] = [case(c,select_setup,adaptations=['REAL setup columns renamed to DOUBLE']) for key,c in select.items() if re.fullmatch(r'select1-1\.(?:[4-9](?:\.[1-3])?|1[0-3](?:\.[12])?)',key)]
 expr = (UPSTREAM/'expr.test').read_text()
-expr_setup = "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE PRECISION,r2 DOUBLE PRECISION,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');"
+expr_setup = "CREATE TABLE test1(i1 BIGINT,i2 BIGINT,r1 DOUBLE,r2 DOUBLE,t1 TEXT,t2 TEXT); INSERT INTO test1 VALUES(1,2,1.1,2.2,'hello','world');"
 groups['expr'] = []
 for line_number,line in enumerate(expr.splitlines(),1):
     if not re.match(r'\s*test_expr expr-1\.',line): continue
@@ -71,7 +71,7 @@ for line_number,line in enumerate(expr.splitlines(),1):
     _,id,settings,query,expected = parts
     number = int(re.match(r'expr-1\.(\d+)',id)[1])
     if number>99: continue
-    groups['expr'].append({'id':id,'file':'expr.test','line':line_number,'setup':expr_setup,'sql':f'BEGIN; UPDATE test1 SET {settings}; SELECT {query} FROM test1; ROLLBACK;', 'expected':tcl_list(expected),'affected':None,'adaptations':['INT setup columns widened to BIGINT for original 64-bit cases','REAL setup columns widened to DOUBLE PRECISION']})
+    groups['expr'].append({'id':id,'file':'expr.test','line':line_number,'setup':expr_setup,'sql':f'BEGIN; UPDATE test1 SET {settings}; SELECT {query} FROM test1; ROLLBACK;', 'expected':tcl_list(expected),'affected':None,'adaptations':['INT setup columns widened to BIGINT for original 64-bit cases','REAL setup columns renamed to DOUBLE']})
 update = tests('update.test')
 base = 'CREATE TABLE test1(f1 INT,f2 INT);' + ''.join(f'INSERT INTO test1 VALUES({i},{1<<i});' for i in range(1,11))
 groups['update'] = []
@@ -85,8 +85,8 @@ for id in ['insert-1.5','insert-1.5b','insert-1.5c','insert-1.6','insert-1.6b','
     c = insert[id]; groups['insert'].append(case(c,base)); base += c['sql']
 base = ''
 for id in ['insert-2.1','insert-2.2','insert-2.3','insert-2.4','insert-2.10','insert-2.11','insert-2.12']:
-    c = insert[id]; sql = c['sql'].replace('f4 int default 7.89','f4 DOUBLE PRECISION default 7.89').replace('text default hi',"text default 'hi'").replace('f2 real','f2 DOUBLE PRECISION')
-    groups['insert'].append(case(c,base,sql,adaptations=['Fractional default column widened to DOUBLE PRECISION','Bare TEXT default quoted','REAL setup column widened to DOUBLE PRECISION'])); base += sql
+    c = insert[id]; sql = c['sql'].replace('f4 int default 7.89','f4 DOUBLE default 7.89').replace('text default hi',"text default 'hi'").replace('f2 real','f2 DOUBLE')
+    groups['insert'].append(case(c,base,sql,adaptations=['Fractional default column widened to DOUBLE','Bare TEXT default quoted','REAL setup column widened to DOUBLE'])); base += sql
 c = insert['insert-4.1']; groups['insert'].append(case(c,sql=c['sql'].replace('t3(a,b,c)','t3(a INT,b INT,c INT)'),adaptations=['Explicit INT column types']))
 trans = tests('trans.test'); groups['transaction'] = [case(trans['trans-1.0']),case(trans['trans-1.1'])]
 setup = trans['trans-1.0']['sql'] + trans['trans-1.1']['sql']

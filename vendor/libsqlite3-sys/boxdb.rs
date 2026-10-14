@@ -150,6 +150,14 @@ pub fn source(out_dir: &str) -> PathBuf {
         "#include \"boxdb_decimal.inc\"\n#include \"boxdb_native.inc\"\nSQLITE_PRIVATE int sqlite3VdbeMemCast(Mem *pMem, u8 aff, u8 encoding){",
     );
     replace(
+        "    sqlite3DequoteToken(&sType);\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
+        "    sqlite3DequoteToken(&sType);\n    if( boxdbRemovedType(sType.z,sType.n) ){\n      sqlite3ErrorMsg(pParse,\"unsupported type: %T\",&sType);\n      return;\n    }\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
+    );
+    replace(
+        "  yymsp[-5].minor.yy454 = sqlite3ExprAlloc(pParse->db, TK_CAST, &yymsp[-1].minor.yy0, 1);",
+        "  yymsp[-5].minor.yy454 = sqlite3ExprAlloc(pParse->db, TK_CAST, &yymsp[-1].minor.yy0, 1);\n  if( yymsp[-5].minor.yy454 && boxdbRemovedType(yymsp[-5].minor.yy454->u.zToken,sqlite3Strlen30(yymsp[-5].minor.yy454->u.zToken)) ){\n    sqlite3ErrorMsg(pParse,\"unsupported type: %s\",yymsp[-5].minor.yy454->u.zToken);\n  }",
+    );
+    replace(
         "  switch( aff ){\n    case SQLITE_AFF_BLOB:",
         "  if( boxdbNativeAffinityKind(aff) ) return (pMem->flags&MEM_Null) ? SQLITE_OK : boxdbNativeOp(pMem,0,boxdbNativeAffinityKind(aff),pMem,0,0);\n  if( aff==SQLITE_AFF_DECIMAL ){\n    if( pMem->flags & MEM_Real ) return boxdbDecimalOp(pMem,8,pMem,0,0);\n    return boxdbDecimalCoerce(pMem);\n  }\n  if( aff==SQLITE_AFF_BLOB && boxdbIsEscapedBlob(pMem) ) return SQLITE_OK;\n  if( boxdbIsEscapedBlob(pMem) ){\n    int rc=boxdbBlobText(pMem,encoding);\n    if( rc ) return rc;\n  }\n  if( boxdbNativeKind(pMem) && aff>=SQLITE_AFF_NUMERIC ) return SQLITE_ERROR;\n  if( boxdbKind(pMem) ){\n    int rc = boxdbNativeKind(pMem) ? boxdbNativeText(pMem) : boxdbDecimalText(pMem);\n    if( rc==SQLITE_OK ) rc=sqlite3VdbeChangeEncoding(pMem,encoding);\n    if( rc ) return rc;\n  }\n  switch( aff ){\n    case SQLITE_AFF_BLOB:",
     );

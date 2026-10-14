@@ -49,7 +49,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | INT8, INT16, INT32, UINT8, UINT16, UINT32 | INTEGER with a range CHECK |
 | BOOLEAN | INTEGER with a 0/1 CHECK |
 | VARCHAR(n) | TEXT with a length CHECK |
-| FLOAT4 | REAL with BoxDB's float32 validation |
+| DOUBLE | REAL with 64-bit floating-point values |
 | BYTEA | BLOB with a storage-class CHECK |
 | DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Versioned BLOB envelopes interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |

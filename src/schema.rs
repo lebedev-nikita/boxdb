@@ -45,7 +45,7 @@ fn extension(input: &str) -> Result<Option<Type>> {
     let name = input.trim().to_ascii_uppercase();
     if matches!(
         name.as_str(),
-        "REAL" | "FLOAT" | "FLOAT8" | "DOUBLE" | "DOUBLE PRECISION" | "TEXT" | "BLOB" | "ANY" | ""
+        "REAL" | "DOUBLE" | "TEXT" | "BLOB" | "ANY" | ""
     ) {
         return Ok(None);
     }
@@ -102,7 +102,6 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             Type::Date => "DATE",
             Type::DateTime => "DATETIME",
             Type::Interval => "INTERVAL",
-            Type::Real => "REAL",
             Type::Bytea => "BLOB",
             _ => "TEXT",
         };
@@ -156,7 +155,7 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     }
     let native = match column.data_type.to_string().to_ascii_uppercase().as_str() {
         "" => Some("ANY"),
-        "FLOAT" | "FLOAT8" | "DOUBLE" | "DOUBLE PRECISION" => Some("REAL"),
+        "DOUBLE" => Some("REAL"),
         _ => None,
     };
     if let Some(native) = native {

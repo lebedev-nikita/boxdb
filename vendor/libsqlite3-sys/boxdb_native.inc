@@ -1,4 +1,22 @@
 /* Shared native-value dispatch. Persistent cells remain ordinary BLOBs. */
+/* Reject removed declarations and CAST targets before affinity can erase the
+** spelling. Whitespace and optional parameters do not restore an alias. */
+static int boxdbRemovedType(const char *z, int length){
+  char name[24]; int i,n=0;
+  for(i=0;i<length && z[i]!='(';i++){
+    if( sqlite3Isspace(z[i]) ) continue;
+    if( n>=(int)sizeof(name)-1 ) return 0;
+    name[n++]=sqlite3Toupper(z[i]);
+  }
+  name[n]=0;
+  return strcmp(name,"DOUBLEPRECISION")==0
+      || strcmp(name,"CHARACTERVARYING")==0
+      || strcmp(name,"JSONB")==0
+      || strcmp(name,"FLOAT4")==0
+      || strcmp(name,"FLOAT")==0
+      || strcmp(name,"FLOAT8")==0;
+}
+
 typedef struct BoxdbType { int kind; u8 affinity; char tag; int size; const char *name; } BoxdbType;
 #include "boxdb_types.inc"
 extern int boxdb_native_text(int,const char*,int,char**,int*);

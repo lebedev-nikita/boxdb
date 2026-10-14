@@ -36,7 +36,6 @@ pub enum Type {
     Uint8,
     Uint16,
     Uint32,
-    Real,
     Double,
     Decimal(Option<(u32, u32)>),
     Boolean,
@@ -103,8 +102,7 @@ impl Type {
             "UINT8" => Self::Uint8,
             "UINT16" => Self::Uint16,
             "UINT32" => Self::Uint32,
-            "FLOAT4" => Self::Real,
-            "REAL" | "DOUBLE" | "DOUBLE PRECISION" | "FLOAT" | "FLOAT8" => Self::Double,
+            "REAL" | "DOUBLE" => Self::Double,
             "DECIMAL" => {
                 if args.is_empty() {
                     Self::Decimal(None)
@@ -119,7 +117,7 @@ impl Type {
             }
             "BOOLEAN" | "BOOL" => Self::Boolean,
             "TEXT" => Self::Text,
-            "VARCHAR" | "CHARACTER VARYING" => {
+            "VARCHAR" => {
                 if args.len() > 1 || args.first() == Some(&0) {
                     return Err(Error::new("invalid VARCHAR length".into()));
                 }
@@ -127,7 +125,7 @@ impl Type {
             }
             "BYTEA" | "BLOB" => Self::Bytea,
             "UUID" => Self::Uuid,
-            "JSON" | "JSONB" => Self::Json,
+            "JSON" => Self::Json,
             "INSTANT" => Self::Instant,
             "DATE" => Self::Date,
             "DATETIME" => Self::DateTime,
@@ -170,16 +168,11 @@ impl Type {
             (Self::Uint32, Value::UnsignedInteger(n)) if u32::try_from(*n).is_ok() => {
                 Ok(value.clone())
             }
-            (Self::Real | Self::Double, Value::Integer(_) | Value::Decimal(_) | Value::Real(_)) => {
+            (Self::Double, Value::Integer(_) | Value::Decimal(_) | Value::Real(_)) => {
                 let n: f64 = value
                     .to_string()
                     .parse()
                     .map_err(|error| invalid().with_source(error))?;
-                let n = if matches!(self, Self::Real) {
-                    (n as f32) as f64
-                } else {
-                    n
-                };
                 if !n.is_finite() {
                     return Err(invalid());
                 }
@@ -275,7 +268,7 @@ impl Type {
                     Error::new("invalid unsigned integer cast".into()).with_source(error)
                 })?)
             }
-            Self::Real | Self::Double => Value::Real(text.parse().map_err(|error| {
+            Self::Double => Value::Real(text.parse().map_err(|error| {
                 Error::new("invalid floating-point cast".into()).with_source(error)
             })?),
             Self::Decimal(_) => Value::Decimal(text),
