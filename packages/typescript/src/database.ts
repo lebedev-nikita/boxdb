@@ -1,10 +1,11 @@
 import { Query, fragment, identifier, type Interpolation } from "./sql.js";
 import { BoxDBError } from "./error.js";
-import type { BoxDBOptions, Parameters, QueryResult, Row } from "./types.js";
+import type { BoxDBOptions, Parameters, QueryResult } from "./types.js";
 import {
   NativeDatabase,
   type NativeConnection,
   type NativeResponse,
+  type NativeResult,
   type NativeValue,
 } from "./native.js";
 import { bindParameters, queryResult } from "./values.js";
@@ -210,13 +211,12 @@ class Connection {
     }
   }
 
-  async query<T>(
+  async query(
     sql: string,
     parameters: Parameters,
     signal?: AbortSignal,
     writeOnly = false,
-    raw = false,
-  ): Promise<QueryResult<T>> {
+  ): Promise<NativeResult> {
     if (typeof sql !== "string") throw new TypeError("SQL must be a string");
     const { info } = await this.request("prepare", sql, [], signal);
     if (writeOnly && info!.columns.length > 0)
@@ -225,7 +225,7 @@ class Connection {
       );
     const bound = bindParameters(info!, [parameters]);
     const { result } = await this.request("execute", sql, bound, signal);
-    return queryResult<T>(result!, raw);
+    return result!;
   }
 }
 
@@ -268,31 +268,25 @@ class Queries {
 
   readonly fragment = fragment;
   readonly identifier = identifier;
-  query<T = Row>(strings: TemplateStringsArray, ...values: Interpolation[]): Query<T> {
-    return new Query<T>(
+  query(strings: TemplateStringsArray, ...values: Interpolation[]): Query {
+    return new Query(
       fragment(strings, ...values).compile(),
       (sql, parameters, options, writeOnly) =>
         this.schedule(
-          (signal) =>
-            this.connection.query<import("./types.js").SQLValue[]>(
-              sql,
-              parameters,
-              signal,
-              writeOnly,
-              true,
-            ),
+          (signal) => this.connection.query(sql, parameters, signal, writeOnly),
           options,
         ),
     );
   }
 
-  execute<T = Row>(
+  execute(
     sql: string,
     parameters: Parameters = [],
     options: QueryOptions = {},
-  ): Promise<QueryResult<T>> {
+  ): Promise<QueryResult> {
     return this.schedule(
-      (signal) => this.connection.query<T>(sql, parameters, signal, false, options.raw),
+      async (signal) =>
+        queryResult(await this.connection.query(sql, parameters, signal), options.raw),
       options,
     );
   }

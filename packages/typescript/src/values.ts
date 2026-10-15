@@ -57,15 +57,15 @@ export function bindParameters(info: NativeInfo, args: unknown[]): NativeValue[]
   return result;
 }
 
-export function queryResult<T>(result: NativeResult, raw = false): QueryResult<T> {
+export function queryResult(result: NativeResult, raw = false): QueryResult {
   const rows = result.rows;
   return {
     columns: result.columns,
-    rows: (raw
+    rows: raw
       ? rows
       : rows.map((row) =>
           Object.fromEntries(result.columns.map((name, index) => [name, row[index]])),
-        )) as T[],
+        ),
     changes: result.changes,
     lastInsertRowid: result.lastInsertRowid,
   };

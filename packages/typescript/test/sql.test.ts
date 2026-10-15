@@ -17,13 +17,13 @@ test("SQL identifiers quote each explicit component and parameter values stay bo
 test("a lazy query executes once across all result methods", async () => {
   await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
-  const query = db.query<{ id: bigint }>`INSERT INTO item VALUES(${1}) RETURNING id`;
+  const query = db.query`INSERT INTO item VALUES(${1}) RETURNING id`;
   expect(await db.query`SELECT count(*) AS n FROM item`.get()).toEqual({ n: 0n });
   expect(await query.values()).toEqual([[1n]]);
   expect(await query.get()).toEqual({ id: 1n });
   const result = await query;
   expect(result).toEqual([{ id: 1n }]);
-  expectTypeOf(result).toEqualTypeOf<{ id: bigint }[]>();
+  expectTypeOf(result).toEqualTypeOf<unknown[]>();
   expect(await db.query`SELECT count(*) AS n FROM item`.get()).toEqual({ n: 1n });
 });
 

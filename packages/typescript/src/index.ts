@@ -12,7 +12,6 @@ export type {
   BoxDBOptions,
   Parameters,
   QueryResult,
-  Row,
   RunResult,
   SQLParameter,
   SQLValue,

@@ -1,5 +1,6 @@
 import type { QueryOptions } from "./database.js";
-import type { Parameters, QueryResult, Row, RunResult, SQLParameter, SQLValue } from "./types.js";
+import type { NativeResult } from "./native.js";
+import type { Parameters, RunResult, SQLParameter } from "./types.js";
 
 export interface CompiledQuery {
   readonly sql: string;
@@ -56,32 +57,32 @@ type Execute = (
   parameters: Parameters,
   options: QueryOptions,
   writeOnly: boolean,
-) => Promise<QueryResult<SQLValue[]>>;
-export class Query<T = Row> extends Fragment implements PromiseLike<T[]> {
-  #result?: Promise<QueryResult<SQLValue[]>>;
+) => Promise<NativeResult>;
+export class Query extends Fragment implements PromiseLike<unknown[]> {
+  #result?: Promise<NativeResult>;
   constructor(
     compiled: CompiledQuery,
     private readonly executeQuery: Execute,
   ) {
     super(compiled.sql, compiled.parameters);
   }
-  private result(options: QueryOptions = {}, writeOnly = false): Promise<QueryResult<SQLValue[]>> {
+  private result(options: QueryOptions = {}, writeOnly = false): Promise<NativeResult> {
     if (!this.#result) {
       const { sql, parameters } = this.compile();
       this.#result = this.executeQuery(sql, parameters, { ...options, raw: true }, writeOnly);
     }
     return this.#result;
   }
-  async execute(options: QueryOptions = {}): Promise<T[]> {
+  async execute(options: QueryOptions = {}): Promise<unknown[]> {
     const result = await this.result(options);
-    return result.rows.map(
-      (row) => Object.fromEntries(result.columns.map((name, index) => [name, row[index]])) as T,
+    return result.rows.map((row) =>
+      Object.fromEntries(result.columns.map((name, index) => [name, row[index]])),
     );
   }
-  async get(options: QueryOptions = {}): Promise<T | undefined> {
+  async get(options: QueryOptions = {}): Promise<unknown> {
     return (await this.execute(options))[0];
   }
-  async values(options: QueryOptions = {}): Promise<SQLValue[][]> {
+  async values(options: QueryOptions = {}): Promise<unknown[]> {
     return (await this.result(options)).rows.map((row) => row.slice());
   }
   async run(options: QueryOptions = {}): Promise<RunResult> {
@@ -91,8 +92,8 @@ export class Query<T = Row> extends Fragment implements PromiseLike<T[]> {
     return { changes: result.changes, lastInsertRowid: result.lastInsertRowid };
   }
   // oxlint-disable-next-line unicorn/no-thenable -- Await starts the lazy query.
-  then<A = T[], B = never>(
-    resolve?: ((rows: T[]) => A | PromiseLike<A>) | null,
+  then<A = unknown[], B = never>(
+    resolve?: ((rows: unknown[]) => A | PromiseLike<A>) | null,
     reject?: ((error: unknown) => B | PromiseLike<B>) | null,
   ): Promise<A | B> {
     return this.execute().then(resolve, reject);

@@ -3,9 +3,7 @@ import { BoxDB } from "../src/index.js";
 
 test("tagged queries compose identifiers and fragments with bound values", async () => {
   await using db = await BoxDB.open();
-  const query = db.query<{
-    value: string;
-  }>`SELECT ${"O'Reilly"} AS ${db.identifier("value")} ${db.fragment`WHERE ${1} = ${1}`}`;
+  const query = db.query`SELECT ${"O'Reilly"} AS ${db.identifier("value")} ${db.fragment`WHERE ${1} = ${1}`}`;
   expect(query.compile()).toEqual({
     sql: 'SELECT ? AS "value" WHERE ? = ?',
     parameters: ["O'Reilly", 1, 1],

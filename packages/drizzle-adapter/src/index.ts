@@ -25,7 +25,7 @@ import {
   type RemotePreparedQuery,
 } from "drizzle-orm/sqlite-proxy/session";
 import type { DrizzleConfig } from "drizzle-orm/utils";
-import { type BoxDB, type TransactionClient, type SQLValue, type RunResult } from "@boxdb/client";
+import { type BoxDB, type TransactionClient, type RunResult } from "@boxdb/client";
 
 export interface DrizzleRunResult extends RunResult {
   rows?: unknown[];
@@ -36,6 +36,13 @@ export type DrizzleDatabase<TSchema extends Record<string, unknown> = Record<str
     batch: SqliteRemoteDatabase<TSchema>["batch"];
     $client: BoxDB | TransactionClient;
   };
+
+function positionalRows(rows: unknown[]): unknown[][] {
+  return rows.map((row) => {
+    if (!Array.isArray(row)) throw new TypeError("Drizzle requires positional rows");
+    return row;
+  });
+}
 
 // Timestamp decoders expect number inputs; integer columns retain bigint.
 function timestampDecoder<T extends object>(field: T): T {
@@ -82,8 +89,8 @@ class Session<
     private readonly options: { logger?: Logger },
   ) {
     const query: RemoteCallback = async (sql, parameters, method) => {
-      const result = await database.execute<SQLValue[]>(sql, parameters, { raw: true });
-      const rows = result.rows;
+      const result = await database.execute(sql, parameters, { raw: true });
+      const rows = positionalRows(result.rows);
       // sqlite-proxy expects one positional row (or undefined) for get().
       return {
         rows: method === "get" ? rows[0]! : rows,
@@ -95,8 +102,8 @@ class Session<
       await using tx = await database.begin();
       const results = [];
       for (const statement of statements) {
-        const result = await tx.execute<SQLValue[]>(statement.sql, statement.params, { raw: true });
-        const rows = result.rows;
+        const result = await tx.execute(statement.sql, statement.params, { raw: true });
+        const rows = positionalRows(result.rows);
         results.push({
           rows: statement.method === "get" ? rows[0]! : rows,
           changes: result.changes,
@@ -197,11 +204,21 @@ export async function migrate(
   await using tx = await database.$client.begin({ mode: "immediate" });
   const table = tx.identifier(config.migrationsTable ?? "__drizzle_migrations");
   await tx.query`CREATE TABLE IF NOT EXISTS ${table} (id INTEGER PRIMARY KEY, hash TEXT NOT NULL, created_at INTEGER NOT NULL)`;
-  const last = await tx.query<{
-    created_at: bigint;
-  }>`SELECT created_at FROM ${table} ORDER BY created_at DESC LIMIT 1`.get();
+  const last =
+    await tx.query`SELECT created_at FROM ${table} ORDER BY created_at DESC LIMIT 1`.get();
+  let lastTimestamp: bigint | undefined;
+  if (last !== undefined) {
+    if (
+      typeof last !== "object" ||
+      last === null ||
+      !("created_at" in last) ||
+      typeof last.created_at !== "bigint"
+    )
+      throw new TypeError("Invalid Drizzle migration timestamp");
+    lastTimestamp = last.created_at;
+  }
   for (const migration of migrations) {
-    if (last && last.created_at >= BigInt(migration.folderMillis)) continue;
+    if (lastTimestamp !== undefined && lastTimestamp >= BigInt(migration.folderMillis)) continue;
     for (const statement of migration.sql) await tx.exec(statement);
     await tx.query`INSERT INTO ${table}(hash,created_at) VALUES(${migration.hash},${migration.folderMillis})`;
   }

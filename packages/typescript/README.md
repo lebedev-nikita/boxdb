@@ -36,18 +36,30 @@ the npm release builds are described in the [release guide](https://github.com/l
 
 ## Queries
 
+Query rows are `unknown[]`. Validate them before use with a schema library such
+as [Zod](https://zod.dev/basics):
+
+```sh
+npm install zod
+```
+
 ```ts
 import { BoxDB } from "@boxdb/client";
+import { z } from "zod";
+
+const User = z.object({ id: z.bigint(), name: z.string() });
 
 await using db = await BoxDB.open("data.db", { busyTimeoutMs: 5000 });
 await db.exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT)");
 const inserted = await db.query`INSERT INTO users(name) VALUES(${"Ada"})`.run();
 
-const rows = await db.query<{ id: bigint; name: string }>`
+const rows = User.array().parse(
+  await db.query`
   SELECT * FROM ${db.identifier("users")}
   ${db.fragment`WHERE id = ${inserted.lastInsertRowid}`}
   LIMIT ${100}
-`;
+  `,
+); // { id: bigint; name: string }[] after runtime validation
 ```
 
 Scalar interpolations become bound parameters; do not put SQL quotes around
@@ -56,10 +68,12 @@ them. `identifier("main", "users")` quotes separate components;
 parameters and compose without executing SQL.
 
 Queries execute once, lazily. `await query` and `query.execute({ signal })`
-return row objects. `query.get({ signal })` returns the first row or `undefined`;
-`query.values({ signal })` returns positional rows, preserving duplicate column
-names. `query.run({ signal })` returns `{ changes, lastInsertRowid }` and requires
-a statement without returned columns. These methods share the execution result
+return row objects as `unknown[]`. `query.get({ signal })` returns the first row
+or `undefined`, typed as `unknown`. `query.values({ signal })` returns positional
+rows as `unknown[]`, preserving duplicate column names. Validate each result
+against the shape selected by the query. `query.run({ signal })` returns
+`{ changes, lastInsertRowid }` and requires a statement without returned columns.
+These methods share the execution result
 or error; the first execution chooses its signal. `query.compile()` returns a
 copy of `{ sql, parameters }` without executing.
 
@@ -68,14 +82,16 @@ For SQL from an adapter or migration tool:
 ```ts
 const result = await db.execute("SELECT name FROM users WHERE id=:id", { id: 1 });
 // { rows, columns, changes, lastInsertRowid }
+const names = User.pick({ name: true }).array().parse(result.rows);
 const positional = await db.execute("SELECT 1 AS x, 2 AS x", [], { raw: true });
 await db.exec("CREATE INDEX IF NOT EXISTS users_name ON users(name);");
 ```
 
-`execute` accepts one statement and positional or named bindings. `exec` accepts
-scripts without parameters. Query generics describe row types; they do not
-validate application schemas. Explicit prepared statements and streaming are
-not part of this API.
+`execute` accepts one statement and positional or named bindings and returns
+`rows: unknown[]` in both object and raw modes. `exec` accepts scripts without
+parameters. Queries accept no result type parameter; derive application types from
+validated data. The client has no dependency on a validation library. Explicit
+prepared statements and streaming are not part of this API.
 
 ## Transactions and cancellation
 
@@ -107,7 +123,9 @@ mode throws `TypeError`.
 
 ```ts
 await using tx = await db.begin({ readOnly: true });
-const total = await tx.query`SELECT count(*) AS count FROM users`.get();
+const total = z.object({ count: z.bigint() }).parse(
+  await tx.query`SELECT count(*) AS count FROM users`.get(),
+);
 await tx.commit();
 ```
 

@@ -115,39 +115,41 @@ export function betterAuthAdapter(
         },
       },
       adapter: ({ getModelName, getFieldName, getDefaultModelName }) => {
-        const select = async <T>(
+        const select = async (
           model: string,
           where: CleanedWhere[] = [],
           limit = 1,
           offset = 0,
           sort?: { field: string; direction: "asc" | "desc" },
-        ): Promise<T[]> => {
+        ): Promise<unknown[]> => {
           const compiled = predicate(where);
           const sql = `SELECT * FROM ${quote(model)}${compiled.sql}${sort ? ` ORDER BY ${quote(sort.field)} ${sort.direction === "desc" ? "DESC" : "ASC"}` : ""} LIMIT ? OFFSET ?`;
-          return (await client.execute<T>(sql, [...compiled.parameters, limit, offset])).rows;
+          return (await client.execute(sql, [...compiled.parameters, limit, offset])).rows;
         };
         const id = (model: string, modelKey?: string) =>
           quote(getFieldName({ model: modelKey ?? getDefaultModelName(model), field: "id" }));
-        const update = async <T>(
+        const update = async (
           model: string,
           where: CleanedWhere[],
           data: unknown,
           single: boolean,
           modelKey?: string,
-        ): Promise<T[]> => {
+        ): Promise<unknown[]> => {
           const fields = entries(data);
-          if (!fields.length) return select<T>(model, where, single ? 1 : -1);
+          if (!fields.length) return select(model, where, single ? 1 : -1);
           const compiled = predicate(where);
           const filter = single
             ? ` WHERE ${id(model, modelKey)} IN (SELECT ${id(model, modelKey)} FROM ${quote(model)}${compiled.sql} LIMIT 1)`
             : compiled.sql;
           return (
-            await client.execute<T>(
+            await client.execute(
               `UPDATE ${quote(model)} SET ${fields.map(([key]) => `${quote(key)}=?`).join(",")}${filter} RETURNING *`,
               [...fields.map(([, value]) => scalar(value)), ...compiled.parameters],
             )
           ).rows;
         };
+        // Better Auth requires generic model results at this boundary; its factory
+        // applies field transformations using the configured model schema.
         return {
           create: async <T extends Record<string, unknown>>({
             model,
@@ -161,11 +163,11 @@ export function betterAuthAdapter(
               ? `INSERT INTO ${quote(model)} (${fields.map(([key]) => quote(key)).join(",")}) VALUES (${fields.map(() => "?").join(",")}) RETURNING *`
               : `INSERT INTO ${quote(model)} DEFAULT VALUES RETURNING *`;
             return (
-              await client.execute<T>(
+              await client.execute(
                 sql,
                 fields.map(([, value]) => scalar(value)),
               )
-            ).rows[0]!;
+            ).rows[0] as T;
           },
           findOne: async <T>({
             model,
@@ -173,7 +175,7 @@ export function betterAuthAdapter(
           }: {
             model: string;
             where: CleanedWhere[];
-          }): Promise<T | null> => (await select<T>(model, where))[0] ?? null,
+          }): Promise<T | null> => ((await select(model, where))[0] ?? null) as T | null,
           findMany: async <T>({
             model,
             where,
@@ -186,14 +188,14 @@ export function betterAuthAdapter(
             limit: number;
             offset?: number | undefined;
             sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
-          }): Promise<T[]> => select<T>(model, where, limit, offset, sortBy),
+          }): Promise<T[]> => (await select(model, where, limit, offset, sortBy)) as T[],
           update: async <T>({
             model,
             modelKey,
             where,
             update: data,
           }: ModelTarget & { where: CleanedWhere[]; update: T }): Promise<T | null> =>
-            (await update<T>(model, where, data, true, modelKey))[0] ?? null,
+            ((await update(model, where, data, true, modelKey))[0] ?? null) as T | null,
           updateMany: async ({ model, where, update: data }) =>
             (await update(model, where, data, false)).length,
           delete: async ({ model, modelKey, where }) => {
@@ -209,14 +211,12 @@ export function betterAuthAdapter(
             where,
           }: ModelTarget & { where: CleanedWhere[] }): Promise<T | null> => {
             const compiled = predicate(where);
-            return (
-              (
-                await client.execute<T>(
-                  `DELETE FROM ${quote(model)} WHERE ${id(model, modelKey)} IN (SELECT ${id(model, modelKey)} FROM ${quote(model)}${compiled.sql} LIMIT 1) RETURNING *`,
-                  compiled.parameters,
-                )
-              ).rows[0] ?? null
-            );
+            return ((
+              await client.execute(
+                `DELETE FROM ${quote(model)} WHERE ${id(model, modelKey)} IN (SELECT ${id(model, modelKey)} FROM ${quote(model)}${compiled.sql} LIMIT 1) RETURNING *`,
+                compiled.parameters,
+              )
+            ).rows[0] ?? null) as T | null;
           },
           incrementOne: async <T>({
             model,
@@ -236,19 +236,17 @@ export function betterAuthAdapter(
               ...deltas.map(([key]) => `${quote(key)}=coalesce(${quote(key)},0)+?`),
               ...fields.map(([key]) => `${quote(key)}=?`),
             ];
-            if (!assignments.length) return (await select<T>(model, where))[0] ?? null;
-            return (
-              (
-                await client.execute<T>(
-                  `UPDATE ${quote(model)} SET ${assignments.join(",")} WHERE ${id(model, modelKey)} IN (SELECT ${id(model, modelKey)} FROM ${quote(model)}${compiled.sql} LIMIT 1) RETURNING *`,
-                  [
-                    ...deltas.map(([, delta]) => scalar(delta)),
-                    ...fields.map(([, value]) => scalar(value)),
-                    ...compiled.parameters,
-                  ],
-                )
-              ).rows[0] ?? null
-            );
+            if (!assignments.length) return ((await select(model, where))[0] ?? null) as T | null;
+            return ((
+              await client.execute(
+                `UPDATE ${quote(model)} SET ${assignments.join(",")} WHERE ${id(model, modelKey)} IN (SELECT ${id(model, modelKey)} FROM ${quote(model)}${compiled.sql} LIMIT 1) RETURNING *`,
+                [
+                  ...deltas.map(([, delta]) => scalar(delta)),
+                  ...fields.map(([, value]) => scalar(value)),
+                  ...compiled.parameters,
+                ],
+              )
+            ).rows[0] ?? null) as T | null;
           },
           deleteMany: async ({ model, where }) => {
             const compiled = predicate(where);
@@ -263,11 +261,19 @@ export function betterAuthAdapter(
           },
           count: async ({ model, where }) => {
             const compiled = predicate(where);
-            const result = await client.execute<{ count: number | bigint }>(
+            const result = await client.execute(
               `SELECT count(*) AS count FROM ${quote(model)}${compiled.sql}`,
               compiled.parameters,
             );
-            return Number(result.rows[0]!.count);
+            const row = result.rows[0];
+            if (
+              typeof row !== "object" ||
+              row === null ||
+              !("count" in row) ||
+              typeof row.count !== "bigint"
+            )
+              throw new TypeError("Invalid Better Auth count result");
+            return Number(row.count);
           },
           createSchema: async ({ tables, file }) => {
             const serial = options.advanced?.database?.generateId === "serial";
