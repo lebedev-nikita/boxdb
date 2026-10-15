@@ -1,0 +1,83 @@
+# A hand-authored schema document, independent of the exporter.
+format: boxdb-schema
+version: 1
+
+pragmas:
+  application_id: 42
+  user_version: 7
+
+tables:
+  samples:
+    columns:
+      z: ANY
+      id: INTEGER PRIMARY KEY AUTOINCREMENT
+      i8: INT8 DEFAULT -1
+      i16: INT16
+      i32: INT32
+      u8: UINT8
+      u16: UINT16
+      u32: UINT32
+      u64: UINT64
+      amount: DECIMAL(12, 2)
+      arbitrary_amount: DECIMAL
+      ratio: REAL
+      enabled: BOOLEAN NOT NULL DEFAULT TRUE
+      label: TEXT COLLATE text_nocase
+      code: VARCHAR(12) CONSTRAINT code_nonempty CHECK (length(code) > 0)
+      unlimited: VARCHAR
+      state: ENUM('todo', 'Done', 'it''s, (雪)') NOT NULL DEFAULT 'todo'
+      states: ENUM('todo', 'Done')[]
+      bytes: BYTEA
+      raw: BLOB
+      uuid: UUID
+      document: JSON NOT NULL DEFAULT '{}'
+      at: INSTANT
+      day: DATE
+      local_at: DATETIME
+      duration: INTERVAL
+      tags: TEXT[] NOT NULL DEFAULT '[]'
+      matrix: UINT8[][]
+      amounts: DECIMAL(8, 2)[]
+      derived: BOOLEAN GENERATED ALWAYS AS (enabled) STORED
+      folded: TEXT AS (text_lower(label)) VIRTUAL
+
+    constraints:
+      - name: sample_code_unique
+        unique: [code]
+      - check: amount IS NULL OR amount >= 0
+
+  audit:
+    columns:
+      value: TEXT
+
+indexes:
+  sample_label:
+    type: unique
+    table: samples
+    expressions:
+      - text_lower(label) COLLATE text_nocase DESC
+    where: enabled = TRUE
+
+views:
+  enabled_samples:
+    columns: [sample_id, label]
+    query: |
+      SELECT id, label
+      FROM samples
+      WHERE enabled = TRUE
+
+triggers:
+  sample_label_changed:
+    table: samples
+    timing: after
+    event: update
+    update_of: [label]
+    when: OLD.label IS NOT NEW.label
+    body: |
+      INSERT INTO audit VALUES (NEW.label);
+
+migrations:
+  - version: "20261015090000"
+    name: create_samples
+    # Illustrative checksum; migration continuation is tested with actual files.
+    checksum: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
