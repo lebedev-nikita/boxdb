@@ -40,6 +40,10 @@ Read only the guides relevant to the task.
 - Bind application values separately from SQL. In TypeScript, use tagged
   queries and `identifier()` for dynamic identifiers. Use the client's documented
   parameter forms when executing raw SQL.
+- Validate TypeScript query results with a runtime schema, for example Zod,
+  before accessing row fields. Results are `unknown[]`; `get()` returns
+  `unknown`. Derive application types from validated data. Query APIs accept
+  no result-type generic; see the TypeScript guide for validation examples.
 - Create and alter typed schemas through BoxDB. Ordinary table creation is
   STRICT by default. Use `DECIMAL` for exact amounts and bind decimal strings;
   see [native decimals](https://github.com/lebedev-nikita/boxdb/blob/main/docs/native-decimal.md).
