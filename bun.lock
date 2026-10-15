@@ -14,7 +14,7 @@
     },
     "packages/better-auth-adapter": {
       "name": "@boxdb/better-auth-adapter",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "devDependencies": {
         "@boxdb/client": "workspace:*",
         "@types/node": "26.6.5",
@@ -31,7 +31,7 @@
     },
     "packages/cli": {
       "name": "@boxdb/cli",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "bin": {
         "boxdb": "./dist/cli.js",
       },
@@ -42,7 +42,7 @@
     },
     "packages/db0-adapter": {
       "name": "@boxdb/db0-adapter",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "devDependencies": {
         "@boxdb/client": "workspace:*",
         "@types/node": "26.6.5",
@@ -59,7 +59,7 @@
     },
     "packages/drizzle-adapter": {
       "name": "@boxdb/drizzle-adapter",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "devDependencies": {
         "@boxdb/client": "workspace:*",
         "@types/node": "26.6.5",
@@ -76,7 +76,7 @@
     },
     "packages/typescript": {
       "name": "@boxdb/client",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/node": "26.6.5",
         "oxfmt": "0.73.0",
