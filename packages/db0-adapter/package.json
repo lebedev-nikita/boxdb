@@ -1,6 +1,6 @@
 {
   "name": "@boxdb/db0-adapter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Asynchronous db0 connector for BoxDB",
   "license": "MIT",
   "repository": {
@@ -41,7 +41,7 @@
     "vitest": "5.0.4"
   },
   "peerDependencies": {
-    "@boxdb/client": "^0.2.0",
+    "@boxdb/client": "^0.3.0",
     "db0": "^0.4.1"
   },
   "engines": {

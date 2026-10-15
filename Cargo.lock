@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bigdecimal",
  "cc",
@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb-go"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "boxdb",
  "serde",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb-node"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "boxdb",
  "napi",

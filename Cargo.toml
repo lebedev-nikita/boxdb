@@ -1,6 +1,6 @@
 [package]
 name = "boxdb"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "An extended SQLite client with typed columns and readable storage"
 license = "MIT"
