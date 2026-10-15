@@ -170,9 +170,12 @@ to abort. `await using db` performs a draining close.
 Existing contents determine the format. A read-only readable connection reads
 an opening snapshot without taking the writer's lock.
 
-Inputs accept `null`, strings, finite numbers, signed 64-bit bigint, boolean and
-`Uint8Array`. Safe integer numbers and booleans bind as integers; fractional
-numbers bind as REAL. Serialize objects explicitly. Every integer cell, write
+Inputs accept `null`, strings, finite numbers, bigint, boolean and `Uint8Array`.
+Bigint parameters accept the combined INT64/UINT64 range (`-2^63` through
+`2^64 - 1`); positive values above INT64_MAX bind as UINT64. Use
+`CAST(? AS UINT8/16/32)` to select a narrower unsigned width.
+Safe integer numbers and booleans bind as integers; fractional numbers bind as
+REAL. Serialize objects explicitly. Every signed or unsigned integer cell, write
 count and row ID returns as bigint; REAL remains number. Convert bigint
 explicitly when serializing JSON. Unsafe integer inputs throw instead of rounding.
 
@@ -213,7 +216,3 @@ Every connection includes decimal arithmetic, Unicode text functions, regular
 expressions, sqlite-vec, FTS5 and R*Tree; see the
 [SQL extension guide](../../docs/extensions.md). Virtual tables require memory
 or binary storage.
-
-Unsigned SQL values are returned as `bigint`. Parameters accept the combined
-INT64/UINT64 range (`-2^63` through `2^64 - 1`); positive values above INT64_MAX
-bind as UINT64. Use `CAST(? AS UINT8/16/32)` to select a narrower unsigned width.

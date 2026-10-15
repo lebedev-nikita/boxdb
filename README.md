@@ -29,6 +29,7 @@ boxdb data.db -e "
 
 Run `boxdb data.db` for the interactive shell; `.help` lists shell commands.
 Use `boxdb --help` for CLI options, including JSON output and format conversion.
+See the [CLI README](packages/cli/README.md) for installation and usage.
 
 To build from this checkout, use `cargo install --path . --locked` with a current
 Rust toolchain, native build tools and libclang (Xcode Command Line Tools on
@@ -86,12 +87,19 @@ The [library source](src/lib.rs) includes a minimal example;
 `cargo doc --no-deps --open` opens the API reference.
 
 The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
-with a nonblocking API and separate Drizzle, Better Auth and db0 adapters. Follow its build
-and installation instructions, or install it with `npm install @boxdb/client`.
+with a nonblocking API. Follow its build and installation instructions, or
+install it with `npm install @boxdb/client`. Separate adapters have their own guides:
+
+- [Drizzle](packages/drizzle-adapter/README.md): queries, transactions, migrations and extended column types.
+- [Better Auth](packages/better-auth-adapter/README.md): authentication storage and initial schema generation.
+- [db0](packages/db0-adapter/README.md): connector setup and transaction handles.
 
 The [Go client](packages/go/README.md) implements `database/sql`, with context
 cancellation, prepared statements and transactions. It uses the Rust core through
 cgo; follow its native build and local module installation instructions.
+
+For AI agents, the [BoxDB skill](.agents/skills/boxdb/SKILL.md) routes usage tasks
+to the appropriate client guide and explains BoxDB-specific constraints.
 
 ## Development
 

@@ -121,12 +121,16 @@ connection or lose its committed in-memory data.
 ## Values and errors
 
 Use ordinary Go integers, floats, strings, booleans, `[]byte`, `nil`, `time.Time`,
-`sql.Null*` and `driver.Valuer` for parameters. Integers preserve the signed 64-bit
-range; non-finite floats and larger unsigned integers return errors.
+`sql.Null*` and `driver.Valuer` for parameters. Signed integers preserve the INT64
+range. Unsigned parameters (`uint`, `uint8`, `uint16`, `uint32`, `uint64`) bind as
+UINT64 without loss across its full range. Non-finite floats return errors.
 `time.Time` binds as a UTC INSTANT; the core rounds finer input to microseconds.
 See [temporal precision](../../docs/temporal.md#precision-across-language-clients).
 
 Results use SQLite storage values: `int64`, `float64`, `string`, `[]byte` and `nil`.
+Unsigned results fitting INT64 are driver `int64` values; larger results are
+decimal strings because `database/sql/driver.Value` has no uint64 representation.
+Both forms can be scanned into `uint64`.
 DECIMAL columns and calculated decimals return exact strings. Bind decimal
 strings for exact amounts; NUMERIC is not supported. JSON and arrays remain JSON
 strings, UUID remains text, temporal values return canonical strings (INSTANT in UTC, DATETIME without a
@@ -165,8 +169,3 @@ through `errors.Is`; an interrupted native call also retains its BoxDB error
 through `errors.As`. A completed unrelated failure is not replaced by a racing
 cancellation. Transaction completion and cleanup can return joined errors.
 See the [error contract](../../docs/client-errors.md).
-
-Unsigned Go parameters (`uint`, `uint8`, `uint16`, `uint32`, `uint64`) bind as
-UINT64 without loss. Unsigned results fitting INT64 are driver `int64` values;
-larger results are decimal strings because `database/sql/driver.Value` has no
-uint64 representation. Both forms can be scanned into `uint64`.

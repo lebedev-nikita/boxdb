@@ -54,7 +54,8 @@ TypeScript read-only transactions use `BOXDB_READONLY` for forbidden SQL writes.
 restriction is inherited by savepoints and released before waiting root work
 resumes; an explicitly enabled pre-existing `query_only` setting is preserved.
 Argument errors use `TypeError` or `RangeError`; both unsafe integer numbers and
-bigint outside signed int64 use `RangeError`.
+bigint outside the combined INT64/UINT64 range (`-2^63` through `2^64 - 1`)
+use `RangeError`.
 
 Signals reject cancelled TypeScript requests with the caller's reason. Rollback
 and connection-close cleanup are not cancelled by the same signal. SQL runs on
