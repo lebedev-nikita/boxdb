@@ -32,7 +32,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just npm-publish')\"",
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {

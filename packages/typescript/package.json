@@ -35,7 +35,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just npm-publish')\"",
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
     "build": "bun run scripts/build.ts",
     "check": "tsc --noEmit && oxlint src test scripts && oxfmt --check src test scripts package.json tsconfig.json tsconfig.build.json tsconfig.runtime.json",
     "test": "vitest run",

@@ -48,8 +48,12 @@ npm-check: ts-install
 npm-prepare run-id:
     bun run npm:prepare "$1"
 
-# Review and publish the prepared archives with interactive npm authentication.
-npm-publish:
+# Reuse the reviewed bundle, or obtain it from this commit's successful CI run.
+npm-ready: npm-check
+    bun run scripts/npm/ready.ts
+
+# Install dependencies, prepare verified archives and publish with npm confirmation.
+publish-npm: npm-ready
     bun run npm:publish
 
 go-check: go-build
