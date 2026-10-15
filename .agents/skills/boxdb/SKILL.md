@@ -63,8 +63,23 @@ Read only the guides relevant to the task.
   values and indexes require BoxDB's patched engine. Use BoxDB's conversion or
   SQLite backup facilities for live binary databases, accounting for the WAL.
 
-For SQL migration files and schema export, read
-[migrations](https://github.com/lebedev-nikita/boxdb/blob/main/docs/migrations.md).
+## Migrations and schema export
+
+Use `db/migrations` for SQL migrations and `db/schema.yaml` for the YAML schema
+dump, relative to the project root, unless the project specifies other paths.
+After applying schema changes, refresh the dump from the project root, replacing
+`database.yaml` with the actual database path:
+
+```sh
+mkdir -p db
+boxdb schema dump database.yaml --format yaml > db/schema.yaml
+```
+
+Read [migrations](https://github.com/lebedev-nikita/boxdb/blob/main/docs/migrations.md)
+for migration commands and schema export details.
+
+## Further references
+
 For failure handling, read
 [client errors](https://github.com/lebedev-nikita/boxdb/blob/main/docs/client-errors.md)
 and branch on error codes rather than message text. For full-text, vector,
