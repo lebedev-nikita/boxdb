@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "vitest";
-import { Database } from "../src/index.js";
+import { BoxDB } from "../src/index.js";
 
 test.each([
   ["INSERT INTO t VALUES(1,'Grace',1)", "BOXDB_CONSTRAINT_PRIMARYKEY", 1555],
@@ -13,7 +13,7 @@ test.each([
   ["SELECT * FROM missing", "BOXDB_ERROR", 1],
   ["SELECT FROM", "BOXDB_ERROR", 1],
 ])("preserves structured errors and native causes: %s", async (sql, code, extended) => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec(
     "CREATE TABLE t(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,n INTEGER CHECK(n>0)); INSERT INTO t VALUES(1,'Ada',1)",
   );
@@ -27,7 +27,7 @@ test.each([
 });
 
 test("preserves extension functions, full-text, spatial and vector queries", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   expect(
     await db.query`SELECT CAST(${"9007199254740992.01"} AS DECIMAL)+CAST(${"0.02"} AS DECIMAL) AS amount, text_lower(${"ПРИВЕТ"}) AS word, regexp_substr(${"order #123"},${"\\d+"}) AS digits`.get(),
   ).toEqual({ amount: "9007199254740992.03", word: "привет", digits: "123" });
@@ -46,7 +46,7 @@ test("preserves extension functions, full-text, spatial and vector queries", asy
 });
 
 test("matches ordinary SQLite values, affected rows and row IDs", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const sqlite = new DatabaseSync(":memory:");
   try {
     const schema = "CREATE TABLE t(id INTEGER PRIMARY KEY, text TEXT, n REAL, b BLOB)";
@@ -74,7 +74,7 @@ test("matches ordinary SQLite values, affected rows and row IDs", async () => {
 });
 
 test("validates named and positional bindings and rejects extra or missing parameters", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   expect((await db.execute("SELECT @value AS a,@value AS b", { value: "same" })).rows).toEqual([
     { a: "same", b: "same" },
   ]);
@@ -87,7 +87,7 @@ test("validates named and positional bindings and rejects extra or missing param
 });
 
 test("retains integer precision while preserving float and null storage values", async () => {
-  await using db = await Database.open(":memory:");
+  await using db = await BoxDB.open(":memory:");
   expect(
     await db.query`SELECT ${9223372036854775807n} AS high, ${-9223372036854775808n} AS low, 1.0 AS f,NULL AS n`.get(),
   ).toEqual({ high: 9223372036854775807n, low: -9223372036854775808n, f: 1, n: null });
@@ -102,7 +102,7 @@ test("retains integer precision while preserving float and null storage values",
 });
 
 test("validates BoxDB extended types and returns their SQLite representations", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec(
     "CREATE TABLE t(active BOOLEAN, payload JSON, amount DECIMAL(12,2), at INSTANT, small UINT8)",
   );
@@ -125,7 +125,7 @@ test.each(["binary", "readable"] as const)(
     try {
       const path = join(directory, "data.db");
       {
-        await using db = await Database.open(path, { format });
+        await using db = await BoxDB.open(path, { format });
         await db.exec("CREATE TABLE t(id INTEGER PRIMARY KEY,name TEXT,payload BLOB)");
         {
           await using tx = await db.begin();
@@ -137,7 +137,7 @@ test.each(["binary", "readable"] as const)(
           await tx.query`INSERT INTO t VALUES(${2},${"rollback"},NULL)`;
         }
       }
-      await using reopened = await Database.open(path);
+      await using reopened = await BoxDB.open(path);
       expect(await reopened.query`SELECT * FROM t`).toEqual([
         { id: 9007199254740993n, name: "Ada", payload: Buffer.from([0, 255]) },
       ]);
@@ -151,7 +151,7 @@ test.each(["binary", "readable"] as const)(
 test("opening failures preserve SQLite codes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "boxdb-client-"));
   try {
-    await expect(Database.open(join(directory, "missing", "data.db"))).rejects.toMatchObject({
+    await expect(BoxDB.open(join(directory, "missing", "data.db"))).rejects.toMatchObject({
       code: "BOXDB_CANTOPEN",
       resultCode: 14,
       extendedCode: 14,
@@ -162,7 +162,7 @@ test("opening failures preserve SQLite codes", async () => {
 });
 
 test("single statement execution rejects scripts and refreshes changed schemas", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE t(n INTEGER); INSERT INTO t VALUES(1)");
   expect(await db.query`SELECT * FROM t`.get()).toEqual({ n: 1n });
   await db.exec("ALTER TABLE t ADD COLUMN s TEXT DEFAULT 'new'");
@@ -172,7 +172,7 @@ test("single statement execution rejects scripts and refreshes changed schemas",
 });
 
 test("integer results and write metadata follow the main bigint contract", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE ints(n INT64)");
   expect(await db.query`INSERT INTO ints VALUES(${9223372036854775807n})`.run()).toEqual({
     changes: 1n,
@@ -189,7 +189,7 @@ test("integer results and write metadata follow the main bigint contract", async
 });
 
 test("native decimals retain exact arithmetic, numeric ordering and rounded results", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec(
     "CREATE TABLE prices(amount DECIMAL(20,2) UNIQUE); INSERT INTO prices VALUES('10'),('2.00')",
   );
@@ -209,7 +209,7 @@ test("native decimals retain exact arithmetic, numeric ordering and rounded resu
 });
 
 test("unsigned integers use bigint across the full UINT64 range", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE unsigned_values(small UINT8,wide UINT64 UNIQUE)");
   await db.query`INSERT INTO unsigned_values VALUES(${255},${18446744073709551615n})`.run();
   expect(

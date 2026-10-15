@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Value};
 use rusqlite::Connection;
 
@@ -39,9 +42,7 @@ fn binary_files_are_sqlite_and_share_live_wal_with_other_clients() {
     );
     db.execute("BEGIN; INSERT INTO t VALUES(3,'pending')")
         .unwrap();
-    assert!(db.export(Format::Binary).is_err());
-    let snapshot = Database::read_snapshot(&path).unwrap();
-    let mut snapshot = Database::from_snapshot(&snapshot).unwrap();
+    let mut snapshot = files::converted_file(&path, Format::Binary).unwrap();
     assert_eq!(
         snapshot.execute("SELECT id FROM t").unwrap()[0].rows.len(),
         2
@@ -53,8 +54,8 @@ fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(id INT64 PRIMARY KEY AUTOINCREMENT,n TEXT); INSERT INTO t VALUES(1,'a'),(10,'b'); DELETE FROM t WHERE id=10; CREATE INDEX t_n ON t(n); CREATE VIEW v AS SELECT * FROM t; CREATE TABLE audit(n TEXT); CREATE TRIGGER log AFTER INSERT ON t BEGIN INSERT INTO audit VALUES(NEW.n); END; CREATE TABLE emptied(id INT64 PRIMARY KEY AUTOINCREMENT); INSERT INTO emptied VALUES(42); DELETE FROM emptied;").unwrap();
     for format in [Format::Binary, Format::Readable] {
-        let bytes = db.export(format).unwrap();
-        let mut restored = Database::from_snapshot(&bytes).unwrap();
+        let bytes = files::converted_bytes(&mut db, format).unwrap();
+        let mut restored = files::open_bytes(&bytes).unwrap();
         restored.execute("INSERT INTO t(n) VALUES('next')").unwrap();
         restored
             .execute("INSERT INTO emptied DEFAULT VALUES")
@@ -76,8 +77,8 @@ fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
         );
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("restored.db");
-        drop(Database::restore(&path, &bytes).unwrap());
-        assert!(Database::restore(&path, &bytes).is_err());
+        drop(files::write_converted(&path, &bytes).unwrap());
+        assert!(files::write_converted(&path, &bytes).is_err());
         let mut reopened = Database::open(&path, Format::Binary).unwrap();
         assert_eq!(reopened.format(), Some(format));
         assert_eq!(
@@ -90,16 +91,20 @@ fn sqlite_and_yaml_convert_schemas_rows_and_autoincrement_state() {
 fn readable_storage_handles_generated_and_without_rowid_tables() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(id TEXT PRIMARY KEY,n INT64,doubled INT64 GENERATED ALWAYS AS(n*2) STORED) WITHOUT ROWID; INSERT INTO t(id,n) VALUES('a',2),('b',3)").unwrap();
-    let bytes = db.export(Format::Readable).unwrap();
-    let mut restored = Database::from_snapshot(&bytes).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
+    let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(
         restored.execute("SELECT * FROM t ORDER BY id").unwrap(),
         db.execute("SELECT * FROM t ORDER BY id").unwrap()
     );
-    assert_eq!(restored.export(Format::Readable).unwrap(), bytes);
+    assert_eq!(
+        files::converted_bytes(&mut restored, Format::Readable).unwrap(),
+        bytes
+    );
 
     db.execute("CREATE TABLE shadow(n INT64,_rowid_ INT64 GENERATED ALWAYS AS(n*2)); INSERT INTO shadow(rowid,n) VALUES(99,3)").unwrap();
-    let mut restored = Database::from_snapshot(&db.export(Format::Readable).unwrap()).unwrap();
+    let mut restored =
+        files::open_bytes(&files::converted_bytes(&mut db, Format::Readable).unwrap()).unwrap();
     assert_eq!(
         restored.execute("SELECT rowid,* FROM shadow").unwrap(),
         db.execute("SELECT rowid,* FROM shadow").unwrap()
@@ -128,7 +133,7 @@ fn readable_transactions_publish_only_committed_data_and_keep_exclusive_lock() {
     );
 }
 #[test]
-fn old_binary_and_corrupt_snapshots_are_rejected_without_overwriting_destinations() {
+fn old_binary_and_corrupt_sources_are_rejected_without_overwriting_destinations() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("bad.db");
     let old = b"BOXDB\0\x03obsolete";
@@ -141,9 +146,9 @@ fn old_binary_and_corrupt_snapshots_are_rejected_without_overwriting_destination
         b"{}",
         b"{\"kind\":\"database\",\"version\":1,\"application_id\":0,\"user_version\":0}\n",
     ] {
-        assert!(Database::from_snapshot(bytes).is_err());
+        assert!(files::open_bytes(bytes).is_err());
         let target = temp.path().join("target.db");
-        assert!(Database::restore(&target, bytes).is_err());
+        assert!(files::write_converted(&target, bytes).is_err());
         assert!(!target.exists());
     }
 }
@@ -216,8 +221,7 @@ fn failed_explicit_commit_keeps_pending_changes_private_until_repair_or_rollback
         db.execute("BEGIN; INSERT INTO child VALUES(99)").unwrap();
         assert!(db.execute("COMMIT").is_err());
         assert!(db.in_transaction());
-        let mut committed =
-            Database::from_snapshot(&Database::read_snapshot(&path).unwrap()).unwrap();
+        let mut committed = files::converted_file(&path, format).unwrap();
         assert!(
             committed.execute("SELECT p FROM child").unwrap()[0]
                 .rows

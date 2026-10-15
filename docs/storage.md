@@ -10,9 +10,9 @@ connections using the same engine may use the file concurrently. Native values
 and their indexes require BoxDB's patched SQLite engine.
 
 Do not copy only a live `.db` file while ignoring its WAL. Use SQLite's backup
-API, BoxDB export, or [Litestream](replication.md). Binary databases are not
-limited to the size of RAM; BoxDB materializes query results. Snapshot APIs
-currently limit imported/exported snapshots to 256 MiB.
+API, `boxdb convert`, or [Litestream](replication.md). Binary databases are not
+limited to the size of RAM; BoxDB materializes query results. Readable YAML
+storage is limited to 256 MiB.
 
 ## Extended schema
 
@@ -183,8 +183,11 @@ file size even for a single changed row. Group related writes in BEGIN/COMMIT to
 pay for one publication; reading an already open database uses SQLite in memory
 without parsing YAML again. Opening a file must parse and restore the stream.
 
-`Database::export` requires no active transaction. Binary export uses SQLite's
-backup API to produce a self-contained file with committed WAL pages included.
-`Database::read_snapshot` opens a separate SQLite reader to capture committed
-binary data while a writer is active. Restore and conversion require a new
-path. Previous native BoxDB binary files and JSONL layouts are unsupported.
+`boxdb convert source.db destination.yaml --format readable` converts committed
+data without modifying the source. Use `--format binary` for a self-contained
+SQLite file, including committed WAL pages. The destination must be new.
+The Rust equivalent is `Database::convert(source, destination, format)`.
+Conversion validates logical types and foreign keys within one read transaction.
+Binary-to-binary conversion uses SQLite's backup API without loading the entire
+file into memory; readable storage executes in memory. Previous native BoxDB
+binary files and JSONL layouts are unsupported.

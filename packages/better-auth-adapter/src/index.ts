@@ -6,7 +6,7 @@ import {
   type DBAdapter,
   type ModelTarget,
 } from "better-auth/adapters";
-import type { Database, TransactionClient, SQLParameter } from "@boxdb/client";
+import type { BoxDB, TransactionClient, SQLParameter } from "@boxdb/client";
 
 export interface BetterAuthAdapterOptions {
   usePlural?: boolean;
@@ -80,7 +80,7 @@ const entries = (data: unknown) =>
 
 /** Better Auth's native database adapter, borrowing a BoxDB connection. */
 export function betterAuthAdapter(
-  client: Database | TransactionClient,
+  client: BoxDB | TransactionClient,
   config: BetterAuthAdapterOptions = {},
 ): (options: BetterAuthOptions) => DBAdapter {
   return (options) =>

@@ -131,8 +131,29 @@ DECIMAL columns and calculated decimals return exact strings. Bind decimal
 strings for exact amounts; NUMERIC is not supported. JSON and arrays remain JSON
 strings, UUID remains text, temporal values return canonical strings (INSTANT in UTC, DATETIME without a
 time zone), and BOOLEAN returns integer 0/1 (which `Scan` accepts into
-`bool`). Serialize JSON and arrays explicitly. Use `sql.Scanner` for application
-types. BoxDB validates logical values on both reads and writes.
+`bool`). Serialize arrays explicitly. BoxDB validates logical values on both
+reads and writes.
+
+`Decimal`, `UUID`, `Instant`, `Date`, `DateTime` and `Interval` implement
+`sql.Scanner` and `driver.Valuer` with string storage. Use matching SQL columns
+or explicit casts: the engine validates and normalizes values, while the Go
+codecs preserve exact text without converting decimals to float64 or calendar
+values to a time zone. Use `sql.Null[T]` for nullable values.
+
+```go
+amount := boxdb.Decimal("9007199254740993.01")
+_, err = db.ExecContext(ctx, "INSERT INTO payments(amount) VALUES(?)", amount)
+var total boxdb.Decimal
+err = db.QueryRowContext(ctx, "SELECT SUM(amount) FROM payments").Scan(&total)
+```
+
+`JSON[T]{Data: document}` implements the same SQL interfaces and JSON
+marshal/unmarshal methods for complete documents. Read the decoded document from
+`Data`; decoding into interface values preserves numbers as `json.Number`.
+A nil `Data` represents JSON `null`; `sql.Null[boxdb.JSON[T]]` represents SQL NULL.
+Serialization and parsing run in Go; SQL JSON inspection and editing remain
+unsupported. Custom application types can also implement `sql.Scanner` and
+`driver.Valuer`.
 
 BoxDB failures are `*boxdb.Error`, available through `errors.As`. They expose
 `Message`, a symbolic `Code` such as `BOXDB_CONSTRAINT_UNIQUE`, and optional

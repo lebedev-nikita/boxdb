@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
@@ -142,7 +145,7 @@ fn sql_integer_columns_enforce_ranges_and_return_unsigned_values() {
 }
 
 #[test]
-fn unsigned_arrays_and_integers_survive_snapshots_and_reopening() {
+fn unsigned_arrays_and_integers_survive_conversion_and_reopening() {
     for format in [Format::Binary, Format::Readable] {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("integers");
@@ -178,8 +181,8 @@ fn unsigned_arrays_and_integers_survive_snapshots_and_reopening() {
             )
             .is_err()
         );
-        let snapshot = db.export(format).unwrap();
-        let mut restored = Database::from_snapshot(&snapshot).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
+        let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(
             restored.execute("SELECT * FROM t").unwrap()[0].rows,
             expected

@@ -210,8 +210,7 @@ fn run(cli: Cli) -> Result<()> {
                 if !source.is_file() {
                     return Err(Error::new("source database not found".into()));
                 }
-                let db = Database::open(&source, Format::Binary)?;
-                Database::restore(destination, &db.export(format)?)?;
+                Database::convert(source, destination, format)?;
                 Ok(())
             }
         };

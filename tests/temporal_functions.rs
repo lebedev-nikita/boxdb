@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
@@ -261,7 +264,8 @@ fn temporal_functions_survive_generated_columns_indexes_and_snapshots() {
         Value::Interval("0 mons 1 days 00:00:00.000000".into()),
     ]];
     for format in [Format::Binary, Format::Readable] {
-        let mut restored = Database::from_snapshot(&db.export(format).unwrap()).unwrap();
+        let mut restored =
+            files::open_bytes(&files::converted_bytes(&mut db, format).unwrap()).unwrap();
         for plan in ["INDEXED BY events_day", "NOT INDEXED"] {
             let sql = format!(
                 "SELECT span,bucket,seconds,v FROM events {plan} WHERE date_trunc('day',at)=CAST('2024-03-01T00:00:00' AS DATETIME)"

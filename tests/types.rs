@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 use rusqlite::Connection;
 
@@ -112,13 +115,16 @@ fn rich_types_round_trip_through_sqlite_and_readable_storage() {
         vec![values.clone()]
     );
     for format in [Format::Binary, Format::Readable] {
-        let bytes = db.export(format).unwrap();
-        let mut restored = Database::from_snapshot(&bytes).unwrap();
+        let bytes = files::converted_bytes(&mut db, format).unwrap();
+        let mut restored = files::open_bytes(&bytes).unwrap();
         assert_eq!(
             restored.execute("SELECT * FROM rich").unwrap()[0].rows,
             vec![values.clone()]
         );
-        assert_eq!(restored.export(format).unwrap(), bytes);
+        assert_eq!(
+            files::converted_bytes(&mut restored, format).unwrap(),
+            bytes
+        );
     }
 }
 #[test]
@@ -323,7 +329,8 @@ fn typed_alter_table_keeps_metadata_atomic_and_tracks_renames() {
         db.execute("SELECT * FROM events").unwrap()[0].columns.len(),
         3
     );
-    let mut restored = Database::from_snapshot(&db.export(Format::Binary).unwrap()).unwrap();
+    let mut restored =
+        files::open_bytes(&files::converted_bytes(&mut db, Format::Binary).unwrap()).unwrap();
     assert!(restored.execute("UPDATE events SET day='wrong'").is_err());
 }
 #[test]

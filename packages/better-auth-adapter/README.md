@@ -4,11 +4,11 @@ A direct adapter for Better Auth 1.7.x. Install `@boxdb/client`,
 `@boxdb/better-auth-adapter`, and `better-auth`.
 
 ```ts
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 import { betterAuth } from "better-auth";
 import { betterAuthAdapter } from "@boxdb/better-auth-adapter";
 
-const client = await Database.open("auth.db");
+const client = await BoxDB.open("auth.db");
 export const auth = betterAuth({
   database: betterAuthAdapter(client),
   secret: process.env.BETTER_AUTH_SECRET,

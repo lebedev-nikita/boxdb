@@ -25,9 +25,9 @@ prebuilt npm binaries are not published yet. This client does not run in browser
 ## Queries
 
 ```ts
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 
-await using db = await Database.open("data.db", { busyTimeoutMs: 5000 });
+await using db = await BoxDB.open("data.db", { busyTimeoutMs: 5000 });
 await db.exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT)");
 const inserted = await db.query`INSERT INTO users(name) VALUES(${"Ada"})`.run();
 
@@ -115,7 +115,7 @@ requests resume only after cleanup; further queries or commits through the
 expired handle fail with `BOXDB_TRANSACTION_TIMEOUT`.
 
 ```ts
-await using db = await Database.open(":memory:", { transactionTimeoutMs: 10_000 });
+await using db = await BoxDB.open(":memory:", { transactionTimeoutMs: 10_000 });
 await using tx = await db.begin({ timeoutMs: 2_000 });
 const pending = db.query`SELECT 1 AS answer`.execute();
 await tx.commit();
@@ -153,7 +153,7 @@ to abort. `await using db` performs a draining close.
 
 ## Options, values and diagnostics
 
-`Database.open(path, options)` accepts `format: "binary" | "readable"`,
+`BoxDB.open(path, options)` accepts `format: "binary" | "readable"`,
 `readOnly`, `busyTimeoutMs`, `transactionTimeoutMs`, `maxPendingQueries`, and `signal`.
 Existing contents determine the format. A read-only readable connection reads
 an opening snapshot without taking the writer's lock.

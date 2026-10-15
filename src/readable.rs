@@ -495,13 +495,7 @@ impl<W: std::io::Write> std::io::Write for LimitedWriter<W> {
         self.inner.flush()
     }
 }
-pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
-    encode_tables(db, false)
-}
 pub(crate) fn encode_schema(db: &Connection) -> Result<Vec<u8>> {
-    encode_tables(db, true)
-}
-fn encode_tables(db: &Connection, schema_only: bool) -> Result<Vec<u8>> {
     let mut bytes = vec![];
     let mut writer = LimitedWriter {
         inner: &mut bytes,
@@ -516,8 +510,7 @@ fn encode_tables(db: &Connection, schema_only: bool) -> Result<Vec<u8>> {
             object_type, name, ..
         } = record
             && object_type == "table"
-            && (!schema_only
-                || name == schema::CODEC_META
+            && (name == schema::CODEC_META
                 || name == schema::META
                 || name == crate::migrations::TABLE)
         {
@@ -527,11 +520,6 @@ fn encode_tables(db: &Connection, schema_only: bool) -> Result<Vec<u8>> {
             while let Some(row) = cursor.next()? {
                 table.write_row(row, &mut writer)?;
             }
-        }
-    }
-    if !schema_only {
-        for record in sequence_records(db)? {
-            write_document(&mut writer, &record)?;
         }
     }
     Ok(bytes)

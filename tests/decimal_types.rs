@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
@@ -52,7 +55,7 @@ fn numeric_declarations_are_rejected_while_decimal_remains_native() {
 }
 
 #[test]
-fn decimal_values_and_arrays_survive_reopening_and_snapshots() {
+fn decimal_values_and_arrays_survive_reopening_and_conversion() {
     let directory = tempfile::tempdir().unwrap();
     for format in [Format::Binary, Format::Readable] {
         let path = directory.path().join(format!("{format:?}"));
@@ -65,14 +68,14 @@ fn decimal_values_and_arrays_survive_reopening_and_snapshots() {
         ];
         db.execute_params("INSERT INTO prices VALUES(?,?)", &values)
             .unwrap();
-        let snapshot = db.export(format).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
         drop(db);
         let mut reopened = Database::open(&path, format).unwrap();
         assert_eq!(
             reopened.execute("SELECT * FROM prices").unwrap()[0].rows,
             vec![values.clone()]
         );
-        let mut restored = Database::from_snapshot(&snapshot).unwrap();
+        let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(
             restored.execute("SELECT * FROM prices").unwrap()[0].rows,
             vec![values]

@@ -3,11 +3,11 @@
 Install `@boxdb/client`, `@boxdb/db0-adapter`, and `db0` 0.4.x.
 
 ```ts
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 import { db0Connector } from "@boxdb/db0-adapter";
 import { createDatabase } from "db0";
 
-await using client = await Database.open("data.db");
+await using client = await BoxDB.open("data.db");
 const db = createDatabase(db0Connector(client));
 await db.exec("CREATE TABLE IF NOT EXISTS users(name TEXT)");
 await db.sql`INSERT INTO users VALUES(${"Ada"})`;

@@ -1,4 +1,5 @@
 import { is } from "drizzle-orm";
+export { date, dateTime, decimal, instant, interval, json, uuid } from "./columns.js";
 import { DefaultLogger, type Logger } from "drizzle-orm/logger";
 import {
   createTableRelationsHelpers,
@@ -24,12 +25,7 @@ import {
   type RemotePreparedQuery,
 } from "drizzle-orm/sqlite-proxy/session";
 import type { DrizzleConfig } from "drizzle-orm/utils";
-import {
-  type Database,
-  type TransactionClient,
-  type SQLValue,
-  type RunResult,
-} from "@boxdb/client";
+import { type BoxDB, type TransactionClient, type SQLValue, type RunResult } from "@boxdb/client";
 
 export interface DrizzleRunResult extends RunResult {
   rows?: unknown[];
@@ -38,7 +34,7 @@ export interface DrizzleRunResult extends RunResult {
 export type DrizzleDatabase<TSchema extends Record<string, unknown> = Record<string, never>> =
   BaseSQLiteDatabase<"async", DrizzleRunResult, TSchema> & {
     batch: SqliteRemoteDatabase<TSchema>["batch"];
-    $client: Database | TransactionClient;
+    $client: BoxDB | TransactionClient;
   };
 
 // Timestamp decoders expect number inputs; integer columns retain bigint.
@@ -80,7 +76,7 @@ class Session<
   TSchema extends TablesRelationalConfig,
 > extends SQLiteRemoteSession<TFullSchema, TSchema> {
   constructor(
-    private readonly database: Database | TransactionClient,
+    private readonly database: BoxDB | TransactionClient,
     private readonly asyncDialect: SQLiteAsyncDialect,
     private readonly relationalSchema: RelationalSchemaConfig<TSchema> | undefined,
     private readonly options: { logger?: Logger },
@@ -174,7 +170,7 @@ class Transaction<
 export function createDrizzleDatabase<
   TSchema extends Record<string, unknown> = Record<string, never>,
 >(
-  client: Database | TransactionClient,
+  client: BoxDB | TransactionClient,
   config: Omit<DrizzleConfig<TSchema>, "cache"> = {},
 ): DrizzleDatabase<TSchema> {
   const dialect = new Dialect(config.casing === undefined ? {} : { casing: config.casing });

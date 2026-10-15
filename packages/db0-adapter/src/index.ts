@@ -1,10 +1,10 @@
 import type { Connector, Primitive, Statement } from "db0";
-import type { Database, TransactionClient } from "@boxdb/client";
+import type { BoxDB, TransactionClient } from "@boxdb/client";
 
 /** Borrow a BoxDB connection or transaction; disposal does not close its owner. */
 export function db0Connector(
-  client: Database | TransactionClient,
-): Connector<Database | TransactionClient> {
+  client: BoxDB | TransactionClient,
+): Connector<BoxDB | TransactionClient> {
   const statement = (sql: string, bound: Primitive[] = []): Statement => {
     const parameters = (supplied: Primitive[]) =>
       (supplied.length ? supplied : bound).map((value) => value ?? null);

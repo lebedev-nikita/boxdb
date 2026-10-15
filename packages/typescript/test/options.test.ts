@@ -2,15 +2,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { Database } from "../src/index.js";
+import { BoxDB } from "../src/index.js";
 
 test("begin reserves the writer before its first query by default", async () => {
   const directory = mkdtempSync(join(tmpdir(), "boxdb-default-transaction-"));
   try {
     const path = join(directory, "data.db");
-    await using db = await Database.open(path);
+    await using db = await BoxDB.open(path);
     await db.exec("CREATE TABLE item(id INTEGER)");
-    await using other = await Database.open(path, { busyTimeoutMs: 30 });
+    await using other = await BoxDB.open(path, { busyTimeoutMs: 30 });
     await using tx = await db.begin();
     await expect(other.execute("INSERT INTO item VALUES(1)")).rejects.toMatchObject({
       code: "BOXDB_BUSY",
@@ -23,7 +23,7 @@ test("begin reserves the writer before its first query by default", async () => 
 });
 
 test("readOnly transactions reject writes and release the connection for writers", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER); INSERT INTO item VALUES(1)");
   await using tx = await db.begin({ readOnly: true });
   expect((await tx.execute("SELECT * FROM item")).rows).toEqual([{ id: 1n }]);
@@ -42,11 +42,11 @@ test("readOnly transactions keep a snapshot while another connection writes", as
   const directory = mkdtempSync(join(tmpdir(), "boxdb-read-transaction-"));
   try {
     const path = join(directory, "data.db");
-    await using db = await Database.open(path);
+    await using db = await BoxDB.open(path);
     await db.exec(
       "CREATE TABLE item(id INTEGER, at INSTANT); INSERT INTO item VALUES(1,'2026-10-14T10:00:00Z')",
     );
-    await using other = await Database.open(path, { busyTimeoutMs: 30 });
+    await using other = await BoxDB.open(path, { busyTimeoutMs: 30 });
     await using tx = await db.begin({ readOnly: true });
     expect((await tx.execute("SELECT id FROM item")).rows).toEqual([{ id: 1n }]);
     await other.execute("INSERT INTO item VALUES(2,'2026-10-14T11:00:00Z')");
@@ -62,7 +62,7 @@ test("readOnly transactions keep a snapshot while another connection writes", as
 });
 
 test("readOnly transactions enforce writes across query and script entry points", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER); INSERT INTO item VALUES(1)");
   await using tx = await db.begin({ readOnly: true });
   await expect(tx.query`INSERT INTO item VALUES(2) RETURNING id`.get()).rejects.toMatchObject({
@@ -86,7 +86,7 @@ test("readOnly transactions enforce writes across query and script entry points"
 });
 
 test("savepoints inherit readOnly and rollback releases waiting root writes", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   await using tx = await db.begin({ readOnly: true });
   await using child = await tx.begin();
@@ -104,7 +104,7 @@ test("savepoints inherit readOnly and rollback releases waiting root writes", as
 });
 
 test("readOnly restores an existing query_only setting after commit", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER); PRAGMA query_only=ON");
   await using tx = await db.begin({ readOnly: true });
   await tx.execute("SELECT * FROM item");
@@ -119,7 +119,7 @@ test("readOnly restores an existing query_only setting after commit", async () =
 test("readOnly timeout restores writes before releasing waiting root requests", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    await using db = await Database.open(":memory:", { transactionTimeoutMs: 20 });
+    await using db = await BoxDB.open(":memory:", { transactionTimeoutMs: 20 });
     await db.exec("CREATE TABLE item(id INTEGER)");
     await using tx = await db.begin({ readOnly: true });
     await tx.execute("SELECT * FROM item");
@@ -136,7 +136,7 @@ test("readOnly timeout restores writes before releasing waiting root requests", 
 test.each(["immediate", "exclusive"] as const)(
   "readOnly rejects a conflicting %s mode before acquiring the connection",
   async (mode) => {
-    await using db = await Database.open();
+    await using db = await BoxDB.open();
     await expect(db.begin({ readOnly: true, mode })).rejects.toBeInstanceOf(TypeError);
     await using tx = await db.begin();
     await tx.commit();
@@ -144,7 +144,7 @@ test.each(["immediate", "exclusive"] as const)(
 );
 
 test.each([null, 1, "true"])("rejects an invalid readOnly option %j", async (readOnly) => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const beginning = db.begin({ readOnly: readOnly as never });
   try {
     await expect(beginning).rejects.toBeInstanceOf(TypeError);
@@ -156,7 +156,7 @@ test.each([null, 1, "true"])("rejects an invalid readOnly option %j", async (rea
 test("the client transaction timeout rolls back before releasing waiting root writes", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    await using db = await Database.open(":memory:", { transactionTimeoutMs: 20 });
+    await using db = await BoxDB.open(":memory:", { transactionTimeoutMs: 20 });
     await db.exec("CREATE TABLE item(id INTEGER)");
     await using tx = await db.begin();
     await tx.execute("INSERT INTO item VALUES(1)");
@@ -188,7 +188,7 @@ test.each([
   async ({ client, transaction, deadline }) => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      await using db = await Database.open(
+      await using db = await BoxDB.open(
         ":memory:",
         client === undefined ? {} : { transactionTimeoutMs: client },
       );
@@ -210,13 +210,13 @@ test.each([
 test.each([0, -1, 0.5, NaN, Infinity, 2_147_483_648])(
   "rejects unsupported transaction timeout %s at the client and transaction levels",
   async (timeoutMs) => {
-    const opening = Database.open(":memory:", { transactionTimeoutMs: timeoutMs });
+    const opening = BoxDB.open(":memory:", { transactionTimeoutMs: timeoutMs });
     try {
       await expect(opening).rejects.toBeInstanceOf(RangeError);
     } finally {
       await (await opening.catch(() => undefined))?.close();
     }
-    await using db = await Database.open();
+    await using db = await BoxDB.open();
     const beginning = db.begin({ timeoutMs });
     try {
       await expect(beginning).rejects.toBeInstanceOf(RangeError);
@@ -229,7 +229,7 @@ test.each([0, -1, 0.5, NaN, Infinity, 2_147_483_648])(
 test("savepoints inherit the outer deadline and root queries wait beyond their release", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    await using db = await Database.open(":memory:", { transactionTimeoutMs: 50 });
+    await using db = await BoxDB.open(":memory:", { transactionTimeoutMs: 50 });
     await db.exec("CREATE TABLE item(id INTEGER)");
     await using tx = await db.begin();
     await tx.execute("INSERT INTO item VALUES(1)");
@@ -256,7 +256,7 @@ test("savepoints inherit the outer deadline and root queries wait beyond their r
 test("a transaction deadline starts after begin acquires the connection", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    await using db = await Database.open(":memory:", { transactionTimeoutMs: 100 });
+    await using db = await BoxDB.open(":memory:", { transactionTimeoutMs: 100 });
     await using first = await db.begin();
     const beginning = db.begin({ timeoutMs: 20 });
     try {
@@ -282,10 +282,10 @@ test.each(["binary", "readable"] as const)(
     const directory = mkdtempSync(join(tmpdir(), "boxdb-options-"));
     try {
       const path = join(directory, "data.db");
-      const writer = await Database.open(path, { format });
+      const writer = await BoxDB.open(path, { format });
       await writer.exec("CREATE TABLE item(id INTEGER); INSERT INTO item VALUES(7)");
       await writer.close();
-      await using reader = await Database.open(path, { readOnly: true });
+      await using reader = await BoxDB.open(path, { readOnly: true });
       await using tx = await reader.begin();
       expect(await tx.query`SELECT * FROM item`).toEqual([{ id: 7n }]);
       await expect(tx.query`INSERT INTO item VALUES(8)`.execute()).rejects.toThrow(
@@ -302,9 +302,9 @@ test("busyTimeoutMs bounds lock waiting without blocking timers", async () => {
   const directory = mkdtempSync(join(tmpdir(), "boxdb-busy-"));
   try {
     const path = join(directory, "data.db");
-    await using holder = await Database.open(path);
+    await using holder = await BoxDB.open(path);
     await holder.exec("CREATE TABLE item(id INTEGER)");
-    await using db = await Database.open(path, { busyTimeoutMs: 30 });
+    await using db = await BoxDB.open(path, { busyTimeoutMs: 30 });
     await using _tx = await holder.begin({ mode: "immediate" });
     const start = performance.now();
     await expect(db.query`INSERT INTO item VALUES(1)`.execute()).rejects.toMatchObject({

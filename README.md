@@ -2,6 +2,8 @@
 
 # BoxDB
 
+A database for your $5 VPS.
+
 An experimental SQLite client for Rust, TypeScript, Go and the command line. BoxDB
 adds logical types and validation to ordinary SQLite databases, with an optional
 readable YAML format for storing data in Git. Version 0 does not preserve old
@@ -95,7 +97,8 @@ With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun, Just and Pytho
 just check
 ```
 
-`just check` builds and checks all clients and runs their tests. Use `just --list`
-for individual Go and TypeScript tasks.
+`just check` builds and checks all clients and runs their tests, including a
+cross-language migration and conversion scenario. Use `just client-types-test`
+to run that scenario alone, or `just --list` for individual client tasks.
 See [benchmark commands and methodology](docs/benchmarks.md) and
 [UTC instant examples](docs/temporal.md) for specialized workflows.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { Database, BoxDBError } from "../dist/index.js";
+import { BoxDB, BoxDBError } from "../dist/index.js";
 
-await using db = await Database.open();
+await using db = await BoxDB.open();
 assert.deepEqual(
   await db.query`SELECT CAST(${"0.1"} AS DECIMAL)+CAST(${"0.2"} AS DECIMAL) AS amount,text_lower(${"ПРИВЕТ"}) AS word`.get(),
   { amount: "0.3", word: "привет" },

@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { expect, it } from "vitest";
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 import { createDrizzleDatabase } from "../src/index.js";
 
 const users = sqliteTable("users", {
@@ -12,7 +12,7 @@ const users = sqliteTable("users", {
 });
 
 it("runs asynchronous Drizzle queries, conversions, returning, joins and nested transactions", async () => {
-  await using client = await Database.open();
+  await using client = await BoxDB.open();
   await client.exec(
     "CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,active INTEGER NOT NULL,profile TEXT)",
   );
@@ -60,7 +60,7 @@ it("runs asynchronous Drizzle queries, conversions, returning, joins and nested 
 });
 
 it("executes Drizzle batches atomically and returns native write metadata", async () => {
-  await using client = await Database.open();
+  await using client = await BoxDB.open();
   await client.exec(
     "CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,active INTEGER NOT NULL,profile TEXT)",
   );
@@ -103,7 +103,7 @@ it("applies generated Drizzle migrations once", async () => {
       join(folder, "0000_users.sql"),
       "CREATE TABLE users(id integer PRIMARY KEY AUTOINCREMENT,name text NOT NULL,active integer NOT NULL,profile text);\n--> statement-breakpoint\nCREATE INDEX users_name ON users(name);",
     );
-    await using client = await Database.open();
+    await using client = await BoxDB.open();
     const db = createDrizzleDatabase(client);
     await migrate(db, { migrationsFolder: folder });
     await migrate(db, { migrationsFolder: folder });
@@ -119,7 +119,7 @@ it("applies generated Drizzle migrations once", async () => {
 });
 
 it("preserves bigint storage integers while mapping boolean columns", async () => {
-  await using client = await Database.open();
+  await using client = await BoxDB.open();
   await client.exec(
     "CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,active INTEGER NOT NULL,profile TEXT)",
   );
@@ -130,7 +130,7 @@ it("preserves bigint storage integers while mapping boolean columns", async () =
 });
 
 it("maps timestamp columns from bigint storage without converting integer IDs", async () => {
-  await using client = await Database.open();
+  await using client = await BoxDB.open();
   await client.exec("CREATE TABLE events(id INTEGER PRIMARY KEY,at INTEGER,at_ms INTEGER)");
   const events = sqliteTable("events", {
     id: integer().primaryKey().$type<bigint>(),

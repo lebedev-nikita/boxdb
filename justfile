@@ -41,7 +41,11 @@ go-check: go-build
 go-test: go-build
     cd packages/go && go test -race -count=1 ./...
 
-check: ts-check ts-test go-check go-test
+# Exercise native types across migrations, both clients, and SQLite/YAML conversion.
+client-types-test: ts-build go-build
+    cargo test --locked --test client_types -- --ignored
+
+check: ts-check ts-test go-check go-test client-types-test
     cargo fmt --all --check
     rustfmt --edition 2024 --check benches/support/workload.rs
     cargo clippy --workspace --all-targets --locked -- -D warnings

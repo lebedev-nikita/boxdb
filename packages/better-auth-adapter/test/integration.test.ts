@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 import { betterAuthAdapter } from "../src/index.js";
 
 const options: BetterAuthOptions = {
@@ -13,7 +13,7 @@ const options: BetterAuthOptions = {
 };
 
 test("Better Auth registers a user, signs in and reads a persisted session", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const database = betterAuthAdapter(db);
   const adapter = database(options);
   const schema = await adapter.createSchema!(options);
@@ -40,10 +40,10 @@ test("auth transactions wait for another writer before invoking their callback",
   const directory = mkdtempSync(join(tmpdir(), "boxdb-auth-contention-"));
   try {
     const path = join(directory, "auth.db");
-    await using db = await Database.open(path);
+    await using db = await BoxDB.open(path);
     const adapter = betterAuthAdapter(db)(options);
     await db.exec((await adapter.createSchema!(options)).code);
-    await using other = await Database.open(path);
+    await using other = await BoxDB.open(path);
     await using blocker = await other.begin();
     let calls = 0;
     const pending = adapter.transaction(async (tx) => {
@@ -77,7 +77,7 @@ test("auth transactions wait for another writer before invoking their callback",
 });
 
 test("adapter transactions roll back failed operations and preserve mapped fields", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const configured: BetterAuthOptions = {
     ...options,
     user: {
@@ -152,7 +152,7 @@ test("adapter transactions roll back failed operations and preserve mapped field
 });
 
 test("guarded increments and single-row consumption remain atomic under contention", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const configured: BetterAuthOptions = {
     ...options,
     user: { additionalFields: { score: { type: "number", defaultValue: 0 } } },
@@ -203,7 +203,7 @@ test("guarded increments and single-row consumption remain atomic under contenti
 });
 
 test("numeric IDs and booleans work with bigint storage results", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const configured: BetterAuthOptions = {
     ...options,
     advanced: { database: { generateId: "serial" } },
@@ -230,7 +230,7 @@ test("numeric IDs and booleans work with bigint storage results", async () => {
 });
 
 test("string comparisons treat empty suffixes literally", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const adapter = betterAuthAdapter(db)(options);
   await db.exec((await adapter.createSchema!(options)).code);
   await adapter.create({
@@ -252,7 +252,7 @@ test("string comparisons treat empty suffixes literally", async () => {
 });
 
 test("filter connectors cannot interpolate arbitrary SQL", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const adapter = betterAuthAdapter(db)(options);
   await db.exec((await adapter.createSchema!(options)).code);
   await expect(
