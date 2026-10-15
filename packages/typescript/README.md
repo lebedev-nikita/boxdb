@@ -5,7 +5,19 @@ Each connection owns a native worker: SQL execution and lock waits leave the
 JavaScript event loop free. Binary SQLite files, readable YAML storage, extended
 column types and built-in SQL extensions use the same core.
 
-## Build
+## Install
+
+```sh
+npm install @boxdb/client
+```
+
+Requires Node.js 22.18+ or Bun on macOS ARM64 (macOS 11+) or Linux x64 with
+glibc 2.35+ (Ubuntu 22.04+). Both native addons are bundled in the npm package;
+installation needs no Rust compiler, install scripts or extra downloads.
+Alpine/musl, Windows, Intel macOS and Linux ARM64 are not supported by this npm
+release. This client does not run in browsers.
+
+## Build from source
 
 Requires Node.js 22.18+, Bun, Rust, native build tools and libclang; see the
 [repository README](../../README.md). From the repository root:
@@ -20,7 +32,7 @@ bun run test
 `just ts-build` and `just ts-check ts-test` also build and verify all packages.
 For an optimized addon, run `bun run --cwd packages/typescript build:release`,
 then build the adapter packages. Builds target the current OS and architecture;
-prebuilt npm binaries are not published yet. This client does not run in browsers.
+the npm release builds are described in the [release guide](https://github.com/lebedev-nikita/boxdb/blob/main/docs/npm-release.md).
 
 ## Queries
 

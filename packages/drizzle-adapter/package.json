@@ -1,7 +1,13 @@
 {
   "name": "@boxdb/drizzle-adapter",
   "version": "0.1.0",
+  "description": "Asynchronous Drizzle ORM adapter for BoxDB",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lebedev-nikita/boxdb.git",
+    "directory": "packages/drizzle-adapter"
+  },
   "files": [
     "dist",
     "README.md"
@@ -15,7 +21,12 @@
       "import": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit && oxlint src test && oxfmt --check src test package.json tsconfig.json tsconfig.build.json",
     "test": "vitest run"
@@ -32,5 +43,8 @@
   "peerDependencies": {
     "@boxdb/client": "^0.1.0",
     "drizzle-orm": "^0.45.4"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }

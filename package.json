@@ -2,13 +2,27 @@
   "name": "boxdb-workspace",
   "private": true,
   "workspaces": [
+    "packages/cli",
     "packages/typescript",
     "packages/*-adapter"
   ],
   "type": "module",
   "scripts": {
+    "npm:prepare": "bun run scripts/npm/prepare.ts",
+    "npm:publish": "bun run scripts/npm/publish.ts",
+    "npm:build": "bun run scripts/npm/build.ts",
+    "npm:pack": "bun run scripts/npm/pack.ts",
+    "npm:test": "vitest run scripts/npm/smoke.test.ts --testTimeout=60000 --hookTimeout=60000",
+    "npm:check": "tsc -p scripts/npm/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json && oxlint scripts/npm packages/cli/src && oxfmt --check scripts/npm packages/cli package.json",
     "build": "bun run --cwd packages/typescript build && bun run --filter \"@boxdb/*-adapter\" build",
     "test": "bun run --cwd packages/typescript test && bun run --filter \"@boxdb/*-adapter\" test",
     "check": "bun run --cwd packages/typescript check && bun run --filter \"@boxdb/*-adapter\" check"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
   }
 }

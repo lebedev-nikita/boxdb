@@ -34,9 +34,10 @@ const library =
     : process.platform === "darwin"
       ? "libboxdb_node.dylib"
       : "libboxdb_node.so";
+mkdirSync(`${packageRoot}native/${process.platform}-${process.arch}`, { recursive: true });
 copyFileSync(
   `${targetDirectory}/${release ? "release" : "debug"}/${library}`,
-  `${packageRoot}native/boxdb.node`,
+  `${packageRoot}native/${process.platform}-${process.arch}/boxdb.node`,
 );
 rmSync(`${packageRoot}dist`, { recursive: true, force: true });
 mkdirSync(`${packageRoot}dist`, { recursive: true });

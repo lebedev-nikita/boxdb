@@ -2,6 +2,10 @@
 
 Install `@boxdb/client`, `@boxdb/db0-adapter`, and `db0` 0.4.x.
 
+```sh
+npm install @boxdb/client @boxdb/db0-adapter db0
+```
+
 ```ts
 import { BoxDB } from "@boxdb/client";
 import { db0Connector } from "@boxdb/db0-adapter";

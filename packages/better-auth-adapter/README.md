@@ -3,6 +3,10 @@
 A direct adapter for Better Auth 1.7.x. Install `@boxdb/client`,
 `@boxdb/better-auth-adapter`, and `better-auth`.
 
+```sh
+npm install @boxdb/client @boxdb/better-auth-adapter better-auth
+```
+
 ```ts
 import { BoxDB } from "@boxdb/client";
 import { betterAuth } from "better-auth";

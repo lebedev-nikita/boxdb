@@ -11,11 +11,11 @@ BoxDB file or API compatibility.
 
 ## Get started
 
-Install from this checkout with a current Rust toolchain, native build tools and
-libclang (Xcode Command Line Tools on macOS; `libclang-dev` on Debian/Ubuntu):
+Install the CLI with Node.js 22.18+ on macOS ARM64 or Linux x64 with glibc 2.35+
+(Ubuntu 22.04+):
 
 ```sh
-cargo install --path . --locked
+npm install -g @boxdb/cli
 boxdb data.db -e "
   CREATE TABLE accounts (
     id INT64 PRIMARY KEY,
@@ -29,6 +29,10 @@ boxdb data.db -e "
 
 Run `boxdb data.db` for the interactive shell; `.help` lists shell commands.
 Use `boxdb --help` for CLI options, including JSON output and format conversion.
+
+To build from this checkout, use `cargo install --path . --locked` with a current
+Rust toolchain, native build tools and libclang (Xcode Command Line Tools on
+macOS; `libclang-dev` on Debian/Ubuntu).
 
 ## Migrations and schema export
 
@@ -83,7 +87,7 @@ The [library source](src/lib.rs) includes a minimal example;
 
 The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
 with a nonblocking API and separate Drizzle, Better Auth and db0 adapters. Follow its build
-and installation instructions; no prebuilt npm binaries are published yet.
+and installation instructions, or install it with `npm install @boxdb/client`.
 
 The [Go client](packages/go/README.md) implements `database/sql`, with context
 cancellation, prepared statements and transactions. It uses the Rust core through
@@ -102,3 +106,4 @@ cross-language migration and conversion scenario. Use `just client-types-test`
 to run that scenario alone, or `just --list` for individual client tasks.
 See [benchmark commands and methodology](docs/benchmarks.md) and
 [UTC instant examples](docs/temporal.md) for specialized workflows.
+See [npm releases](docs/npm-release.md) to build, verify and publish the npm packages.

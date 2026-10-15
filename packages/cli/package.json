@@ -1,0 +1,45 @@
+{
+  "name": "@boxdb/cli",
+  "version": "0.1.0",
+  "description": "BoxDB command line database with typed SQLite columns and readable YAML storage",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lebedev-nikita/boxdb.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "boxdb": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "native/*/boxdb",
+    "LICENSE",
+    "licenses",
+    "README.md"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

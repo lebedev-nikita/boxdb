@@ -34,6 +34,28 @@ ts-test: ts-build
 go-build:
     go run packages/go/build.go
 
+# Build and test npm archives for this machine; not a publishable release.
+npm-test: ts-install
+    bun run npm:build
+    bun run npm:pack --local
+    bun run npm:test
+
+npm-check: ts-install
+    bun run npm:check
+
+# Download and verify a successful npm packages workflow from this commit.
+[positional-arguments]
+npm-prepare run-id:
+    bun run npm:prepare "$1"
+
+# Reuse the reviewed bundle, or obtain it from this commit's successful CI run.
+npm-ready: npm-check
+    bun run scripts/npm/ready.ts
+
+# Install dependencies, prepare verified archives and publish with npm confirmation.
+publish-npm: npm-ready
+    bun run npm:publish
+
 go-check: go-build
     test -z "$(gofmt -l packages/go/*.go)"
     cd packages/go && go vet ./...

@@ -10,8 +10,16 @@
   },
   "files": [
     "dist",
-    "native/boxdb.node",
+    "native/*/boxdb.node",
     "README.md"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +30,12 @@
       "import": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
     "build": "bun run scripts/build.ts",
     "check": "tsc --noEmit && oxlint src test scripts && oxfmt --check src test scripts package.json tsconfig.json tsconfig.build.json tsconfig.runtime.json",
     "test": "vitest run",

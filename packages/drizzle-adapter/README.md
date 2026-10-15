@@ -3,6 +3,10 @@
 An asynchronous SQLite driver for Drizzle 0.45.x. Install `@boxdb/client`,
 `@boxdb/drizzle-adapter`, and `drizzle-orm`.
 
+```sh
+npm install @boxdb/client @boxdb/drizzle-adapter drizzle-orm
+```
+
 ```ts
 import { BoxDB } from "@boxdb/client";
 import { createDrizzleDatabase, migrate } from "@boxdb/drizzle-adapter";
