@@ -25,32 +25,6 @@ function interactive(args: string[]) {
   if (result.status !== 0) throw new Error(`npm ${args[0]} failed; rerun this command to resume`);
 }
 
-// Inspect the exact archives before asking for credentials or publishing anything.
-for (const pkg of release.packages) {
-  interactive([
-    "publish",
-    join(output, pkg.filename),
-    "--access=public",
-    "--ignore-scripts",
-    "--dry-run",
-  ]);
-}
-if (dryRun) process.exit(0);
-if (!process.stdin.isTTY)
-  throw new Error("Run npm:publish in an interactive terminal for confirmation and npm 2FA");
-
-let identity = npm(["whoami"]);
-if (identity.status !== 0) {
-  interactive(["login", "--auth-type=web"]);
-  identity = npm(["whoami"]);
-}
-if (identity.status !== 0) throw new Error(identity.stderr);
-const username = identity.stdout.trim();
-console.log(
-  `\nPublish as ${username}: ${release.packages.map((p) => `${p.name}@${release.version}`).join(", ")}`,
-);
-console.log(`Source commit: ${release.commit}`);
-
 const statePath = join(output, "publish-state.json");
 const accepted = (
   existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : {}
@@ -121,6 +95,33 @@ for (const pkg of release.packages) {
   }
   pending.push(pkg);
 }
+
+// npm's dry run also rejects published versions, so inspect only pending uploads.
+for (const pkg of pending) {
+  interactive([
+    "publish",
+    join(output, pkg.filename),
+    "--access=public",
+    "--ignore-scripts",
+    "--dry-run",
+  ]);
+}
+if (dryRun) process.exit(0);
+if (!process.stdin.isTTY)
+  throw new Error("Run npm:publish in an interactive terminal for confirmation and npm 2FA");
+
+let identity = npm(["whoami"]);
+if (identity.status !== 0) {
+  interactive(["login", "--auth-type=web"]);
+  identity = npm(["whoami"]);
+}
+if (identity.status !== 0) throw new Error(identity.stderr);
+const username = identity.stdout.trim();
+console.log(
+  `\nPublish as ${username}: ${pending.map((p) => packageId(p)).join(", ") || "no remaining uploads"}`,
+);
+console.log(`Source commit: ${release.commit}`);
+
 if (pending.length > 0) {
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
   let answer: string;
