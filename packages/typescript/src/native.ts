@@ -1,4 +1,8 @@
 import { createRequire } from "node:module";
+import type { MigrationFile, MigrationInfo, MigrationStatus } from "./migrations.js";
+
+export const runMigrations = Symbol("runMigrations");
+export type NativeMigrationSet = object;
 
 export type NativeValue = null | number | bigint | string | Buffer;
 export interface NativeInfo {
@@ -16,6 +20,8 @@ export interface NativeResponse {
   inTransaction: boolean;
   info?: NativeInfo;
   result?: NativeResult;
+  migrations?: MigrationInfo[];
+  statuses?: MigrationStatus[];
 }
 export interface NativeConnection {
   call(
@@ -24,6 +30,7 @@ export interface NativeConnection {
     sql: string,
     parameters: NativeValue[],
     readOnly: boolean,
+    migrations?: NativeMigrationSet,
   ): Promise<NativeResponse>;
   cancel(id: number): void;
 }
@@ -34,6 +41,7 @@ if (platform !== "darwin-arm64" && platform !== "linux-x64") {
   );
 }
 const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node`) as {
+  NativeMigrationSet: new (files: readonly MigrationFile[]) => NativeMigrationSet;
   NativeDatabase: new (
     path: string,
     format: string,
@@ -42,3 +50,4 @@ const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node
   ) => NativeConnection;
 };
 export const NativeDatabase = binding.NativeDatabase;
+export const NativeMigrationSet = binding.NativeMigrationSet;

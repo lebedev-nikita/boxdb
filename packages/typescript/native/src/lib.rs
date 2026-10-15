@@ -2,8 +2,51 @@ use boxdb::Value;
 use napi::Env;
 use napi::bindgen_prelude::{BigInt, Buffer, Either5, JsObjectValue, Null, ToNapiValue};
 use napi_derive::napi;
+use std::sync::Arc;
 
 mod asynchronous;
+
+#[napi(object)]
+pub struct NativeMigrationFile {
+    pub filename: String,
+    pub sql: String,
+}
+
+#[napi]
+pub struct NativeMigrationSet {
+    migrations: Arc<boxdb::migrations::MigrationSet>,
+}
+
+#[napi]
+impl NativeMigrationSet {
+    #[napi(constructor)]
+    pub fn new(env: Env, files: Vec<NativeMigrationFile>) -> napi::Result<Self> {
+        let migrations =
+            boxdb::migrations::MigrationSet::from_files(files.into_iter().map(|file| {
+                boxdb::migrations::MigrationFile {
+                    filename: file.filename,
+                    sql: file.sql,
+                }
+            }))
+            .map_err(|error| database_failure_with_state(env, error, None))?;
+        Ok(Self {
+            migrations: Arc::new(migrations),
+        })
+    }
+}
+
+#[napi(object)]
+pub struct NativeMigrationInfo {
+    pub version: String,
+    pub name: String,
+}
+
+#[napi(object)]
+pub struct NativeMigrationStatus {
+    pub version: String,
+    pub name: String,
+    pub state: String,
+}
 
 type Cell = Either5<Null, f64, BigInt, String, Buffer>;
 

@@ -83,6 +83,21 @@ func (db *nativeDB) call(command any, out any) error {
 	request := C.CString(string(data))
 	defer C.free(unsafe.Pointer(request))
 	answer := C.boxdb_go_call(db.handle, request)
+	return decodeNative(answer, out)
+}
+
+func validateMigrations(files []MigrationFile) error {
+	data, err := json.Marshal(files)
+	if err != nil {
+		return validationError("cannot encode migrations: %v", err)
+	}
+	request := C.CString(string(data))
+	defer C.free(unsafe.Pointer(request))
+	var result struct{}
+	return decodeNative(C.boxdb_go_validate_migrations(request), &result)
+}
+
+func decodeNative(answer *C.char, out any) error {
 	defer C.boxdb_go_free(answer)
 	var envelope struct {
 		Result json.RawMessage `json:"result"`

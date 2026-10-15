@@ -1,4 +1,8 @@
-use super::{Cell, NativeInfo, NativeResult, database_failure_with_state, failure, input, output};
+use super::{
+    Cell, NativeInfo, NativeMigrationInfo, NativeMigrationSet, NativeMigrationStatus, NativeResult,
+    database_failure_with_state, failure, input, output,
+};
+use boxdb::migrations::{MigrationInfo, MigrationSet, MigrationState, MigrationStatus};
 use boxdb::{Database, Format, InterruptHandle, OpenOptions, QueryResult, StatementInfo, Value};
 use napi::{Env, Task, bindgen_prelude::AsyncTask};
 use napi_derive::napi;
@@ -55,13 +59,15 @@ fn busy(attempt: i32) -> bool {
 #[derive(Default)]
 struct Control {
     requests: HashMap<u32, Arc<AtomicBool>>,
-    active: Option<(u32, InterruptHandle)>,
+    active: Option<(u32, InterruptHandle, bool)>,
 }
 
 pub enum Reply {
     Empty,
     Info(StatementInfo),
     Rows(QueryResult, i64),
+    Migrations(Vec<MigrationInfo>),
+    Statuses(Vec<MigrationStatus>),
 }
 
 struct Request {
@@ -71,6 +77,7 @@ struct Request {
     sql: String,
     parameters: Vec<Value>,
     read_only: bool,
+    migrations: Option<Arc<MigrationSet>>,
     reply: mpsc::Sender<WorkerReply>,
 }
 
@@ -84,6 +91,8 @@ pub struct NativeResponse {
     pub in_transaction: bool,
     pub info: Option<NativeInfo>,
     pub result: Option<NativeResult>,
+    pub migrations: Option<Vec<NativeMigrationInfo>>,
+    pub statuses: Option<Vec<NativeMigrationStatus>>,
 }
 
 pub struct ResponseTask {
@@ -109,6 +118,8 @@ impl Task for ResponseTask {
             info: None,
             result: None,
             in_transaction,
+            migrations: None,
+            statuses: None,
         };
         match reply {
             Reply::Empty => {}
@@ -130,6 +141,33 @@ impl Task for ResponseTask {
                     changes: (result.affected as u64).into(),
                     last_insert_rowid: rowid.into(),
                 })
+            }
+            Reply::Migrations(migrations) => {
+                response.migrations = Some(
+                    migrations
+                        .into_iter()
+                        .map(|m| NativeMigrationInfo {
+                            version: m.version,
+                            name: m.name,
+                        })
+                        .collect(),
+                )
+            }
+            Reply::Statuses(statuses) => {
+                response.statuses = Some(
+                    statuses
+                        .into_iter()
+                        .map(|s| NativeMigrationStatus {
+                            version: s.migration.version,
+                            name: s.migration.name,
+                            state: match s.state {
+                                MigrationState::Applied => "applied",
+                                MigrationState::Pending => "pending",
+                            }
+                            .into(),
+                        })
+                        .collect(),
+                )
             }
         }
         Ok(response)
@@ -216,13 +254,37 @@ impl NativeDatabase {
                             query_only_restore = None;
                         }
                         db.busy_handler(Some(busy))?;
+                        let migration = request.operation.starts_with("migrations_");
                         db.progress_handler(1000, Some(cancelled))?;
                         worker_control.lock().unwrap().active =
-                            Some((request.id, db.interrupt_handle()));
+                            Some((request.id, db.interrupt_handle(), migration));
                         if request.cancelled.load(Ordering::Relaxed) {
                             return Err(boxdb::Error::new("operation cancelled".into()));
                         }
                         match request.operation.as_str() {
+                            "migrations_up" => Ok(Reply::Migrations(
+                                request
+                                    .migrations
+                                    .as_ref()
+                                    .ok_or_else(|| boxdb::Error::internal("missing migration set"))?
+                                    .up(db)?,
+                            )),
+                            "migrations_down" => Ok(Reply::Migrations(
+                                request
+                                    .migrations
+                                    .as_ref()
+                                    .ok_or_else(|| boxdb::Error::internal("missing migration set"))?
+                                    .down(db)?
+                                    .into_iter()
+                                    .collect(),
+                            )),
+                            "migrations_status" => Ok(Reply::Statuses(
+                                request
+                                    .migrations
+                                    .as_ref()
+                                    .ok_or_else(|| boxdb::Error::internal("missing migration set"))?
+                                    .status(db)?,
+                            )),
                             "rollback" => {
                                 if db.in_transaction() {
                                     db.execute_native("ROLLBACK", &[])?;
@@ -278,6 +340,7 @@ impl NativeDatabase {
         sql: String,
         parameters: Vec<Cell>,
         read_only: bool,
+        migrations: Option<&NativeMigrationSet>,
     ) -> napi::Result<AsyncTask<ResponseTask>> {
         let parameters = parameters
             .into_iter()
@@ -299,6 +362,7 @@ impl NativeDatabase {
                 sql,
                 parameters,
                 read_only,
+                migrations: migrations.map(|set| set.migrations.clone()),
                 reply,
             })
             .is_err()
@@ -315,8 +379,9 @@ impl NativeDatabase {
         if let Some(flag) = control.requests.get(&id) {
             flag.store(true, Ordering::Relaxed);
         }
-        if let Some((active, interrupt)) = &control.active
+        if let Some((active, interrupt, migration)) = &control.active
             && *active == id
+            && !migration
         {
             interrupt.interrupt();
         }

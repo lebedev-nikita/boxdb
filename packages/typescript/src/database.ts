@@ -7,6 +7,8 @@ import {
   type NativeResponse,
   type NativeResult,
   type NativeValue,
+  type NativeMigrationSet,
+  runMigrations,
 } from "./native.js";
 import { bindParameters, queryResult } from "./values.js";
 
@@ -171,6 +173,7 @@ class Connection {
     sql = "",
     parameters: NativeValue[] = [],
     signal?: AbortSignal,
+    migrations?: NativeMigrationSet,
   ): Promise<NativeResponse> {
     signal?.throwIfAborted();
     const id = ++this.#requestId;
@@ -182,6 +185,7 @@ class Connection {
         sql,
         parameters,
         this.readOnly || this.owner?.readOnly === true,
+        migrations,
       );
       signal?.addEventListener("abort", cancel, { once: true });
       const response = await pending;
@@ -455,6 +459,17 @@ export class BoxDB extends Queries {
   readonly name: string;
   readonly memory: boolean;
   private readonly transactionTimeoutMs: number;
+
+  [runMigrations](
+    migrations: NativeMigrationSet,
+    operation: "up" | "down" | "status",
+    options: { signal?: AbortSignal } = {},
+  ): Promise<NativeResponse> {
+    return this.schedule(
+      (signal) => this.connection.request(`migrations_${operation}`, "", [], signal, migrations),
+      options,
+    );
+  }
 
   private constructor(path: string, options: BoxDBOptions) {
     super(new Connection(path, options), new Queue(options.maxPendingQueries), undefined, true);
