@@ -224,16 +224,20 @@ fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     assert!(sql.contains("text_lower"));
     assert!(sql.contains("Decimal"));
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
-    let mut restored = files::open_bytes(&yaml).unwrap();
-    restored
-        .execute("INSERT INTO terms(name,amount) VALUES('Ёж','0.20')")
-        .unwrap();
+    let document: serde_json::Value = serde_saphyr::from_slice(&yaml).unwrap();
     assert_eq!(
-        restored
-            .execute("SELECT adjusted FROM terms WHERE name='ёж'")
-            .unwrap()[0]
-            .rows,
-        vec![vec![Value::Decimal("0.30".into())]]
+        document["tables"]["terms"]["columns"]["amount"],
+        "DECIMAL(12, 2)"
+    );
+    assert!(
+        document["tables"]["terms"]["columns"]["adjusted"]
+            .as_str()
+            .unwrap()
+            .contains("decimal_round")
+    );
+    assert_eq!(
+        document["indexes"]["folded"]["expressions"],
+        serde_json::json!(["text_lower(name)"])
     );
 }
 

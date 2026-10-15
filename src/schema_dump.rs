@@ -1,6 +1,7 @@
-//! Schema-only exports retain physical SQLite SQL and logical BoxDB metadata.
-use crate::{Error, Result, migrations, readable, schema, storage};
+//! Schema-only exports as physical SQLite SQL or logical BoxDB YAML.
+use crate::{Error, Result, migrations, schema, storage};
 use rusqlite::{Connection, types::Value};
+mod yaml;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum SchemaFormat {
@@ -18,7 +19,7 @@ pub(crate) fn dump(db: &Connection, format: SchemaFormat) -> Result<Vec<u8>> {
     schema::load(&transaction)?;
     match format {
         SchemaFormat::Sql => sql(&transaction),
-        SchemaFormat::Yaml => readable::encode_schema(&transaction),
+        SchemaFormat::Yaml => yaml::encode(&transaction),
     }
 }
 

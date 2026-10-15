@@ -126,7 +126,7 @@ pub(crate) struct Declaration {
     pub table: String,
     pub columns: Vec<(String, Type)>,
 }
-fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
+pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     if let Some(ty) = extension(&column.data_type.to_string())? {
         ty.validate(&Value::Null)?;
         if matches!(ty, Type::Enum(_))
