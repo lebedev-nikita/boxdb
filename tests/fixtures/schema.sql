@@ -19,6 +19,8 @@ CREATE TABLE samples(
     label TEXT COLLATE text_nocase,
     code VARCHAR(12) CONSTRAINT code_nonempty CHECK(length(code)>0),
     unlimited VARCHAR,
+    state ENUM('todo','Done','it''s, (雪)') NOT NULL DEFAULT 'todo',
+    states ENUM('todo','Done')[],
     bytes BYTEA,
     raw BLOB,
     uuid UUID,

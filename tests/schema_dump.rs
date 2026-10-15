@@ -5,6 +5,58 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
+fn yaml_dump_preserves_enum_labels_arrays_and_user_constraints() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut canonical = None;
+    for format in ["binary", "readable"] {
+        let source = temp.path().join(format!("source-{format}"));
+        success(cli(&[
+            source.to_str().unwrap(),
+            "--format",
+            format,
+            "-e",
+            r#"
+            CREATE TABLE tasks(
+                state ENUM('todo','Done','it''s, (雪)[] ARRAY<','') NOT NULL DEFAULT 'todo'
+                    CONSTRAINT user_state CHECK(state <> ''),
+                labels ENUM('a','it''s, Done')[],
+                nested ENUM('x','Y')[][],
+                derived ENUM('todo','Done','it''s, (雪)[] ARRAY<','') AS(state) STORED
+            );
+            ALTER TABLE tasks RENAME COLUMN state TO status;
+            ALTER TABLE tasks ADD COLUMN priority ENUM('low','high') DEFAULT 'low';
+        "#,
+        ]));
+        let dump = success(cli(&[
+            "schema",
+            "dump",
+            source.to_str().unwrap(),
+            "--format=yaml",
+        ]));
+        let document: serde_json::Value = serde_saphyr::from_str(&dump).unwrap();
+        let columns = &document["tables"]["tasks"]["columns"];
+        assert_eq!(
+            columns["status"],
+            "ENUM('todo', 'Done', 'it''s, (雪)[] ARRAY<', '') NOT NULL DEFAULT 'todo' CONSTRAINT user_state CHECK (status <> '')"
+        );
+        assert_eq!(columns["labels"], "ENUM('a', 'it''s, Done')[]");
+        assert_eq!(columns["nested"], "ENUM('x', 'Y')[][]");
+        assert_eq!(
+            columns["derived"],
+            "ENUM('todo', 'Done', 'it''s, (雪)[] ARRAY<', '') AS (status) STORED"
+        );
+        assert_eq!(columns["priority"], "ENUM('low', 'high') DEFAULT 'low'");
+        assert!(!dump.contains("__boxdb_"));
+        assert!(!dump.contains("typeof"));
+        if let Some(expected) = &canonical {
+            assert_eq!(&dump, expected);
+        } else {
+            canonical = Some(dump);
+        }
+    }
+}
+
+#[test]
 fn yaml_schema_documents_are_export_only() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source.db");

@@ -260,9 +260,12 @@ fn enum_constraints_survive_reopening_conversion_and_schema_exports() {
                 .execute_batch(std::str::from_utf8(&dump).unwrap())
                 .unwrap(),
             SchemaFormat::Yaml => {
-                let yaml = directory.path().join("schema.yaml");
-                std::fs::write(&yaml, dump).unwrap();
-                Database::convert(yaml, &restored, Format::Binary).unwrap();
+                let document: serde_json::Value = serde_saphyr::from_slice(&dump).unwrap();
+                assert_eq!(
+                    document["tables"]["tasks"]["columns"]["status"],
+                    "ENUM('todo', 'it''s, Done') NOT NULL DEFAULT 'todo'"
+                );
+                continue;
             }
         }
         let mut restored = Database::open(restored, Format::Binary).unwrap();

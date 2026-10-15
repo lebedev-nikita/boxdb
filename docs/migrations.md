@@ -167,6 +167,7 @@ tables:
       id: INTEGER PRIMARY KEY
       email: TEXT NOT NULL
       active: BOOLEAN NOT NULL DEFAULT TRUE
+      status: ENUM('pending', 'active', 'disabled') NOT NULL DEFAULT 'pending'
       created_at: INSTANT NOT NULL
     constraints:
       - check: length(email) > 0

@@ -238,6 +238,14 @@ fn type_sql(ty: &Type) -> String {
         Type::Text => "TEXT".into(),
         Type::Varchar(None) => "VARCHAR".into(),
         Type::Varchar(Some(n)) => format!("VARCHAR({n})"),
+        Type::Enum(labels) => format!(
+            "ENUM({})",
+            labels
+                .iter()
+                .map(|label| format!("'{}'", label.replace('\'', "''")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Type::Bytea => "BYTEA".into(),
         Type::Uuid => "UUID".into(),
         Type::Json => "JSON".into(),
