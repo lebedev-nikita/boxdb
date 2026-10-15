@@ -8,7 +8,22 @@ repository = "https://github.com/lebedev-nikita/boxdb"
 readme = "README.md"
 keywords = ["sqlite", "database", "yaml", "decimal"]
 categories = ["database"]
-include = ["src/**", "build.rs", "vendor/sqlean/**", "tests/**", "benches/**", "docs/**", "tools/**", "assets/**", "README.md", "LICENSE"]
+include = [
+    "/src/**",
+    "/build.rs",
+    "/vendor/sqlean/**",
+    "/tests/*.rs",
+    "/tests/test_*.py",
+    "/tests/common/**",
+    "/tests/fixtures/**",
+    "/tests/sqlite/**",
+    "/benches/**",
+    "/docs/**",
+    "/tools/*.py",
+    "/assets/**",
+    "/README.md",
+    "/LICENSE",
+]
 
 [workspace]
 members = ["packages/typescript/native", "packages/go/native", "vendor/rusqlite", "vendor/libsqlite3-sys"]
