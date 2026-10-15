@@ -1,6 +1,6 @@
 //! Normalize table declarations while leaving SQLite constraints and expressions
 //! to SQLite. The SQL parser's AST does not cover every SQLite table option.
-use super::{Declaration, translate_column};
+use super::{Alteration, Declaration, translate_column};
 use crate::{Error, Result, Type};
 use rusqlite::Connection;
 use sqlparser::{
@@ -88,10 +88,13 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
                 datatype.push_str(&w.value);
             }
             Token::SingleQuotedString(s) => {
-                if !datatype.is_empty() {
+                if datatype.is_empty() {
+                    // SQLite also accepts a quoted type name, e.g. 'INT64'.
+                    datatype.push_str(s);
+                } else {
                     datatype.push(' ');
+                    datatype.push_str(&format!("'{}'", s.replace('\'', "''")));
                 }
-                datatype.push_str(s);
             }
             other => datatype.push_str(&other.to_string()),
         }
@@ -102,6 +105,20 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         collation: None,
         options: vec![],
     };
+    let mut depth = 0usize;
+    for (i, token) in tokens.iter().enumerate().skip(end) {
+        if depth == 0 && word(token, "COLLATE") {
+            let name = tokens
+                .get(i + 1)
+                .ok_or_else(|| Error::new("missing collation".into()))?;
+            definition.collation = Some(ObjectName(vec![Ident::new(identifier(name)?)]));
+        }
+        match token {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            _ => (),
+        }
+    }
     let logical = translate_column(&mut definition)?;
     if ![
         "INT", "INTEGER", "REAL", "TEXT", "BLOB", "ANY", "DECIMAL", "UUID", "INSTANT", "DATE",
@@ -130,13 +147,68 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
     }
     Ok((output, logical.map(|ty| (name, ty))))
 }
-pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
-    let tokens = Tokenizer::new(&SQLiteDialect {}, sql)
+fn tokens(sql: &str) -> Result<Vec<Token>> {
+    Ok(Tokenizer::new(&SQLiteDialect {}, sql)
         .tokenize()
         .map_err(Error::validation)?
         .into_iter()
         .filter(|t| !matches!(t, Token::Whitespace(_) | Token::SemiColon))
-        .collect::<Vec<_>>();
+        .collect())
+}
+
+// Preserve literal tokens when adding a column: the generic AST accepts
+// non-string ENUM members and renders them as strings, losing that distinction.
+pub(super) fn addition(sql: &str) -> Result<Option<Alteration>> {
+    let tokens = tokens(sql)?;
+    if tokens.len() < 4 || !word(&tokens[0], "ALTER") || !word(&tokens[1], "TABLE") {
+        return Ok(None);
+    }
+    let first = identifier(&tokens[2])?;
+    let mut position = 3;
+    let (schema, table) = if tokens.get(position) == Some(&Token::Period) {
+        position += 2;
+        let table = identifier(
+            tokens
+                .get(position - 1)
+                .ok_or_else(|| Error::new("missing table name".into()))?,
+        )?;
+        (first, table)
+    } else {
+        ("main".into(), first)
+    };
+    if !tokens.get(position).is_some_and(|t| word(t, "ADD")) {
+        return Ok(None);
+    }
+    position += 1;
+    if tokens.get(position).is_some_and(|t| word(t, "COLUMN")) {
+        position += 1;
+    }
+    let (definition, logical) = column(&tokens[position..])?;
+    let main = schema.eq_ignore_ascii_case("main");
+    if !main
+        && logical
+            .as_ref()
+            .is_some_and(|(_, ty)| ty.native_kind().is_none())
+    {
+        return Err(Error::new(
+            "extended types require main database tables".into(),
+        ));
+    }
+    Ok(Some(Alteration {
+        main,
+        sql: format!("{} {definition}", render(&tokens[..position])),
+        table,
+        columns: if main {
+            logical.into_iter().collect()
+        } else {
+            vec![]
+        },
+        changes: vec![],
+    }))
+}
+
+pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
+    let tokens = tokens(sql)?;
     let mut position = 0;
     let mut take = |text: &str| {
         if tokens.get(position).is_some_and(|t| word(t, text)) {

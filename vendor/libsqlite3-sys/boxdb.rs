@@ -243,11 +243,11 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "    sqlite3DequoteToken(&sType);\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
-        "    sqlite3DequoteToken(&sType);\n    if( boxdbRemovedType(sType.z,sType.n) ){\n      sqlite3ErrorMsg(pParse,\"unsupported type: %T\",&sType);\n      return;\n    }\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
+        "    sqlite3DequoteToken(&sType);\n    if( boxdbUnsupportedType(sType.z,sType.n) ){\n      sqlite3ErrorMsg(pParse,\"unsupported type: %T\",&sType);\n      return;\n    }\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
     );
     replace(
         "  yymsp[-5].minor.yy454 = sqlite3ExprAlloc(pParse->db, TK_CAST, &yymsp[-1].minor.yy0, 1);",
-        "  yymsp[-5].minor.yy454 = sqlite3ExprAlloc(pParse->db, TK_CAST, &yymsp[-1].minor.yy0, 1);\n  if( yymsp[-5].minor.yy454 && boxdbRemovedType(yymsp[-5].minor.yy454->u.zToken,sqlite3Strlen30(yymsp[-5].minor.yy454->u.zToken)) ){\n    sqlite3ErrorMsg(pParse,\"unsupported type: %s\",yymsp[-5].minor.yy454->u.zToken);\n  }",
+        "  yymsp[-5].minor.yy454 = sqlite3ExprAlloc(pParse->db, TK_CAST, &yymsp[-1].minor.yy0, 1);\n  if( yymsp[-5].minor.yy454 && boxdbUnsupportedType(yymsp[-5].minor.yy454->u.zToken,sqlite3Strlen30(yymsp[-5].minor.yy454->u.zToken)) ){\n    sqlite3ErrorMsg(pParse,\"unsupported type: %s\",yymsp[-5].minor.yy454->u.zToken);\n  }",
     );
     replace(
         "  switch( aff ){\n    case SQLITE_AFF_BLOB:",

@@ -55,8 +55,8 @@ YAML uses the readable database stream. See [migration and restoration usage](do
 ## SQL and types
 
 SQLite executes queries directly. Tables created through BoxDB are STRICT by
-default; extended types include bounded integers, exact decimals, UUID, JSON,
-UTC instants, calendar dates/datetimes, intervals and typed arrays. DECIMAL,
+default; extended types include bounded integers, string enums, exact decimals,
+UUID, JSON, UTC instants, calendar dates/datetimes, intervals and typed arrays. DECIMAL,
 UUID, INSTANT, DATE, DATETIME and INTERVAL are native engine values with typed
 comparison and indexing. JSON is validated opaque text; JSON/JSONB SQL functions
 and operators are disabled.

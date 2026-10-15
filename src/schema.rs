@@ -108,6 +108,7 @@ fn extension(input: &str) -> Result<Option<Type>> {
                 // Decimal declarations must use supported parameters.
                 || name.starts_with("DECIMAL")
                 || name.starts_with("VARCHAR")
+                || name.starts_with("ENUM")
                 || name.contains("[]") =>
         {
             Err(e)
@@ -128,6 +129,13 @@ pub(crate) struct Declaration {
 fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     if let Some(ty) = extension(&column.data_type.to_string())? {
         ty.validate(&Value::Null)?;
+        if matches!(ty, Type::Enum(_))
+            && column.collation.as_ref().is_some_and(|name| {
+                name.0.len() != 1 || !name.0[0].value.eq_ignore_ascii_case("BINARY")
+            })
+        {
+            return Err(Error::new("ENUM columns require BINARY collation".into()));
+        }
         if ty == Type::Int64 {
             column.data_type = DataType::Custom(ObjectName(vec![Ident::new("INTEGER")]), vec![]);
             return Ok(None);
@@ -174,6 +182,17 @@ fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             )),
             Type::Boolean => Some(format!("{} IN(0,1)", quote(&column.name.value))),
             Type::Varchar(Some(n)) => Some(format!("length({})<={n}", quote(&column.name.value))),
+            Type::Enum(labels) => {
+                let column = quote(&column.name.value);
+                let labels = labels
+                    .iter()
+                    .map(|label| format!("'{}'", label.replace('\'', "''")))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                Some(format!(
+                    "{column} IS NULL OR (typeof({column})='text' AND {column} COLLATE BINARY IN ({labels}))"
+                ))
+            }
             Type::Bytea => Some(format!(
                 "{} IS NULL OR typeof({})='blob'",
                 quote(&column.name.value),
@@ -220,10 +239,13 @@ pub(crate) struct Alteration {
     changes: Vec<AlterTableOperation>,
 }
 pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
-    let Ok(mut statements) = Parser::parse_sql(&GenericDialect {}, sql) else {
+    if let Some(addition) = create::addition(sql)? {
+        return Ok(Some(addition));
+    }
+    let Ok(statements) = Parser::parse_sql(&GenericDialect {}, sql) else {
         return Ok(None);
     };
-    let [statement] = statements.as_mut_slice() else {
+    let [statement] = statements.as_slice() else {
         return Ok(None);
     };
     let Statement::AlterTable {
@@ -239,35 +261,12 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
         .ok_or_else(|| Error::new("missing table name".into()))?
         .value
         .clone();
-    let mut columns = vec![];
-    let mut rewritten = false;
-    for op in operations.iter_mut() {
-        if let AlterTableOperation::AddColumn { column_def, .. } = op {
-            let original = column_def.data_type.clone();
-            if let Some(ty) = translate_column(column_def)? {
-                if !main && ty.native_kind().is_none() {
-                    return Err(Error::new(
-                        "extended types require main database tables".into(),
-                    ));
-                }
-                if main {
-                    columns.push((column_def.name.value.clone(), ty));
-                }
-            }
-            rewritten |= original != column_def.data_type;
-        }
-    }
-    let changes = operations.clone();
     Ok(Some(Alteration {
         main,
-        sql: if !rewritten {
-            sql.into()
-        } else {
-            statement.to_string()
-        },
+        sql: sql.into(),
         table,
-        columns,
-        changes,
+        columns: vec![],
+        changes: operations.clone(),
     }))
 }
 pub(crate) fn save_alteration(db: &Connection, change: &Alteration) -> Result<()> {
