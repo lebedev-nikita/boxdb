@@ -300,6 +300,44 @@ fn column(name: &str, definition: &[Token], ty: Option<&Type>) -> Result<String>
     })
 }
 
+fn omit_nullability(tokens: &[Token]) -> Vec<Token> {
+    let mut output = vec![];
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < tokens.len() {
+        let count = if word(&tokens[i], "NOT") && tokens.get(i + 1).is_some_and(|t| word(t, "NULL"))
+        {
+            2
+        } else if word(&tokens[i], "NULL") {
+            1
+        } else {
+            0
+        };
+        let named = i >= 2 && word(&tokens[i - 2], "CONSTRAINT");
+        let conflict = tokens.get(i + count).is_some_and(|t| word(t, "ON"));
+        let value = i > 0
+            && ["DEFAULT", "SET", "IS", "COLLATE", "CONSTRAINT"]
+                .iter()
+                .any(|w| word(&tokens[i - 1], w));
+        if depth == 0 && count > 0 && !value {
+            // Names and conflict policies carry information beyond nullability.
+            if named || conflict {
+                output.extend_from_slice(&tokens[i..i + count]);
+            }
+            i += count;
+            continue;
+        }
+        match tokens[i] {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            _ => (),
+        }
+        output.push(tokens[i].clone());
+        i += 1;
+    }
+    output
+}
+
 pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
     let types = schema::load(db)?;
     let mut document = Document {
@@ -373,6 +411,14 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
             return Err(invalid(&format!("non-strict table is unsupported: {name}")));
         }
         let definitions = cursor.group()?;
+        let required = db
+            .prepare(
+                "SELECT name, \"notnull\" != 0 OR pk != 0 FROM pragma_table_xinfo(?1, 'main')",
+            )?
+            .query_map([&name], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?))
+            })?
+            .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
         let mut table = Table::default();
         for definition in split(&definitions) {
             if definition.first().is_some_and(|t| {
@@ -385,12 +431,18 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
             }
             let column_name =
                 identifier(definition.first().ok_or_else(|| invalid("empty column"))?)?;
+            schema::validate_column_name(&column_name)?;
             let definition = column(
                 &column_name,
-                &definition[1..],
+                &omit_nullability(&definition[1..]),
                 types.get(&(name.clone(), column_name.clone())),
             )?;
-            table.columns.0.push((column_name, definition));
+            let key = if required[&column_name] {
+                column_name
+            } else {
+                format!("{column_name}?")
+            };
+            table.columns.0.push((key, definition));
         }
         table.without_rowid = cursor.tokens[cursor.pos..]
             .iter()

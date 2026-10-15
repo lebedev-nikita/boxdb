@@ -1,5 +1,45 @@
 use boxdb::{Database, Value};
 use rusqlite::Connection;
+
+#[test]
+fn column_names_cannot_end_in_a_question_mark() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE existing(value TEXT); CREATE TEMP TABLE scratch(value TEXT); ATTACH ':memory:' AS other; CREATE TABLE other.existing(value TEXT)").unwrap();
+    for sql in [
+        "CREATE TABLE rejected(\"value?\" TEXT)",
+        "CREATE TABLE rejected([value?] BOOLEAN)",
+        "CREATE TABLE rejected(`value?` TEXT)",
+        "CREATE TABLE rejected('value?' TEXT)",
+        "CREATE TEMP TABLE rejected(\"value?\" TEXT)",
+        "CREATE TABLE other.rejected(\"value?\" TEXT)",
+        "CREATE TABLE rejected AS SELECT 1 AS \"value?\"",
+        "CREATE TEMP TABLE rejected AS SELECT 1 AS \"value?\"",
+        "CREATE VIRTUAL TABLE rejected USING fts5(\"value?\")",
+        "ALTER TABLE existing ADD COLUMN \"value?\" TEXT",
+        "ALTER TABLE temp.scratch ADD COLUMN \"value?\" TEXT",
+        "ALTER TABLE other.existing ADD COLUMN \"value?\" TEXT",
+        "ALTER TABLE existing RENAME COLUMN value TO \"value?\"",
+        "ALTER TABLE temp.scratch RENAME value TO \"value?\"",
+        "ALTER TABLE other.existing RENAME COLUMN value TO \"value?\"",
+    ] {
+        let error = db.execute(sql).expect_err(sql);
+        assert_eq!(error.code(), "BOXDB_VALIDATION", "{sql}: {error}");
+        assert!(
+            error
+                .to_string()
+                .contains("column names cannot end with '?'"),
+            "{sql}: {error}"
+        );
+    }
+    db.execute(
+        "CREATE TABLE rejected(\"what?ever\" TEXT); INSERT INTO existing VALUES('unchanged')",
+    )
+    .unwrap();
+    assert_eq!(
+        db.execute("SELECT * FROM existing").unwrap()[0].columns,
+        ["value"]
+    );
+}
 mod common;
 use common::sqlite_execute;
 

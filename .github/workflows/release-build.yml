@@ -112,12 +112,15 @@ jobs:
           cp docs/replication.md "$boxdb_release_stage/docs/"
           cp assets/icon.svg "$boxdb_release_stage/assets/"
           cp vendor/sqlean/LICENSE "$boxdb_release_stage/licenses/sqlean.txt"
+          cp vendor/rusqlite/LICENSE "$boxdb_release_stage/licenses/rusqlite.txt"
+          cp vendor/libsqlite3-sys/LICENSE "$boxdb_release_stage/licenses/libsqlite3-sys.txt"
           cp vendor/sqlean/regexp/pcre2/LICENSE "$boxdb_release_stage/licenses/pcre2.txt"
           cp vendor/sqlite-vec/LICENSE-MIT "$boxdb_release_stage/licenses/sqlite-vec-MIT.txt"
           cp vendor/sqlite-vec/LICENSE-APACHE "$boxdb_release_stage/licenses/sqlite-vec-APACHE.txt"
           COPYFILE_DISABLE=1 tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
             boxdb README.md LICENSE docs/replication.md assets/icon.svg \
-            licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt
+            licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt \
+            licenses/rusqlite.txt licenses/libsqlite3-sys.txt
       - name: Upload CLI archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -139,12 +142,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libclang-dev
           cargo test --locked
-          cargo package --locked
+          cargo package --locked -p boxdb-sqlite-sys -p boxdb-rusqlite -p boxdb
       - name: Upload source archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: boxdb-source
-          path: target/package/boxdb-${{ needs.version.outputs.version }}.crate
+          path: target/package/*.crate
           if-no-files-found: error
 
   assemble:
@@ -170,26 +173,27 @@ jobs:
 
           version = os.environ["BOXDB_RELEASE_VERSION"]
           directory = Path("release-assets")
-          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", f"boxdb-{version}.crate"]
+          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", *[f"{name}-{version}.crate" for name in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys")]]
           if {path.name for path in directory.iterdir()} != set(names):
-              raise SystemExit("Expected exactly both CLI archives and the source package")
+              raise SystemExit("Expected both CLI archives and all three Cargo source packages")
           for name in names[:2]:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
-                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt"}:
+                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:
                       raise SystemExit("Incomplete CLI archive: " + name)
                   if not all(member.isfile() and member.size > 0 for member in members):
                       raise SystemExit("Invalid CLI archive member: " + name)
                   if not archive.getmember("boxdb").mode & 0o111:
                       raise SystemExit("CLI archive does not preserve executable permissions")
-          with tarfile.open(directory / names[2], "r:gz") as archive:
-              prefix = f"boxdb-{version}/"
-              for name in ("Cargo.lock", "Cargo.toml", "src/main.rs", "src/lib.rs"):
-                  if not archive.getmember(prefix + name).isfile():
-                      raise SystemExit("Invalid source package member: " + name)
-              manifest = tomllib.loads(archive.extractfile(prefix + "Cargo.toml").read().decode())
-              if manifest["package"]["version"] != version:
-                  raise SystemExit("Source package version differs from the release")
+          for package in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys"):
+              with tarfile.open(directory / f"{package}-{version}.crate", "r:gz") as archive:
+                  prefix = f"{package}-{version}/"
+                  for name in ("Cargo.lock", "Cargo.toml", "src/lib.rs", "LICENSE"):
+                      if not archive.getmember(prefix + name).isfile():
+                          raise SystemExit("Invalid source package member: " + name)
+                  manifest = tomllib.loads(archive.extractfile(prefix + "Cargo.toml").read().decode())
+                  if manifest["package"]["name"] != package or manifest["package"]["version"] != version:
+                      raise SystemExit("Source package name/version differs from the release")
           with (directory / "SHA256SUMS").open("w") as checksums:
               for name in names:
                   digest = hashlib.sha256((directory / name).read_bytes()).hexdigest()

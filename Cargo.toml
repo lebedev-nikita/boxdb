@@ -1,15 +1,18 @@
 [package]
 name = "boxdb"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "An extended SQLite client with typed columns and readable storage"
 license = "MIT"
 repository = "https://github.com/lebedev-nikita/boxdb"
+readme = "README.md"
+keywords = ["sqlite", "database", "yaml", "decimal"]
+categories = ["database"]
+include = ["src/**", "build.rs", "vendor/sqlean/**", "tests/**", "benches/**", "docs/**", "tools/**", "assets/**", "README.md", "LICENSE"]
 
 [workspace]
-members = ["packages/typescript/native", "packages/go/native"]
+members = ["packages/typescript/native", "packages/go/native", "vendor/rusqlite", "vendor/libsqlite3-sys"]
 default-members = ["."]
-exclude = ["vendor/libsqlite3-sys"]
 resolver = "3"
 
 [dependencies]
@@ -29,15 +32,12 @@ sha2 = "0.10"
 fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
-rusqlite = { version = "0.40.2", features = ["bundled", "functions", "pointer", "backup", "column_metadata", "hooks", "preupdate_hook"] }
-libsqlite3-sys = "0.38.2"
+rusqlite = { package = "boxdb-rusqlite", path = "vendor/rusqlite", version = "=0.3.1", features = ["bundled", "functions", "pointer", "backup", "column_metadata", "hooks", "preupdate_hook"] }
+libsqlite3-sys = { package = "boxdb-sqlite-sys", path = "vendor/libsqlite3-sys", version = "=0.3.1", features = ["bundled"] }
 sqlite-vec = "=0.1.9"
 
 [build-dependencies]
 cc = "1"
-
-[patch.crates-io]
-libsqlite3-sys = { path = "vendor/libsqlite3-sys" }
 
 [[bench]]
 name = "sqlite_vs_boxdb"

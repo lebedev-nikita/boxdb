@@ -8,15 +8,15 @@ pub use self::error::*;
 
 use core::mem;
 
-mod error;
 pub mod decimal;
+mod error;
 pub mod native;
-pub mod wire;
-mod temporal;
-mod temporal_functions;
 #[path = "../native_types.rs"]
 mod native_types;
+mod temporal;
+mod temporal_functions;
 mod unsigned;
+pub mod wire;
 
 #[must_use]
 pub fn SQLITE_STATIC() -> sqlite3_destructor_type {
@@ -38,7 +38,10 @@ pub use bindings::*;
 // standard column accessors, which expose logical BLOB payloads.
 unsafe extern "C" {
     #[link_name = "sqlite3_boxdb_column_blob"]
-    pub fn sqlite3_column_blob(statement: *mut sqlite3_stmt, column: i32) -> *const core::ffi::c_void;
+    pub fn sqlite3_column_blob(
+        statement: *mut sqlite3_stmt,
+        column: i32,
+    ) -> *const core::ffi::c_void;
     #[link_name = "sqlite3_boxdb_column_bytes"]
     pub fn sqlite3_column_bytes(statement: *mut sqlite3_stmt, column: i32) -> i32;
     #[link_name = "sqlite3_boxdb_column_bytes16"]

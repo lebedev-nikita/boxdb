@@ -56,6 +56,14 @@ npm-ready: npm-check
 publish-npm: npm-ready
     bun run npm:publish
 
+# Package and verify the Rust library and both bundled SQLite implementation crates.
+cargo-package:
+    cargo package --locked -p boxdb-sqlite-sys -p boxdb-rusqlite -p boxdb
+
+# Publish the Rust crates in dependency order using local Cargo credentials.
+publish-cargo:
+    cargo publish --locked -p boxdb-sqlite-sys -p boxdb-rusqlite -p boxdb
+
 go-check: go-build
     test -z "$(gofmt -l packages/go/*.go)"
     cd packages/go && go vet ./...
@@ -70,6 +78,6 @@ client-types-test: ts-build go-build
 check: ts-check ts-test go-check go-test client-types-test
     cargo fmt --all --check
     rustfmt --edition 2024 --check benches/support/workload.rs
-    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy --no-deps --workspace --exclude boxdb-rusqlite --exclude boxdb-sqlite-sys --all-targets --locked -- -D warnings
     cargo test --locked
     python3 -m unittest discover -s tests -p 'test_*.py'

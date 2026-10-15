@@ -165,10 +165,11 @@ tables:
   accounts:
     columns:
       id: INTEGER PRIMARY KEY
-      email: TEXT NOT NULL
-      active: BOOLEAN NOT NULL DEFAULT TRUE
-      status: ENUM('pending', 'active', 'disabled') NOT NULL DEFAULT 'pending'
-      created_at: INSTANT NOT NULL
+      email: TEXT
+      nickname?: TEXT
+      active: BOOLEAN DEFAULT TRUE
+      status: ENUM('pending', 'active', 'disabled') DEFAULT 'pending'
+      created_at: INSTANT
     constraints:
       - check: length(email) > 0
 indexes:
@@ -182,7 +183,13 @@ indexes:
 
 All tables are STRICT; YAML schema export rejects non-strict tables. Column
 mapping order preserves SQL column order. Objects are sorted by name, and
-empty optional sections are omitted. Index `type` is `regular` or `unique`;
+empty optional sections are omitted. A column key ending in `?` allows NULL;
+an unmarked key is required, including primary-key columns. Real table column
+names cannot end in `?`. Ordinary SQL `NULL` and `NOT NULL` clauses are omitted;
+named constraints and null constraints with `ON CONFLICT` remain explicit to
+preserve their additional semantics. Defaults, checks and references retain
+their SQL expressions and use the real column names.
+Index `type` is `regular` or `unique`;
 `expressions` can include `COLLATE`, `ASC` and `DESC`.
 Views contain a SQL `query`; triggers contain `table`, `timing`, `event`, optional
 `update_of`/`when`, and a SQL `body` without its enclosing BEGIN/END.

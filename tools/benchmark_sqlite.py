@@ -53,7 +53,7 @@ def executable_from_build(output, name):
 
 
 def stock_project(target):
-    """Isolate Cargo's patch resolution, but reuse workloads and row layout."""
+    """Use upstream SQLite dependencies with BoxDB workloads and row layout."""
     project = target / "stock-sqlite-benchmark"
     project.mkdir(parents=True, exist_ok=True)
     manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
@@ -61,12 +61,17 @@ def stock_project(target):
     dependencies = ("rusqlite", "clap", "serde", "serde_json", "sha2", "hex", "tempfile", "libsqlite3-sys")
     cargo = '[package]\nname = "boxdb-stock-sqlite-benchmark"\nversion = "0.1.0"\nedition = "2024"\n\n[workspace]\n\n[dependencies]\n'
     for name in dependencies:
-        versions = {p["version"] for p in lock["package"] if p["name"] == name}
-        if len(versions) != 1:
-            raise ValueError(f"expected exactly one locked version of {name}")
         options = manifest["dependencies"][name]
+        if isinstance(options, dict) and options.get("package", name) != name:
+            upstream = tomllib.loads((ROOT / options["path"] / "Cargo.toml").read_text())
+            version = upstream["package"]["metadata"]["boxdb"]["upstream-version"]
+        else:
+            versions = {p["version"] for p in lock["package"] if p["name"] == name}
+            if len(versions) != 1:
+                raise ValueError(f"expected exactly one locked version of {name}")
+            version = versions.pop()
         features = options.get("features", []) if isinstance(options, dict) else []
-        cargo += f'{name} = {{ version = "={versions.pop()}", features = {json.dumps(features)} }}\n'
+        cargo += f'{name} = {{ version = "={version}", features = {json.dumps(features)} }}\n'
     cargo += '\n[[bin]]\nname = "boxdb-stock-sqlite-benchmark"\npath = "main.rs"\n'
 
     # Keep all variants: simplifying this enum would change row allocation costs.
@@ -100,7 +105,7 @@ include!({rust_path(ROOT / "benches/support/workload.rs")});
         if not path.exists() or path.read_text() != contents:
             path.write_text(contents, encoding="utf-8")
     # Preserve the workspace's locked transitive versions while resolving the
-    # registry SQLite package instead of its local patch.
+    # upstream registry packages instead of BoxDB’s engine forks.
     seed = hashlib.sha256((ROOT / "Cargo.lock").read_bytes() + cargo.encode()).hexdigest()
     marker = project / "workspace-lock.sha256"
     if not (project / "Cargo.lock").exists() or not marker.exists() or marker.read_text() != seed:

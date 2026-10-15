@@ -5,6 +5,69 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
+fn yaml_column_keys_mark_nullable_columns_instead_of_sql_null_clauses() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source.db");
+    success(cli(&[
+        source.to_str().unwrap(),
+        "-e",
+        "CREATE TABLE accounts(id INTEGER PRIMARY KEY, email TEXT NOT NULL, nickname TEXT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, tags TEXT[], \"odd: name\" TEXT DEFAULT 'NOT NULL', derived TEXT AS (coalesce(nickname, 'NULL'))); CREATE TABLE composite(a TEXT, b INT64, PRIMARY KEY(a,b)) WITHOUT ROWID",
+    ]));
+    let dump = success(cli(&[
+        "schema",
+        "dump",
+        source.to_str().unwrap(),
+        "--format=yaml",
+    ]));
+    let document: serde_json::Value = serde_saphyr::from_str(&dump).unwrap();
+    assert_eq!(
+        document["tables"]["accounts"]["columns"],
+        serde_json::json!({
+            "id": "INTEGER PRIMARY KEY",
+            "email": "TEXT",
+            "nickname?": "TEXT",
+            "active": "BOOLEAN DEFAULT TRUE",
+            "tags?": "TEXT[]",
+            "odd: name?": "TEXT DEFAULT 'NOT NULL'",
+            "derived?": "TEXT AS (coalesce(nickname, 'NULL'))",
+        })
+    );
+    assert_eq!(
+        document["tables"]["composite"]["columns"],
+        serde_json::json!({
+            "a": "TEXT", "b": "INTEGER",
+        })
+    );
+}
+
+#[test]
+fn yaml_nullability_keeps_named_constraints_conflicts_defaults_and_foreign_keys() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source.db");
+    success(cli(&[
+        source.to_str().unwrap(),
+        "-e",
+        "CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(named TEXT CONSTRAINT required NOT NULL DEFAULT 'NULL', policy TEXT NOT NULL ON CONFLICT FAIL, optional TEXT DEFAULT NULL REFERENCES parent(id) ON DELETE SET NULL CHECK(optional IS NULL), tags TEXT[] NOT NULL DEFAULT '[]')",
+    ]));
+    let dump = success(cli(&[
+        "schema",
+        "dump",
+        source.to_str().unwrap(),
+        "--format=yaml",
+    ]));
+    let document: serde_json::Value = serde_saphyr::from_str(&dump).unwrap();
+    assert_eq!(
+        document["tables"]["child"]["columns"],
+        serde_json::json!({
+            "named": "TEXT CONSTRAINT required NOT NULL DEFAULT 'NULL'",
+            "policy": "TEXT NOT NULL ON CONFLICT FAIL",
+            "optional?": "TEXT DEFAULT NULL REFERENCES parent(id) ON DELETE SET NULL CHECK (optional IS NULL)",
+            "tags": "TEXT[] DEFAULT '[]'",
+        })
+    );
+}
+
+#[test]
 fn yaml_dump_preserves_enum_labels_arrays_and_user_constraints() {
     let temp = tempfile::tempdir().unwrap();
     let mut canonical = None;
@@ -37,15 +100,15 @@ fn yaml_dump_preserves_enum_labels_arrays_and_user_constraints() {
         let columns = &document["tables"]["tasks"]["columns"];
         assert_eq!(
             columns["status"],
-            "ENUM('todo', 'Done', 'it''s, (雪)[] ARRAY<', '') NOT NULL DEFAULT 'todo' CONSTRAINT user_state CHECK (status <> '')"
+            "ENUM('todo', 'Done', 'it''s, (雪)[] ARRAY<', '') DEFAULT 'todo' CONSTRAINT user_state CHECK (status <> '')"
         );
-        assert_eq!(columns["labels"], "ENUM('a', 'it''s, Done')[]");
-        assert_eq!(columns["nested"], "ENUM('x', 'Y')[][]");
+        assert_eq!(columns["labels?"], "ENUM('a', 'it''s, Done')[]");
+        assert_eq!(columns["nested?"], "ENUM('x', 'Y')[][]");
         assert_eq!(
-            columns["derived"],
+            columns["derived?"],
             "ENUM('todo', 'Done', 'it''s, (雪)[] ARRAY<', '') AS (status) STORED"
         );
-        assert_eq!(columns["priority"], "ENUM('low', 'high') DEFAULT 'low'");
+        assert_eq!(columns["priority?"], "ENUM('low', 'high') DEFAULT 'low'");
         assert!(!dump.contains("__boxdb_"));
         assert!(!dump.contains("typeof"));
         if let Some(expected) = &canonical {
@@ -205,15 +268,15 @@ fn yaml_dump_has_named_logical_columns() {
         document["tables"]["odd' table"]["columns"],
         serde_json::json!({
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-            "odd' column": "INSTANT",
-            "n": "DECIMAL(12, 2)",
-            "tags": "UINT8[]",
-            "b": "BOOLEAN",
+            "odd' column?": "INSTANT",
+            "n?": "DECIMAL(12, 2)",
+            "tags?": "UINT8[]",
+            "b?": "BOOLEAN",
         })
     );
     assert!(!dump.contains("__boxdb_"));
     assert!(!dump.contains("strict:"));
-    assert!(dump.find("      id:").unwrap() < dump.find("      odd' column:").unwrap());
+    assert!(dump.find("      id:").unwrap() < dump.find("      odd' column?:").unwrap());
 }
 
 #[test]
@@ -319,7 +382,7 @@ fn user_tables_with_names_similar_to_sqlite_system_tables_are_exported() {
     ]));
     let document: serde_json::Value = serde_saphyr::from_str(&yaml).unwrap();
     assert_eq!(
-        document["tables"]["sqlitex_records"]["columns"]["at"],
+        document["tables"]["sqlitex_records"]["columns"]["at?"],
         "INSTANT"
     );
     let restored = temp.path().join("restored.db");
@@ -511,6 +574,20 @@ fn yaml_dump_rejects_non_strict_tables_instead_of_changing_their_contract() {
 }
 
 #[test]
+fn yaml_dump_rejects_external_column_names_with_reserved_question_mark_suffix() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("external.db");
+    rusqlite::Connection::open(&source)
+        .unwrap()
+        .execute_batch("CREATE TABLE external(\"value?\" TEXT) STRICT")
+        .unwrap();
+    let result = cli(&["schema", "dump", source.to_str().unwrap(), "--format=yaml"]);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("column names cannot end with '?'"));
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
 fn yaml_dump_preserves_typed_columns_after_rename_and_add_column() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source.yaml");
@@ -536,13 +613,16 @@ fn yaml_dump_preserves_typed_columns_after_rename_and_add_column() {
     assert!(!dump.contains("__boxdb_"));
     assert!(dump.contains("CONSTRAINT user_check CHECK"));
     let document: serde_json::Value = serde_saphyr::from_str(&dump).unwrap();
-    assert_eq!(document["tables"]["after"]["columns"]["n"], "DECIMAL(9, 2)");
     assert_eq!(
-        document["tables"]["after"]["columns"]["code"],
+        document["tables"]["after"]["columns"]["n?"],
+        "DECIMAL(9, 2)"
+    );
+    assert_eq!(
+        document["tables"]["after"]["columns"]["code?"],
         "VARCHAR(5) DEFAULT 'a'"
     );
     assert!(
-        document["tables"]["after"]["columns"]["new name"]
+        document["tables"]["after"]["columns"]["new name?"]
             .as_str()
             .unwrap()
             .starts_with("BOOLEAN ")

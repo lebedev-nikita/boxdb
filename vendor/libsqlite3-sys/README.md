@@ -2,9 +2,10 @@
 
 This directory vendors `libsqlite3-sys` 0.38.2 and SQLite 3.53.2. The upstream
 amalgamation in `sqlite3/sqlite3.c` is unchanged. `boxdb.rs` applies checked source
-transformations at build time; each anchor must match exactly once. Cargo patches
-all workspace users of `libsqlite3-sys` to this engine, including rusqlite and
-sqlite-vec.
+transformations at build time; each anchor must match exactly once. The package is
+published as `boxdb-sqlite-sys`, retaining the Rust library name `libsqlite3_sys`.
+BoxDB and `boxdb-rusqlite` depend on it directly; consumers need no Cargo patches.
+SQLite extensions link to this engine.
 
 `native_types.rs` is the shared native type registry used by Rust and the build.
 `boxdb_native.inc` dispatches casts, operators, comparisons, SQL functions and value views.

@@ -9,37 +9,37 @@ pragmas:
 tables:
   samples:
     columns:
-      z: ANY
+      z?: ANY
       id: INTEGER PRIMARY KEY AUTOINCREMENT
-      i8: INT8 DEFAULT -1
-      i16: INT16
-      i32: INT32
-      u8: UINT8
-      u16: UINT16
-      u32: UINT32
-      u64: UINT64
-      amount: DECIMAL(12, 2)
-      arbitrary_amount: DECIMAL
-      ratio: REAL
-      enabled: BOOLEAN NOT NULL DEFAULT TRUE
-      label: TEXT COLLATE text_nocase
-      code: VARCHAR(12) CONSTRAINT code_nonempty CHECK (length(code) > 0)
-      unlimited: VARCHAR
-      state: ENUM('todo', 'Done', 'it''s, (雪)') NOT NULL DEFAULT 'todo'
-      states: ENUM('todo', 'Done')[]
-      bytes: BYTEA
-      raw: BLOB
-      uuid: UUID
-      document: JSON NOT NULL DEFAULT '{}'
-      at: INSTANT
-      day: DATE
-      local_at: DATETIME
-      duration: INTERVAL
-      tags: TEXT[] NOT NULL DEFAULT '[]'
-      matrix: UINT8[][]
-      amounts: DECIMAL(8, 2)[]
-      derived: BOOLEAN GENERATED ALWAYS AS (enabled) STORED
-      folded: TEXT AS (text_lower(label)) VIRTUAL
+      i8?: INT8 DEFAULT -1
+      i16?: INT16
+      i32?: INT32
+      u8?: UINT8
+      u16?: UINT16
+      u32?: UINT32
+      u64?: UINT64
+      amount?: DECIMAL(12, 2)
+      arbitrary_amount?: DECIMAL
+      ratio?: REAL
+      enabled: BOOLEAN DEFAULT TRUE
+      label?: TEXT COLLATE text_nocase
+      code?: VARCHAR(12) CONSTRAINT code_nonempty CHECK (length(code) > 0)
+      unlimited?: VARCHAR
+      state: ENUM('todo', 'Done', 'it''s, (雪)') DEFAULT 'todo'
+      states?: ENUM('todo', 'Done')[]
+      bytes?: BYTEA
+      raw?: BLOB
+      uuid?: UUID
+      document: JSON DEFAULT '{}'
+      at?: INSTANT
+      day?: DATE
+      local_at?: DATETIME
+      duration?: INTERVAL
+      tags: TEXT[] DEFAULT '[]'
+      matrix?: UINT8[][]
+      amounts?: DECIMAL(8, 2)[]
+      derived?: BOOLEAN GENERATED ALWAYS AS (enabled) STORED
+      folded?: TEXT AS (text_lower(label)) VIRTUAL
 
     constraints:
       - name: sample_code_unique
@@ -48,7 +48,7 @@ tables:
 
   audit:
     columns:
-      value: TEXT
+      value?: TEXT
 
 indexes:
   sample_label:
