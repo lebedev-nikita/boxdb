@@ -1,12 +1,18 @@
 /* Shared native-value dispatch using SQLite's standard record storage classes. */
-/* Reject removed declarations and CAST targets before affinity can erase the
-** spelling. Whitespace and optional parameters do not restore an alias. */
-static int boxdbRemovedType(const char *z, int length){
-  char name[24]; int i,n=0;
-  for(i=0;i<length && z[i]!='(';i++){
-    if( sqlite3Isspace(z[i]) ) continue;
-    if( n>=(int)sizeof(name)-1 ) return 0;
-    name[n++]=sqlite3Toupper(z[i]);
+/* Reject unsupported declarations and CAST targets before affinity erases the
+** spelling. BoxDB translates logical ENUM declarations to TEXT before prepare.
+** Whitespace, comments and parameters do not make these engine types valid. */
+static int boxdbUnsupportedType(const char *z, int length){
+  char name[24]; int i,j,n=0,size,token;
+  for(i=0;i<length;i+=size){
+    size=(int)sqlite3GetToken((const unsigned char*)z+i,&token);
+    if( size<=0 || size>length-i ) return 0;
+    if( token==TK_LP ) break;
+    if( token==TK_SPACE || token==TK_COMMENT ) continue;
+    for(j=0;j<size;j++){
+      if( n>=(int)sizeof(name)-1 ) return 0;
+      name[n++]=sqlite3Toupper(z[i+j]);
+    }
   }
   name[n]=0;
   return strcmp(name,"DOUBLEPRECISION")==0
@@ -14,7 +20,8 @@ static int boxdbRemovedType(const char *z, int length){
       || strcmp(name,"JSONB")==0
       || strcmp(name,"FLOAT4")==0
       || strcmp(name,"FLOAT")==0
-      || strcmp(name,"FLOAT8")==0;
+      || strcmp(name,"FLOAT8")==0
+      || strcmp(name,"ENUM")==0;
 }
 
 typedef struct BoxdbType { int kind; u8 affinity; char tag; int size; const char *name; } BoxdbType;

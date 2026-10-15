@@ -1,6 +1,21 @@
 import { expect, expectTypeOf, test } from "vitest";
 import { BoxDB } from "../src/index.js";
 
+test("enum columns bind and return strings and reject invalid labels", async () => {
+  await using db = await BoxDB.open();
+  await db.exec("CREATE TABLE tasks(status ENUM('todo','it''s Done') NOT NULL DEFAULT 'todo')");
+  await db.query`INSERT INTO tasks VALUES(${"it's Done"})`;
+  expect(await db.query`SELECT status FROM tasks`.get()).toEqual({ status: "it's Done" });
+  await expect(db.query`UPDATE tasks SET status=${"done"}`.run()).rejects.toMatchObject({
+    code: "BOXDB_CONSTRAINT_CHECK",
+  });
+  await db.exec("ALTER TABLE tasks ADD COLUMN priority ENUM('low','high') DEFAULT 'low'");
+  expect(await db.query`SELECT status, priority FROM tasks`.get()).toEqual({
+    status: "it's Done",
+    priority: "low",
+  });
+});
+
 test("SQL identifiers quote each explicit component and parameter values stay bound", async () => {
   await using db = await BoxDB.open();
   await db.query`CREATE TABLE ${db.identifier('odd"table')} (${db.identifier('odd"column')} TEXT)`;

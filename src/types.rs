@@ -2,6 +2,10 @@ use crate::{Error, Result};
 use bigdecimal::BigDecimal;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
+use sqlparser::{
+    dialect::SQLiteDialect,
+    tokenizer::{Token, Tokenizer},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
@@ -42,6 +46,7 @@ pub enum Type {
     Boolean,
     Text,
     Varchar(Option<usize>),
+    Enum(Vec<String>),
     Bytea,
     Uuid,
     Json,
@@ -71,17 +76,58 @@ impl Type {
     }
 
     pub fn parse(input: &str) -> Result<Self> {
-        if input.len() > 4096
-            || input.matches("[]").count() + input.to_uppercase().matches("ARRAY<").count() > 32
-        {
+        Self::parse_nested(input, 0)
+    }
+
+    fn parse_nested(input: &str, depth: usize) -> Result<Self> {
+        if input.len() > 4096 || depth > 32 {
             return Err(Error::new("type nesting or length exceeds limit".into()));
         }
-        let ty = input.trim().to_uppercase();
-        if let Some(inner) = ty.strip_suffix("[]") {
-            return Ok(Self::Array(Box::new(Self::parse(inner)?)));
+        let input = input.trim();
+        let ty = input.to_ascii_uppercase();
+        if let Some(inner) = input.strip_suffix("[]") {
+            return Ok(Self::Array(Box::new(Self::parse_nested(inner, depth + 1)?)));
         }
-        if let Some(inner) = ty.strip_prefix("ARRAY<").and_then(|s| s.strip_suffix('>')) {
-            return Ok(Self::Array(Box::new(Self::parse(inner)?)));
+        if ty.starts_with("ARRAY<") && input.ends_with('>') {
+            return Ok(Self::Array(Box::new(Self::parse_nested(
+                &input[6..input.len() - 1],
+                depth + 1,
+            )?)));
+        }
+        if ty.starts_with("ENUM") {
+            let tokens = Tokenizer::new(&SQLiteDialect {}, input)
+                .tokenize()
+                .map_err(Error::validation)?
+                .into_iter()
+                .filter(|t| !matches!(t, Token::Whitespace(_)))
+                .collect::<Vec<_>>();
+            let invalid = || {
+                Error::new("expected ENUM with a nonempty list of unique string literals".into())
+            };
+            let [Token::Word(name), Token::LParen, rest @ .., Token::RParen] = tokens.as_slice()
+            else {
+                return Err(invalid());
+            };
+            if name.quote_style.is_some()
+                || !name.value.eq_ignore_ascii_case("ENUM")
+                || rest.is_empty()
+            {
+                return Err(invalid());
+            }
+            let mut labels = vec![];
+            for (i, token) in rest.iter().enumerate() {
+                match (i % 2, token) {
+                    (0, Token::SingleQuotedString(label)) => labels.push(label.clone()),
+                    (1, Token::Comma) => (),
+                    _ => return Err(invalid()),
+                }
+            }
+            if rest.len() % 2 == 0 {
+                return Err(invalid());
+            }
+            let result = Self::Enum(labels);
+            result.validate(&Value::Null)?;
+            return Ok(result);
         }
         let (base, args) = if let Some((base, tail)) = ty.split_once('(') {
             let tail = tail
@@ -144,6 +190,18 @@ impl Type {
         Ok(result)
     }
     pub fn validate(&self, value: &Value) -> Result<Value> {
+        if let Self::Enum(labels) = self
+            && (labels.is_empty()
+                || labels
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    != labels.len())
+        {
+            return Err(Error::new(
+                "ENUM requires a nonempty list of unique labels".into(),
+            ));
+        }
         if matches!(self,Self::Decimal(Some((p,s))) if *p==0 || *p>1000 || s>p)
             || matches!(self, Self::Varchar(Some(0)))
         {
@@ -213,6 +271,7 @@ impl Type {
             {
                 Ok(value.clone())
             }
+            (Self::Enum(labels), Value::Text(s)) if labels.contains(s) => Ok(value.clone()),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
             (Self::Uuid, Value::Uuid(s))
             | (Self::Instant, Value::Instant(s))
@@ -292,7 +351,7 @@ impl Type {
                 "false" => false,
                 _ => return Err(Error::new("invalid boolean cast".into())),
             }),
-            Self::Text | Self::Varchar(_) => Value::Text(text),
+            Self::Text | Self::Varchar(_) | Self::Enum(_) => Value::Text(text),
             Self::Uuid => Value::Uuid(text),
             Self::Instant => Value::Instant(text),
             Self::Date => Value::Date(text),

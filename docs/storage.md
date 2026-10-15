@@ -53,10 +53,36 @@ are translated into physical types and, where applicable, portable CHECKs:
 | UINT64 | Native declaration; `Q` tag followed by eight unsigned big-endian bytes |
 | BOOLEAN | INTEGER with a 0/1 CHECK |
 | VARCHAR(n) | TEXT with a length CHECK |
+| ENUM('a','b',...) | TEXT with a membership CHECK and BINARY collation |
 | DOUBLE | REAL with 64-bit floating-point values |
 | BYTEA | BLOB with a storage-class CHECK |
 | DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
+
+Declare string enums inline:
+
+```sql
+CREATE TABLE tasks (
+    id INT64 PRIMARY KEY,
+    status ENUM('todo', 'doing', 'done') NOT NULL DEFAULT 'todo'
+);
+ALTER TABLE tasks ADD COLUMN priority ENUM('low', 'high') DEFAULT 'low';
+```
+
+An enum requires a nonempty list of unique SQL string literals. Labels preserve
+case, whitespace and Unicode; an empty string is allowed. Clients bind and return
+ordinary strings (`Value::Text` in Rust). NULL is allowed unless the column is
+NOT NULL. SQLite's TEXT conversions apply before membership validation, so a
+numeric input of `1` matches a declared label `'1'`.
+
+Equality, uniqueness, sorting and indexes use BINARY string comparison; label
+declaration order has no sorting significance. Other column collations are
+rejected. Membership CHECKs are stored in the schema and apply to external
+SQLite writers too, unless CHECK enforcement is explicitly disabled. Typed enum
+arrays are supported, with each non-null element checked against the labels.
+Enums follow the main-database restriction for logical types. SQL casts to ENUM
+are rejected during preparation; named types and ALTER TYPE are unsupported.
+Changing a label set requires rebuilding the table in a migration.
 
 Unsigned columns and computed unsigned results return `Value::UnsignedInteger`;
 signed values return `Value::Integer`. All four unsigned widths are native SQL

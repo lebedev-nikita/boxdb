@@ -9,6 +9,33 @@ import (
 	boxdb "github.com/lebedev-nikita/boxdb/packages/go"
 )
 
+func TestEnumColumnsBindAndScanStrings(t *testing.T) {
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE tasks(status ENUM('todo','it''s Done') NOT NULL DEFAULT 'todo')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO tasks VALUES(?)", "it's Done"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("UPDATE tasks SET status=?", "done"); err == nil {
+		t.Fatal("invalid enum label was accepted")
+	}
+	if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN priority ENUM('low','high') DEFAULT 'low'"); err != nil {
+		t.Fatal(err)
+	}
+	var status, priority string
+	if err := db.QueryRow("SELECT status,priority FROM tasks").Scan(&status, &priority); err != nil {
+		t.Fatal(err)
+	}
+	if status != "it's Done" || priority != "low" {
+		t.Fatalf("unexpected enum strings: %q, %q", status, priority)
+	}
+}
+
 func TestDecimalCodecPreservesExactAmountsAndNulls(t *testing.T) {
 	var _ sql.Scanner = (*boxdb.Decimal)(nil)
 	var _ driver.Valuer = boxdb.Decimal("")
