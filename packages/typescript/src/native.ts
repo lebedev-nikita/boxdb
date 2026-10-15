@@ -27,7 +27,13 @@ export interface NativeConnection {
   ): Promise<NativeResponse>;
   cancel(id: number): void;
 }
-const binding = createRequire(import.meta.url)("../native/boxdb.node") as {
+const platform = `${process.platform}-${process.arch}`;
+if (platform !== "darwin-arm64" && platform !== "linux-x64") {
+  throw new Error(
+    `BoxDB does not support ${platform}. Supported: macOS ARM64 and Linux x64 (glibc 2.35+).`,
+  );
+}
+const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node`) as {
   NativeDatabase: new (
     path: string,
     format: string,
