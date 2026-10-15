@@ -125,7 +125,7 @@ pub(crate) struct Declaration {
     pub table: String,
     pub columns: Vec<(String, Type)>,
 }
-pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
+fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     if let Some(ty) = extension(&column.data_type.to_string())? {
         ty.validate(&Value::Null)?;
         if ty == Type::Int64 {

@@ -495,6 +495,35 @@ impl<W: std::io::Write> std::io::Write for LimitedWriter<W> {
         self.inner.flush()
     }
 }
+pub(crate) fn encode_schema(db: &Connection) -> Result<Vec<u8>> {
+    let mut bytes = vec![];
+    let mut writer = LimitedWriter {
+        inner: &mut bytes,
+        bytes: 0,
+    };
+    let records = schema_records(db)?;
+    for record in &records {
+        write_document(&mut writer, record)?;
+    }
+    for record in &records {
+        if let Record::Schema {
+            object_type, name, ..
+        } = record
+            && object_type == "table"
+            && (name == schema::CODEC_META
+                || name == schema::META
+                || name == crate::migrations::TABLE)
+        {
+            let table = TablePlan::new(db, name)?;
+            let mut statement = db.prepare(&table.select)?;
+            let mut cursor = statement.query([])?;
+            while let Some(row) = cursor.next()? {
+                table.write_row(row, &mut writer)?;
+            }
+        }
+    }
+    Ok(bytes)
+}
 pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
     let records: Vec<Record> = serde_saphyr::from_slice_multiple_with_options(
         bytes,

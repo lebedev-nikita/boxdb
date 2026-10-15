@@ -156,48 +156,16 @@ sqlite3 restored.db < db/schema.sql
 boxdb restored.db -e 'SELECT * FROM accounts'
 ```
 
-YAML exports a single `boxdb-schema` document with logical BoxDB declarations:
+YAML uses the existing readable database stream as a schema-only snapshot, with
+named fields for metadata rows. Restore it through conversion into a new path:
 
-```yaml
-format: boxdb-schema
-version: 1
-tables:
-  accounts:
-    columns:
-      id: INTEGER PRIMARY KEY
-      email: TEXT NOT NULL
-      active: BOOLEAN NOT NULL DEFAULT TRUE
-      created_at: INSTANT NOT NULL
-    constraints:
-      - check: length(email) > 0
-indexes:
-  accounts_active_email:
-    type: unique
-    table: accounts
-    expressions:
-      - text_lower(email)
-    where: active = TRUE
+```sh
+boxdb convert db/schema.yaml restored.db --format binary
 ```
 
-All tables are STRICT; YAML schema export rejects non-strict tables. Column
-mapping order preserves SQL column order. Objects are sorted by name, and
-empty optional sections are omitted. Index `type` is `regular` or `unique`;
-`expressions` can include `COLLATE`, `ASC` and `DESC`.
-Views contain a SQL `query`; triggers contain `table`, `timing`, `event`, optional
-`update_of`/`when`, and a SQL `body` without its enclosing BEGIN/END.
-
-Nonzero `application_id` and `user_version` appear in `pragmas`. Applied
-`migrations` are an ordered list of records with `version`, `name` and `checksum`.
-Internal tables, generated type checks and physical codec metadata are omitted.
-See the [complete example](../tests/fixtures/schema.yaml)
-for logical types, generated columns, views, triggers and migration records.
-
-YAML schema dumps are export-only documents for inspection and version-control
-diffs. They cannot be opened as databases or imported through `boxdb convert`.
-The readable database stream is a separate format containing schemas and rows;
-`boxdb convert` converts complete databases between binary and readable storage.
-SQL dumps can bootstrap an empty database; keep the original migration files
-when continuing migrations on a database restored from SQL. The library exposes
+Keep the original migration files when continuing migrations on a restored
+schema. These dumps bootstrap an empty database; use `boxdb convert` for a
+complete database with data. The library exposes
 `Database::dump_schema` and `Database::dump_schema_file` with `SchemaFormat`.
 
 ## Why stock DBMate is insufficient
