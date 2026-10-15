@@ -6,6 +6,19 @@ export const root = resolve(import.meta.dirname, "../..");
 export const output = join(root, "target/npm");
 export const registry = "https://registry.npmjs.org/";
 
+interface ReleasePackage {
+  directory: string;
+  name: string;
+  binary?: string;
+}
+export const releasePackages: readonly ReleasePackage[] = [
+  { directory: "packages/typescript", name: "@boxdb/client", binary: "boxdb.node" },
+  { directory: "packages/cli", name: "@boxdb/cli", binary: "boxdb" },
+  { directory: "packages/drizzle-adapter", name: "@boxdb/drizzle-adapter" },
+  { directory: "packages/db0-adapter", name: "@boxdb/db0-adapter" },
+  { directory: "packages/better-auth-adapter", name: "@boxdb/better-auth-adapter" },
+];
+
 interface Package {
   name: string;
   filename: string;
@@ -31,9 +44,15 @@ export function readRelease() {
     release.packages
       .map((p) => p.name)
       .sort()
-      .join(",") !== "@boxdb/cli,@boxdb/client"
+      .join(",") !==
+    releasePackages
+      .map((p) => p.name)
+      .sort()
+      .join(",")
   ) {
-    throw new Error("Expected exactly @boxdb/client and @boxdb/cli");
+    throw new Error(
+      `Expected exactly these release packages: ${releasePackages.map((p) => p.name).join(", ")}`,
+    );
   }
   for (const pkg of release.packages) {
     const expected = `${pkg.name.replace("@", "").replace("/", "-")}-${release.version}.tgz`;

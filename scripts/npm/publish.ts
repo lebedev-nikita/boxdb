@@ -97,5 +97,6 @@ for (const pkg of pending) {
   }
 }
 console.log(
-  "\nPublished and verified. Install with: npm install @boxdb/client; npm install -g @boxdb/cli",
+  "\nPublished and verified:\n" +
+    release.packages.map((pkg) => `${pkg.name}@${release.version}`).join("\n"),
 );

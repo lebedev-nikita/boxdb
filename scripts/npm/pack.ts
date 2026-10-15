@@ -10,6 +10,7 @@ import {
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { releasePackages } from "./release.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const output = join(root, "target/npm");
@@ -39,21 +40,19 @@ for (const platform of platforms) {
   for (const file of ["boxdb", "boxdb.node"])
     readFileSync(join(root, "target/npm-native", platform, file));
 }
-for (const path of ["packages/typescript", "packages/cli"]) {
+for (const { directory: path } of releasePackages) {
   rmSync(join(root, path, "dist"), { recursive: true, force: true });
   run("bunx", [
     "tsc",
     "-p",
-    join(path, path.endsWith("typescript") ? "tsconfig.build.json" : "tsconfig.json"),
+    join(path, path.endsWith("cli") ? "tsconfig.json" : "tsconfig.build.json"),
   ]);
 }
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 const packages = [];
-for (const [source, name, binary] of [
-  ["packages/typescript", "client", "boxdb.node"],
-  ["packages/cli", "cli", "boxdb"],
-] as const) {
+for (const { directory: source, name: packageName, binary } of releasePackages) {
+  const name = packageName.slice("@boxdb/".length);
   const stage = join(output, "staging", name);
   mkdirSync(stage, { recursive: true });
   const manifest = JSON.parse(readFileSync(join(root, source, "package.json"), "utf8")) as Record<
@@ -64,7 +63,9 @@ for (const [source, name, binary] of [
     throw new Error(`Unexpected ${name} package name/version`);
   delete manifest.devDependencies;
   delete manifest.scripts;
-  manifest.files = ["dist", "native", "README.md", "LICENSE", "licenses"];
+  manifest.files = binary
+    ? ["dist", "native", "README.md", "LICENSE", "licenses"]
+    : ["dist", "README.md", "LICENSE"];
   writeFileSync(join(stage, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
   cpSync(join(root, source, "dist"), join(stage, "dist"), { recursive: true });
   // The published package has one license directory shared by its JS and native code.
@@ -72,19 +73,21 @@ for (const [source, name, binary] of [
   rmSync(join(stage, "dist/LICENSE"), { force: true });
   for (const file of ["README.md"]) copyFileSync(join(root, source, file), join(stage, file));
   copyFileSync(join(root, "LICENSE"), join(stage, "LICENSE"));
-  mkdirSync(join(stage, "licenses"));
-  for (const [path, filename] of [
-    ["sqlean/LICENSE", "sqlean.txt"],
-    ["sqlean/regexp/pcre2/LICENSE", "pcre2.txt"],
-    ["sqlite-vec/LICENSE-MIT", "sqlite-vec-MIT.txt"],
-    ["sqlite-vec/LICENSE-APACHE", "sqlite-vec-APACHE.txt"],
-  ])
-    copyFileSync(join(root, "vendor", path!), join(stage, "licenses", filename!));
-  for (const platform of platforms) {
-    const directory = join(stage, "native", platform);
-    mkdirSync(directory, { recursive: true });
-    copyFileSync(join(root, "target/npm-native", platform, binary), join(directory, binary));
-    if (name === "cli") chmodSync(join(directory, binary), 0o755);
+  if (binary) {
+    mkdirSync(join(stage, "licenses"));
+    for (const [path, filename] of [
+      ["sqlean/LICENSE", "sqlean.txt"],
+      ["sqlean/regexp/pcre2/LICENSE", "pcre2.txt"],
+      ["sqlite-vec/LICENSE-MIT", "sqlite-vec-MIT.txt"],
+      ["sqlite-vec/LICENSE-APACHE", "sqlite-vec-APACHE.txt"],
+    ])
+      copyFileSync(join(root, "vendor", path!), join(stage, "licenses", filename!));
+    for (const platform of platforms) {
+      const directory = join(stage, "native", platform);
+      mkdirSync(directory, { recursive: true });
+      copyFileSync(join(root, "target/npm-native", platform, binary), join(directory, binary));
+      if (name === "cli") chmodSync(join(directory, binary), 0o755);
+    }
   }
   if (name === "cli") chmodSync(join(stage, "dist/cli.js"), 0o755);
   const [packed] = JSON.parse(
