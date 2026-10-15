@@ -17,3 +17,10 @@ export type {
   SQLValue,
 } from "./types.js";
 export type { Query, Fragment, CompiledQuery, Interpolation } from "./sql.js";
+export {
+  MigrationSet,
+  type MigrationFile,
+  type MigrationInfo,
+  type MigrationStatus,
+  type MigrationOptions,
+} from "./migrations.js";

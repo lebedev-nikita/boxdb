@@ -28,6 +28,171 @@ fn migration(dir: &Path, version: &str, up: &str, down: &str) {
 }
 
 #[test]
+fn embedded_migrations_share_file_history_and_can_be_rolled_back() {
+    use boxdb::{
+        Database, Format,
+        migrations::{MigrationFile, MigrationSet, MigrationState},
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let filename = "20261015000000_create_events.sql";
+    let sql =
+        "-- migrate:up\nCREATE TABLE events(at INSTANT);\n-- migrate:down\nDROP TABLE events;\n";
+    std::fs::write(temp.path().join(filename), sql).unwrap();
+    let embedded = MigrationSet::from_files([MigrationFile {
+        filename: filename.into(),
+        sql: sql.replace('\n', "\r\n"),
+    }])
+    .unwrap();
+    let files = MigrationSet::read(temp.path()).unwrap();
+    for format in [Format::Binary, Format::Readable] {
+        let mut db = Database::open(temp.path().join(format!("{format:?}.db")), format).unwrap();
+        assert_eq!(embedded.up(&mut db).unwrap()[0].name, "create_events");
+        assert!(files.up(&mut db).unwrap().is_empty());
+        assert_eq!(files.status(&db).unwrap()[0].state, MigrationState::Applied);
+        assert_eq!(
+            files.down(&mut db).unwrap().unwrap().version,
+            "20261015000000"
+        );
+        assert_eq!(
+            embedded.status(&db).unwrap()[0].state,
+            MigrationState::Pending
+        );
+        assert!(embedded.down(&mut db).unwrap().is_none());
+    }
+}
+
+#[test]
+fn embedded_migration_filenames_must_be_bare_sql_filenames() {
+    use boxdb::migrations::{MigrationFile, MigrationSet};
+    for filename in [
+        "dir/20261015000000_test.sql",
+        "../20261015000000_test.sql",
+        "20261015000000_test.txt",
+        "20261015000000_test",
+        "dir\\20261015000000_test.sql",
+    ] {
+        assert!(
+            MigrationSet::from_files([MigrationFile {
+                filename: filename.into(),
+                sql: "-- migrate:up\nSELECT 1;\n-- migrate:down\n".into(),
+            }])
+            .is_err(),
+            "accepted {filename}"
+        );
+    }
+}
+
+#[test]
+fn migrations_require_an_idle_connection_even_when_nothing_is_pending() {
+    use boxdb::{Database, migrations::MigrationSet};
+    let migrations = MigrationSet::from_files([]).unwrap();
+    let mut db = Database::memory();
+    db.execute("BEGIN").unwrap();
+    for error in [
+        migrations.up(&mut db).err(),
+        migrations.down(&mut db).err(),
+        migrations.status(&db).err(),
+    ] {
+        assert_eq!(error.unwrap().code(), "BOXDB_VALIDATION");
+        assert!(db.in_transaction());
+    }
+    db.execute("ROLLBACK").unwrap();
+    assert!(migrations.up(&mut db).unwrap().is_empty());
+}
+
+#[test]
+fn interrupted_migration_rolls_back_even_while_the_progress_handler_keeps_cancelling() {
+    use boxdb::{
+        Database,
+        migrations::{MigrationFile, MigrationSet},
+    };
+    use std::cell::Cell;
+    thread_local! { static STEPS: Cell<usize> = const { Cell::new(0) }; }
+    fn cancelled() -> bool {
+        STEPS.with(|steps| {
+            steps.set(steps.get() + 1);
+            steps.get() > 100_000
+        })
+    }
+    let migrations = MigrationSet::from_files([MigrationFile {
+        filename: "20261015000000_interrupted.sql".into(),
+        sql: "-- migrate:up\nCREATE TABLE events(at INSTANT); WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000) SELECT SUM(x) FROM n;\n-- migrate:down\nDROP TABLE events;".into(),
+    }]).unwrap();
+    let mut db = Database::memory();
+    db.progress_handler(1, Some(cancelled)).unwrap();
+    assert_eq!(
+        migrations.up(&mut db).unwrap_err().code(),
+        "BOXDB_INTERRUPT"
+    );
+    db.progress_handler(0, None).unwrap();
+    assert!(!db.in_transaction());
+    assert!(db.execute("SELECT * FROM events").is_err());
+}
+
+#[test]
+fn migrations_check_cancellation_without_waiting_for_the_sqlite_progress_interval() {
+    use boxdb::{
+        Database,
+        migrations::{MigrationFile, MigrationSet},
+    };
+    let migrations = MigrationSet::from_files([MigrationFile {
+        filename: "20261015000000_cancelled.sql".into(),
+        sql: "-- migrate:up\nCREATE TABLE cancelled(body TEXT);\n-- migrate:down\nDROP TABLE cancelled;".into(),
+    }]).unwrap();
+    let mut db = Database::memory();
+    db.progress_handler(i32::MAX, Some(|| true)).unwrap();
+    assert_eq!(
+        migrations.up(&mut db).unwrap_err().code(),
+        "BOXDB_INTERRUPT"
+    );
+    db.progress_handler(0, None).unwrap();
+    assert!(!db.in_transaction());
+    assert!(db.execute("SELECT * FROM cancelled").is_err());
+}
+
+#[test]
+fn cancellation_while_starting_migrations_does_not_leak_a_transaction() {
+    use boxdb::{
+        Database,
+        migrations::{MigrationFile, MigrationSet},
+    };
+    use std::cell::Cell;
+    thread_local! { static REMAINING: Cell<usize> = const { Cell::new(0) }; }
+    fn cancelled() -> bool {
+        REMAINING.with(|remaining| {
+            remaining.set(remaining.get().saturating_sub(1));
+            remaining.get() == 0
+        })
+    }
+    let migrations = MigrationSet::from_files([MigrationFile {
+        filename: "20261015000000_cancelled.sql".into(),
+        sql: "-- migrate:up\nCREATE TABLE cancelled(body TEXT);\n-- migrate:down\nDROP TABLE cancelled;".into(),
+    }]).unwrap();
+    for steps in 1..=150 {
+        let mut db = Database::memory();
+        REMAINING.with(|remaining| remaining.set(steps));
+        db.progress_handler(1, Some(cancelled)).unwrap();
+        let _ = migrations.up(&mut db);
+        db.progress_handler(0, None).unwrap();
+        assert!(
+            !db.in_transaction(),
+            "leaked transaction after {steps} steps"
+        );
+    }
+}
+
+#[test]
+fn disabled_progress_handlers_do_not_cancel_migrations() {
+    use boxdb::{Database, migrations::MigrationSet};
+    for operations in [0, -1] {
+        let migrations = MigrationSet::from_files([]).unwrap();
+        let mut db = Database::memory();
+        db.progress_handler(operations, Some(|| true)).unwrap();
+        assert!(migrations.up(&mut db).unwrap().is_empty());
+    }
+}
+
+#[test]
 fn up_preserves_extended_types_and_does_not_apply_a_version_twice() {
     let temp = tempfile::tempdir().unwrap();
     let dir = temp.path().join("migrations");

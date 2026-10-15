@@ -63,9 +63,76 @@ array: status entries have `version`, `name` and `state` (`applied` or `pending`
 up/down entries contain the versions and names changed by that invocation.
 Diagnostics go to stderr. See `boxdb migrate --help` and each command's help.
 
-Embedded applications use `boxdb::migrations::MigrationSet`: read a directory,
-then call `up`, `down` or `status` against a `Database`. `status_file` inspects a
-file without opening a writer. Migration execution requires an idle connection.
+## Migrations from application code
+
+All clients use the same Rust migration runner and `__boxdb_migrations` history
+as the CLI. Keep the complete set, including applied versions, so every entry
+can be verified. A set is immutable after construction and can be reused with
+different databases. Files and embedded documents have identical checksum rules.
+
+### TypeScript
+
+```ts
+import { BoxDB, MigrationSet } from "@boxdb/client";
+
+await using db = await BoxDB.open("data.db");
+const migrations = await MigrationSet.read("db/migrations");
+const applied = await migrations.up(db); // [{ version, name }]
+const statuses = await migrations.status(db); // [{ version, name, state }]
+const reverted = await migrations.down(db); // { version, name } or null
+```
+
+For bundled SQL, use `MigrationSet.fromFiles([{ filename, sql }])`; `filename`
+is a bare `VERSION_NAME.sql` name and `sql` is the full document with both
+section markers. Construction validates all documents before returning.
+Directory reads are asynchronous and ignore entries without a `.sql` extension.
+
+Execution methods accept `{ signal }` and require a root `BoxDB`, rather than a
+transaction handle. Each call occupies one queue operation and waits for any
+active transaction; finish the transaction before awaiting root migration work.
+SQL and lock waits run on the native worker. Ordinary requests on the same
+connection wait until the migration call, including rollback cleanup, finishes.
+The usual queue limits and draining/aborting close behavior apply.
+
+### Go
+
+```go
+migrations, err := boxdb.ReadMigrations(os.DirFS("."), "db/migrations")
+if err != nil { return err }
+applied, err := migrations.Up(ctx, db)
+if err != nil { return err }
+_ = applied // []boxdb.MigrationInfo
+```
+
+`ReadMigrations` accepts any `fs.FS`, including `embed.FS`.
+`NewMigrationSet([]boxdb.MigrationFile{{Filename: "20261015000000_create_accounts.sql", SQL: sql}})`
+validates and copies documents from memory. `Status(ctx, db)` returns
+`[]MigrationStatus`; `Down(ctx, db)` returns `*MigrationInfo`, or nil for an empty
+history. Methods accept a BoxDB `*sql.DB` and pin one connection for the complete
+call. Contexts cancel waiting for the pool, writer locks and SQL execution.
+
+### Rust
+
+```rust
+use boxdb::migrations::{MigrationFile, MigrationSet};
+
+let migrations = MigrationSet::from_files([MigrationFile {
+    filename: "20261015000000_create_accounts.sql".into(),
+    sql: include_str!("../db/migrations/20261015000000_create_accounts.sql").into(),
+}])?;
+let applied = migrations.up(&mut db)?;
+```
+
+`MigrationSet::read(directory)` loads files instead. Call `up`, `down` or `status`
+against an idle `Database`; `status_file` inspects a file without opening a writer.
+
+An error or cancellation rolls back the active version; earlier committed
+versions remain applied. Inspect `status` and retry `up` to continue. Cancellation
+cannot undo a completed commit. Cleanup does not use the cancelled signal or
+context. Errors retain BoxDB codes and engine details, with migration version and
+direction added to execution diagnostics. Reopen after a readable publication
+failure, as with other writes. Drizzle's migration helper retains its own format
+and journal; these methods operate on BoxDB SQL migrations.
 
 ## Schema-only export
 

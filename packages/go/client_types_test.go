@@ -1,13 +1,14 @@
 package boxdb_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	boxdb "github.com/lebedev-nikita/boxdb/packages/go"
 )
 
-// The Rust integration runner owns migrations and conversion between phases.
+// The Rust integration runner coordinates both clients, CLI checks and conversion.
 func TestCrossLanguageNativeTypes(t *testing.T) {
 	path := os.Getenv("BOXDB_CLIENT_TYPES_DB")
 	if path == "" {
@@ -23,7 +24,14 @@ func TestCrossLanguageNativeTypes(t *testing.T) {
 	}
 	defer db.Close()
 	if phase == "seed" {
-		_, err := db.Exec("INSERT INTO typed(id,amount,external,occurred,day,local,duration,document) VALUES(1,?,?,?,?,?,?,?)",
+		migrations, err := boxdb.ReadMigrations(os.DirFS(os.Getenv("BOXDB_CLIENT_TYPES_MIGRATIONS")), ".")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := migrations.Up(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Exec("INSERT INTO typed(id,amount,external,occurred,day,local,duration,document) VALUES(1,?,?,?,?,?,?,?)",
 			boxdb.Decimal("9007199254740993.01"), boxdb.UUID("550E8400E29B41D4A716446655440000"),
 			boxdb.Instant("2024-02-29T16:00:00.123456789+04:00"), boxdb.Date("2024-02-29"),
 			boxdb.DateTime("2024-02-29T12:00:00.123456789"), boxdb.Interval("1 month"),

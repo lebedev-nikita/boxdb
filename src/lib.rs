@@ -76,6 +76,8 @@ pub struct Database {
     data_version: i64,
     write_transaction_ready: bool,
     poisoned: bool,
+    progress_operations: Cell<i32>,
+    progress_callback: Cell<Option<fn() -> bool>>,
     internal: Arc<AtomicBool>,
 }
 struct InternalGuard(Arc<AtomicBool>, bool);
@@ -183,6 +185,8 @@ impl Database {
             data_version,
             write_transaction_ready: false,
             poisoned: false,
+            progress_operations: Cell::new(1000),
+            progress_callback: Cell::new(options.progress_handler),
             internal,
         })
     }
@@ -312,7 +316,11 @@ impl Database {
     pub fn progress_handler(&self, operations: i32, callback: Option<fn() -> bool>) -> Result<()> {
         self.connection
             .progress_handler(operations, callback)
-            .map_err(Into::into)
+            .map_err(Error::from)?;
+        self.progress_operations.set(operations);
+        self.progress_callback
+            .set(if operations > 0 { callback } else { None });
+        Ok(())
     }
     /// Convert committed data into a new file without modifying the source.
     /// Existing destinations are never overwritten. Binary output uses SQLite's

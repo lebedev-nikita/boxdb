@@ -218,6 +218,21 @@ waiting for a transaction; cleanup always gets through.
 wait and execution durations in milliseconds. A duration covers a complete
 scheduled operation, including preparation and native execution.
 
+## SQL migrations
+
+```ts
+import { MigrationSet } from "@boxdb/client";
+
+const migrations = await MigrationSet.read("db/migrations");
+await migrations.up(db);
+```
+
+Use `MigrationSet.fromFiles([{ filename, sql }])` to bundle SQL in the application.
+The same set exposes `status(db)` and `down(db)`; execution methods accept
+`{ signal }`. These methods use the CLI's format and history, execute on the
+native worker and wait for active transactions on the root client. See
+[migration sources, cancellation and rollback](../../docs/migrations.md#migrations-from-application-code).
+
 ## Integrations
 
 Adapters are independent npm packages with their libraries as peer dependencies.

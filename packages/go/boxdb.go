@@ -199,10 +199,11 @@ type queryResult struct {
 }
 
 type command struct {
-	Operation  string `json:"operation,omitempty"`
-	SQL        string `json:"sql"`
-	Parameters []any  `json:"parameters,omitempty"`
-	ReadOnly   bool   `json:"read_only,omitempty"`
+	Operation  string          `json:"operation,omitempty"`
+	SQL        string          `json:"sql"`
+	Parameters []any           `json:"parameters,omitempty"`
+	ReadOnly   bool            `json:"read_only,omitempty"`
+	Migrations []MigrationFile `json:"migrations,omitempty"`
 }
 type statementInfo struct {
 	Parameters []*string `json:"parameters"`

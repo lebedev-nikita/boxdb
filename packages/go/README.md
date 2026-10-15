@@ -118,6 +118,21 @@ Pool session cleanup finishes before the next operation and is independent of
 that operation's cancellation. A cancelled request does not discard a healthy
 connection or lose its committed in-memory data.
 
+## SQL migrations
+
+```go
+migrations, err := boxdb.ReadMigrations(os.DirFS("."), "db/migrations")
+if err != nil { return err }
+_, err = migrations.Up(ctx, db)
+if err != nil { return err }
+```
+
+The reader accepts `fs.FS`, including `embed.FS`. Use
+`boxdb.NewMigrationSet([]boxdb.MigrationFile{{Filename: filename, SQL: sql}})` for
+documents held in memory. `Up`, `Down` and `Status` take a context and a BoxDB
+`*sql.DB`, retaining one connection for the whole call. These methods share the
+CLI's format and history. See [migration sources, cancellation and rollback](../../docs/migrations.md#migrations-from-application-code).
+
 ## Values and errors
 
 Use ordinary Go integers, floats, strings, booleans, `[]byte`, `nil`, `time.Time`,

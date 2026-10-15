@@ -1,3 +1,4 @@
+use boxdb::migrations::{MigrationFile, MigrationSet};
 use boxdb::{Database, Error, Format, InterruptHandle, Value};
 use serde::Deserialize;
 use serde_json::json;
@@ -21,20 +22,22 @@ pub struct Handle {
     worker: Option<JoinHandle<()>>,
     interrupt: InterruptHandle,
     cancelled: Arc<AtomicBool>,
+    migrating: Arc<AtomicBool>,
 }
 
 thread_local! {
     static CANCELLATION: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
 }
 
+fn cancelled() -> bool {
+    CANCELLATION.with(|flag| {
+        flag.borrow()
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+    })
+}
+
 fn busy(attempt: i32) -> bool {
-    let cancelled = || {
-        CANCELLATION.with(|flag| {
-            flag.borrow()
-                .as_ref()
-                .is_some_and(|flag| flag.load(Ordering::Relaxed))
-        })
-    };
     if attempt >= 500 || cancelled() {
         return false;
     }
@@ -52,12 +55,33 @@ struct Command {
     parameters: Vec<Value>,
     #[serde(default)]
     read_only: bool,
+    #[serde(default)]
+    migrations: Vec<MigrationFile>,
 }
 
-fn execute(database: &mut Database, request: &str) -> Result<serde_json::Value, Error> {
+fn execute(
+    database: &mut Database,
+    request: &str,
+    migrating: &AtomicBool,
+) -> Result<serde_json::Value, Error> {
     let command: Command = serde_json::from_str(request)?;
+    let migration = command.operation.starts_with("migrations_");
+    migrating.store(migration, Ordering::Relaxed);
+    database.progress_handler(
+        if migration { 1000 } else { 0 },
+        if migration { Some(cancelled) } else { None },
+    )?;
     if command.read_only {
         database.query_only(true)?;
+    }
+    if command.operation.starts_with("migrations_") {
+        let migrations = MigrationSet::from_files(command.migrations)?;
+        return match command.operation.as_str() {
+            "migrations_up" => Ok(json!(migrations.up(database)?)),
+            "migrations_down" => Ok(json!(migrations.down(database)?)),
+            "migrations_status" => Ok(json!(migrations.status(database)?)),
+            _ => Err(Error::internal("unknown migration operation")),
+        };
     }
     if command.operation == "exec" {
         let results = database.execute_with_hook(&command.sql, |db| {
@@ -105,6 +129,24 @@ fn string(value: String) -> *mut c_char {
         .into_raw()
 }
 
+/// Validate SQL documents without opening a database.
+///
+/// # Safety
+/// `files` must be a valid NUL-terminated JSON array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn boxdb_go_validate_migrations(files: *const c_char) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let files = unsafe { CStr::from_ptr(files) }
+            .to_str()
+            .map_err(Error::validation)?;
+        let files: Vec<MigrationFile> = serde_json::from_str(files)?;
+        MigrationSet::from_files(files)?;
+        Ok(json!({}))
+    }))
+    .unwrap_or_else(|_| Err(Error::internal("migration validation panicked")));
+    string(response(result))
+}
+
 /// Open a database on a dedicated Rust thread; Database contains thread-local Rc values.
 ///
 /// # Safety
@@ -126,6 +168,8 @@ pub unsafe extern "C" fn boxdb_go_open(
     let (ready, opened) = mpsc::sync_channel(1);
     let cancelled = Arc::new(AtomicBool::new(false));
     let worker_cancelled = cancelled.clone();
+    let migrating = Arc::new(AtomicBool::new(false));
+    let worker_migrating = migrating.clone();
     let worker = thread::spawn(move || {
         CANCELLATION.with(|flag| *flag.borrow_mut() = Some(worker_cancelled));
         let _ = catch_unwind(AssertUnwindSafe(|| {
@@ -156,8 +200,11 @@ pub unsafe extern "C" fn boxdb_go_open(
                 }
             };
             while let Ok((request, reply)) = receiver.recv() {
-                let result = catch_unwind(AssertUnwindSafe(|| execute(&mut database, &request)))
-                    .unwrap_or_else(|_| Err(Error::internal("BoxDB worker panicked")));
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    execute(&mut database, &request, &worker_migrating)
+                }))
+                .unwrap_or_else(|_| Err(Error::internal("BoxDB worker panicked")));
+                worker_migrating.store(false, Ordering::Relaxed);
                 let _ = reply.send(response(result));
             }
         }));
@@ -171,6 +218,7 @@ pub unsafe extern "C" fn boxdb_go_open(
             worker: Some(worker),
             interrupt,
             cancelled,
+            migrating,
         })),
         Err(message) => {
             let _ = worker.join();
@@ -185,7 +233,11 @@ pub unsafe extern "C" fn boxdb_go_open(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn boxdb_go_interrupt(handle: *const Handle) {
     unsafe { &*handle }.cancelled.store(true, Ordering::Relaxed);
-    unsafe { &*handle }.interrupt.interrupt();
+    // Migrations use a sticky progress callback, including for short statements.
+    // Avoid repeated interrupts racing with their uncancellable rollback.
+    if !unsafe { &*handle }.migrating.load(Ordering::Relaxed) {
+        unsafe { &*handle }.interrupt.interrupt();
+    }
 }
 
 /// # Safety

@@ -1,7 +1,7 @@
 //! Versioned SQL migrations executed through BoxDB's typed connection.
 use crate::{Database, Error, InternalGuard, Result};
 use rusqlite::OptionalExtension;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -39,7 +39,14 @@ struct Migration {
     down: String,
 }
 
-/// A validated directory of versioned SQL files, independent of a database.
+/// A named SQL document, with the same filename and contents used by the CLI.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MigrationFile {
+    pub filename: String,
+    pub sql: String,
+}
+
+/// An immutable, validated set of versioned SQL documents, independent of a database.
 pub struct MigrationSet {
     migrations: Vec<Migration>,
 }
@@ -108,7 +115,33 @@ impl MigrationSet {
     }
 
     pub fn status(&self, db: &Database) -> Result<Vec<MigrationStatus>> {
-        self.status_connection(&db.connection)
+        require_idle(db)?;
+        check_interrupt(db)?;
+        // BEGIN itself may be interrupted after SQLite enters a transaction.
+        let result = db
+            .connection
+            .execute_batch("BEGIN")
+            .map_err(Error::from)
+            .and_then(|()| self.status_connection(&db.connection));
+        // Cleanup must complete even when a binding's cancellation stays set.
+        db.connection.progress_handler(0, None::<fn() -> bool>)?;
+        let cleanup = if db.in_transaction() {
+            db.connection.execute_batch("ROLLBACK").map_err(Error::from)
+        } else {
+            Ok(())
+        };
+        let restore = db
+            .connection
+            .progress_handler(db.progress_operations.get(), db.progress_callback.get())
+            .map_err(Error::from);
+        match result {
+            Ok(statuses) => {
+                cleanup?;
+                restore?;
+                Ok(statuses)
+            }
+            Err(error) => Err(cleanup_error(error, cleanup.and(restore))),
+        }
     }
 
     fn status_connection(&self, connection: &rusqlite::Connection) -> Result<Vec<MigrationStatus>> {
@@ -164,11 +197,36 @@ impl MigrationSet {
     }
 
     pub fn read(directory: impl AsRef<Path>) -> Result<Self> {
-        let mut migrations = vec![];
+        let mut files = vec![];
         for entry in fs::read_dir(directory)? {
             let path = entry?.path();
             if path.extension().is_none_or(|ext| ext != "sql") {
                 continue;
+            }
+            files.push(MigrationFile {
+                filename: path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| Error::new("invalid migration filename".into()))?
+                    .into(),
+                sql: fs::read_to_string(&path)?,
+            });
+        }
+        Self::from_files(files)
+    }
+
+    /// Validate embedded SQL documents using the same rules and checksums as files.
+    pub fn from_files(files: impl IntoIterator<Item = MigrationFile>) -> Result<Self> {
+        let mut migrations = vec![];
+        for file in files {
+            let path = Path::new(&file.filename);
+            if file.filename.contains(['/', '\\'])
+                || path.extension().is_none_or(|extension| extension != "sql")
+            {
+                return Err(Error::new(format!(
+                    "invalid migration filename: {}",
+                    file.filename
+                )));
             }
             let stem = path
                 .file_stem()
@@ -185,7 +243,7 @@ impl MigrationSet {
                     "expected VERSION_NAME.sql with a 14-digit version: {stem}"
                 )));
             }
-            let sql = fs::read_to_string(&path)?.replace("\r\n", "\n");
+            let sql = file.sql.replace("\r\n", "\n");
             let (up, down) =
                 sections(&sql).map_err(|e| e.with_context(format!("migration {version}")))?;
             if !has_sql(up)? {
@@ -228,7 +286,9 @@ impl MigrationSet {
         }
         let mut applied = vec![];
         loop {
-            db.execute("BEGIN IMMEDIATE")?;
+            check_interrupt(db)?;
+            db.execute("BEGIN IMMEDIATE")
+                .map_err(|error| rollback_after_error(db, error))?;
             let result: Result<Option<MigrationInfo>> = (|| {
                 // Recheck under the write lock: another runner may have applied
                 // or rolled back a version since the previous commit.
@@ -247,6 +307,7 @@ impl MigrationSet {
                         db.connection.execute_batch(CREATE)?;
                     }
                     execute_sql(db, &migration.up)?;
+                    check_interrupt(db)?;
                     {
                         let _guard = InternalGuard::enter(&db.internal);
                         db.connection.execute(
@@ -258,6 +319,7 @@ impl MigrationSet {
                             ],
                         )?;
                     }
+                    check_interrupt(db)?;
                     db.execute("COMMIT")?;
                     Ok(())
                 })();
@@ -270,10 +332,7 @@ impl MigrationSet {
                 Ok(Some(migration)) => applied.push(migration),
                 Ok(None) => return Ok(applied),
                 Err(error) => {
-                    if db.in_transaction() {
-                        let _ = db.execute("ROLLBACK");
-                    }
-                    return Err(error);
+                    return Err(rollback_after_error(db, error));
                 }
             }
         }
@@ -281,7 +340,10 @@ impl MigrationSet {
 
     /// Roll back exactly one applied version. An empty history is a no-op.
     pub fn down(&self, db: &mut Database) -> Result<Option<MigrationInfo>> {
-        db.execute("BEGIN IMMEDIATE")?;
+        require_idle(db)?;
+        check_interrupt(db)?;
+        db.execute("BEGIN IMMEDIATE")
+            .map_err(|error| rollback_after_error(db, error))?;
         let result = (|| {
             self.status_connection(&db.connection)?;
             let exists: bool = db.connection.query_row(
@@ -316,6 +378,7 @@ impl MigrationSet {
             }
             execute_sql(db, &migration.down)
                 .map_err(|e| e.with_context(format!("migration {version} down")))?;
+            check_interrupt(db).map_err(|e| e.with_context(format!("migration {version} down")))?;
             {
                 let _guard = InternalGuard::enter(&db.internal);
                 db.connection.execute(
@@ -323,14 +386,64 @@ impl MigrationSet {
                     [&version],
                 )?;
             }
+            check_interrupt(db).map_err(|e| e.with_context(format!("migration {version} down")))?;
             db.execute("COMMIT")?;
             Ok(Some(migration.info.clone()))
         })();
-        if result.is_err() && db.in_transaction() {
-            let _ = db.execute("ROLLBACK");
-        }
-        result
+        result.map_err(|error| rollback_after_error(db, error))
     }
+}
+
+fn cleanup_error(error: Error, cleanup: Result<()>) -> Error {
+    match cleanup {
+        Ok(()) => error,
+        Err(cleanup) => error.with_context(format!("migration cleanup failed ({cleanup})")),
+    }
+}
+
+fn check_interrupt(db: &Database) -> Result<()> {
+    if db
+        .progress_callback
+        .get()
+        .is_some_and(|callback| callback())
+    {
+        return Err(Error::new("migration interrupted".into()).with_code("BOXDB_INTERRUPT"));
+    }
+    Ok(())
+}
+
+fn rollback_after_error(db: &mut Database, error: Error) -> Error {
+    if !db.in_transaction() {
+        return error;
+    }
+    let cleanup = (|| -> Result<()> {
+        db.connection.progress_handler(0, None::<fn() -> bool>)?;
+        let rollback = db.execute("ROLLBACK").map(|_| ());
+        let restore = db
+            .connection
+            .progress_handler(db.progress_operations.get(), db.progress_callback.get())
+            .map_err(Error::from);
+        rollback.and(restore)
+    })();
+    if cleanup.is_err() {
+        db.poisoned = true;
+    }
+    cleanup_error(error, cleanup)
+}
+
+fn require_idle(db: &Database) -> Result<()> {
+    if db.poisoned {
+        return Err(
+            Error::new("connection must be reopened after a publication failure".into())
+                .with_code("BOXDB_UNAVAILABLE"),
+        );
+    }
+    if db.in_transaction() {
+        return Err(Error::new(
+            "migration execution requires an idle connection".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_sql(sql: &str) -> Result<()> {
@@ -364,6 +477,7 @@ fn has_sql(sql: &str) -> Result<bool> {
 fn execute_sql(db: &mut Database, sql: &str) -> Result<()> {
     for statement in crate::split(sql)? {
         if !crate::schema::keyword(statement).is_empty() {
+            check_interrupt(db)?;
             db.execute(statement)?;
         }
     }

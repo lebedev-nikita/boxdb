@@ -17,7 +17,7 @@ fn cli() -> Command {
     Command::new(env!("CARGO_BIN_EXE_boxdb"))
 }
 
-fn go(root: &Path, path: &Path, phase: &str) {
+fn go(root: &Path, path: &Path, phase: &str, migrations: &Path) {
     let output = run(Command::new("go")
         .current_dir(root.join("packages/go"))
         .args([
@@ -29,6 +29,7 @@ fn go(root: &Path, path: &Path, phase: &str) {
             ".",
         ])
         .env("BOXDB_CLIENT_TYPES_DB", path)
+        .env("BOXDB_CLIENT_TYPES_MIGRATIONS", migrations)
         .env("BOXDB_CLIENT_TYPES_PHASE", phase));
     assert!(
         output.contains("--- PASS: TestCrossLanguageNativeTypes"),
@@ -57,23 +58,18 @@ fn native_types_survive_migrations_go_typescript_and_file_conversion() {
         CREATE INDEX typed_datetime ON typed(local);\
         CREATE INDEX typed_interval ON typed(duration);\n\
         -- migrate:down\nDROP TABLE typed;\n").unwrap();
-    run(cli()
-        .args(["migrate", "up"])
-        .arg(&source)
-        .arg("--dir")
-        .arg(&migrations));
-    go(root, &source, "seed");
+    go(root, &source, "seed", &migrations);
     run(Command::new("bun")
         .current_dir(root)
         .arg("run")
         .arg("packages/drizzle-adapter/test/cross-language.ts")
         .arg(&source));
     std::fs::write(migrations.join("20261015000001_label.sql"), "-- migrate:up\nALTER TABLE typed ADD COLUMN label VARCHAR(12) NOT NULL DEFAULT 'migrated';\n-- migrate:down\nALTER TABLE typed DROP COLUMN label;\n").unwrap();
-    run(cli()
-        .args(["migrate", "up"])
-        .arg(&source)
-        .arg("--dir")
-        .arg(&migrations));
+    run(Command::new("bun")
+        .current_dir(root)
+        .args(["--eval", "import { BoxDB, MigrationSet } from './packages/typescript/src/index.ts'; await using db = await BoxDB.open(process.env.BOXDB_CLIENT_TYPES_DB); const migrations = await MigrationSet.read(process.env.BOXDB_CLIENT_TYPES_MIGRATIONS!); if ((await migrations.up(db)).length !== 1) throw new Error('expected one TypeScript migration');"])
+        .env("BOXDB_CLIENT_TYPES_DB", &source)
+        .env("BOXDB_CLIENT_TYPES_MIGRATIONS", &migrations));
     run(cli()
         .arg("convert")
         .arg(&source)
@@ -84,7 +80,7 @@ fn native_types_survive_migrations_go_typescript_and_file_conversion() {
         .arg(&readable)
         .arg(&restored)
         .args(["--format", "binary"]));
-    go(root, &restored, "verify");
+    go(root, &restored, "verify", &migrations);
     run(cli()
         .args(["migrate", "up"])
         .arg(&restored)
