@@ -1,8 +1,8 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { Database } from "../src/index.js";
+import { BoxDB } from "../src/index.js";
 
 test("SQL identifiers quote each explicit component and parameter values stay bound", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.query`CREATE TABLE ${db.identifier('odd"table')} (${db.identifier('odd"column')} TEXT)`;
   const hostile = "'); DROP TABLE users; --";
   await db.query`INSERT INTO ${db.identifier('odd"table')} VALUES(${hostile})`;
@@ -15,7 +15,7 @@ test("SQL identifiers quote each explicit component and parameter values stay bo
 });
 
 test("a lazy query executes once across all result methods", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   const query = db.query<{ id: bigint }>`INSERT INTO item VALUES(${1}) RETURNING id`;
   expect(await db.query`SELECT count(*) AS n FROM item`.get()).toEqual({ n: 0n });
@@ -28,7 +28,7 @@ test("a lazy query executes once across all result methods", async () => {
 });
 
 test("fragments snapshot blobs and compile does not expose mutable bound storage", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const bytes = Buffer.from([1, 2]);
   const fragment = db.fragment`SELECT ${bytes} AS payload`;
   bytes[0] = 9;
@@ -38,7 +38,7 @@ test("fragments snapshot blobs and compile does not expose mutable bound storage
 });
 
 test("a rejected query caches its failure and unexecuted queries reject after close", async () => {
-  const db = await Database.open();
+  const db = await BoxDB.open();
   const invalid = db.query`SELECT * FROM missing`;
   await expect(invalid.execute()).rejects.toThrow("no such table");
   await db.exec("CREATE TABLE missing(id INTEGER)");

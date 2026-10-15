@@ -37,6 +37,9 @@ mod schema;
 mod schema_dump;
 pub use schema_dump::SchemaFormat;
 mod storage;
+#[cfg(doctest)]
+#[doc = include_str!("../tests/removed_snapshot_api.md")]
+mod removed_snapshot_api {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
     Binary,
@@ -311,50 +314,34 @@ impl Database {
             .progress_handler(operations, callback)
             .map_err(Into::into)
     }
-    /// Export a consistent snapshot. Finish the current transaction first.
-    pub fn export(&self, format: Format) -> Result<Vec<u8>> {
-        if self.poisoned {
-            return Err(Error::new(
-                "connection must be reopened after a publication failure".into(),
-            )
-            .with_code("BOXDB_UNAVAILABLE"));
+    /// Convert committed data into a new file without modifying the source.
+    /// Existing destinations are never overwritten. Binary output uses SQLite's
+    /// backup API; readable output uses the standalone YAML storage format.
+    pub fn convert(
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+        format: Format,
+    ) -> Result<()> {
+        let source = storage::reader(source.as_ref())?;
+        extensions::register(&source)?;
+        let transaction = source.unchecked_transaction()?;
+        let check: String = transaction.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+        if check != "ok" {
+            return Err(Error::new(format!("invalid source database: {check}")));
         }
-        if self.in_transaction() {
-            return Err(Error::new("export requires no active transaction".into()));
-        }
-        match format {
-            Format::Binary => storage::snapshot(&self.connection),
-            Format::Readable => {
-                // Hold one SQLite read snapshot across the codec's schema and
-                // table scans, even when another connection commits meanwhile.
-                let transaction = self.connection.unchecked_transaction()?;
-                match &self.readable {
-                    Some(file) => file.export(&transaction),
-                    None => readable::encode(&transaction),
-                }
-            }
-        }
-    }
-    pub fn from_snapshot(bytes: &[u8]) -> Result<Self> {
-        let connection = storage::import(bytes)?;
-        let types = schema::load(&connection)?;
-        schema::validate_all(&connection, &types)?;
-        if connection
+        let types = schema::load(&transaction)?;
+        schema::validate_all(&transaction, &types)?;
+        if transaction
             .prepare("PRAGMA foreign_key_check")?
             .query([])?
             .next()?
             .is_some()
         {
             return Err(Error::new(
-                "FOREIGN KEY constraint failed in snapshot".into(),
+                "FOREIGN KEY constraint failed in source database".into(),
             ));
         }
-        Self::new(connection, false)
-    }
-    /// Restore into a new path. Binary restoration uses SQLite's backup API.
-    pub fn restore(path: impl AsRef<Path>, bytes: &[u8]) -> Result<Self> {
-        let path = path.as_ref();
-        let source = Self::from_snapshot(bytes)?;
+        let path = destination.as_ref();
         // Reserve the destination before publication; never overwrite existing data.
         let reservation = std::fs::OpenOptions::new()
             .write(true)
@@ -362,38 +349,22 @@ impl Database {
             .open(path)?;
         drop(reservation);
         let result = (|| {
-            if bytes.starts_with(storage::SQLITE_HEADER) {
-                let mut target = Connection::open(path)?;
-                storage::copy(&source.connection, &mut target)?;
-                drop(target);
-                Self::open(path, Format::Binary)
-            } else {
-                let file = storage::ReadableFile::open(path)?;
-                file.publish(&source.connection)?;
-                drop(file);
-                Self::open(path, Format::Readable)
+            match format {
+                Format::Binary => {
+                    let mut target = Connection::open(path)?;
+                    storage::copy(&transaction, &mut target)?;
+                }
+                Format::Readable => {
+                    let file = storage::ReadableFile::open(path)?;
+                    file.publish(&transaction)?;
+                }
             }
+            Ok(())
         })();
         if result.is_err() {
             let _ = std::fs::remove_file(path);
         }
         result
-    }
-    /// Read committed binary data through SQLite, including its active WAL.
-    pub fn read_snapshot(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-        let path = path.as_ref();
-        let mut header = [0u8; 16];
-        use std::io::Read;
-        let count = std::fs::File::open(path)?.read(&mut header)?;
-        if count == 16 && header == storage::SQLITE_HEADER {
-            let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-            connection.busy_timeout(Duration::from_secs(5))?;
-            storage::snapshot(&connection)
-        } else {
-            let bytes = std::fs::read(path)?;
-            Self::from_snapshot(&bytes)?;
-            Ok(bytes)
-        }
     }
     fn refresh(&mut self, force: bool) -> Result<()> {
         let version = self

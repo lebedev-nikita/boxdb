@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
 import { createDatabase } from "db0";
-import { Database } from "@boxdb/client";
+import { BoxDB } from "@boxdb/client";
 import { db0Connector } from "../src/index.js";
 
 test("db0 uses native queries and immutable bound statements", async () => {
-  await using client = await Database.open();
+  await using client = await BoxDB.open();
   const connector = db0Connector(client);
   const db = createDatabase(connector);
   await db.exec("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)");

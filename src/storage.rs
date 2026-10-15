@@ -73,9 +73,6 @@ impl ReadableFile {
     pub fn watch(&self, db: &Connection) -> Result<()> {
         self.cache.watch(db)
     }
-    pub fn export(&self, db: &Connection) -> Result<Vec<u8>> {
-        self.cache.export(db)
-    }
     pub fn publish(&self, db: &Connection) -> Result<()> {
         self.cache.publish(db, |snapshot| {
             let parent = self.path.parent().unwrap();
@@ -99,53 +96,20 @@ pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<
         StepResult::Done => Ok(()),
         StepResult::Busy => Err(Error::sqlite(
             rusqlite::ffi::SQLITE_BUSY,
-            "BoxDB snapshot is busy; retry after the transaction completes".into(),
+            "BoxDB conversion is busy; retry after the transaction completes".into(),
         )),
         StepResult::Locked => Err(Error::sqlite(
             rusqlite::ffi::SQLITE_LOCKED,
-            "BoxDB snapshot is locked; retry after the transaction completes".into(),
+            "BoxDB conversion is locked; retry after the transaction completes".into(),
         )),
-        _ => Err(Error::internal("BoxDB snapshot backup did not finish")),
+        _ => Err(Error::internal("BoxDB conversion backup did not finish")),
     }
-}
-pub(crate) fn snapshot(db: &Connection) -> Result<Vec<u8>> {
-    if !db.is_autocommit() {
-        return Err(Error::new("export requires no active transaction".into()));
-    }
-    let temp = tempfile::NamedTempFile::new()?;
-    let mut target = Connection::open(temp.path())?;
-    copy(db, &mut target)?;
-    target.pragma_update(None, "journal_mode", "DELETE")?;
-    drop(target);
-    if fs::metadata(temp.path())?.len() > MAX_SNAPSHOT as u64 {
-        return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
-    }
-    Ok(fs::read(temp.path())?)
 }
 pub(crate) fn import(bytes: &[u8]) -> Result<Connection> {
     if bytes.len() > MAX_SNAPSHOT {
-        return Err(Error::new("snapshot exceeds 256 MiB limit".into()));
+        return Err(Error::new("readable database exceeds 256 MiB limit".into()));
     }
-    if bytes.starts_with(b"BOXDB\0") {
-        return Err(Error::new(
-            "obsolete BoxDB binary format is unsupported".into(),
-        ));
-    }
-    if !bytes.starts_with(SQLITE_HEADER) {
-        return readable::decode(bytes);
-    }
-    let mut temp = tempfile::NamedTempFile::new()?;
-    temp.write_all(bytes)?;
-    let source = Connection::open_with_flags(temp.path(), OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    crate::extensions::register(&source)?;
-    let check: String = source.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
-    if check != "ok" {
-        return Err(Error::new(format!("invalid SQLite snapshot: {check}")));
-    }
-    let mut destination = Connection::open_in_memory()?;
-    crate::extensions::register(&destination)?;
-    copy(&source, &mut destination)?;
-    Ok(destination)
+    readable::decode(bytes)
 }
 
 /// The pager counter is inspected after SQLite steps a query, so external WAL

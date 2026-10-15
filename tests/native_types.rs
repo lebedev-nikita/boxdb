@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
@@ -256,7 +259,7 @@ fn native_ordering_and_interval_equality_agree_with_indexes() {
 }
 
 #[test]
-fn native_values_survive_binary_and_readable_snapshots() {
+fn native_values_survive_binary_and_readable_conversion() {
     let values = vec![
         Value::Uuid("550e8400-e29b-41d4-a716-446655440000".into()),
         Value::Instant("2024-02-29T12:00:00.123457Z".into()),
@@ -270,7 +273,7 @@ fn native_values_survive_binary_and_readable_snapshots() {
     db.execute_params("INSERT INTO rich VALUES(?,?,?,?,?)", &values)
         .unwrap();
     for format in [Format::Binary, Format::Readable] {
-        let snapshot = db.export(format).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
         if format == Format::Readable {
             assert!(
                 std::str::from_utf8(&snapshot)
@@ -278,7 +281,7 @@ fn native_values_survive_binary_and_readable_snapshots() {
                     .contains("2024-02-29T12:00:00.123457Z")
             );
         }
-        let mut restored = Database::from_snapshot(&snapshot).unwrap();
+        let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(
             restored.execute("SELECT * FROM rich").unwrap()[0].rows,
             vec![values.clone()]

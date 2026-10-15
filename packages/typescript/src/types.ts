@@ -10,7 +10,7 @@ export interface QueryResult<T = Row> extends RunResult {
   columns: string[];
   rows: T[];
 }
-export interface DatabaseOptions {
+export interface BoxDBOptions {
   signal?: AbortSignal;
   format?: "binary" | "readable";
   readOnly?: boolean;

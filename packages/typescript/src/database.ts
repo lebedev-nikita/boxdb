@@ -1,6 +1,6 @@
 import { Query, fragment, identifier, type Interpolation } from "./sql.js";
 import { BoxDBError } from "./error.js";
-import type { DatabaseOptions, Parameters, QueryResult, Row } from "./types.js";
+import type { BoxDBOptions, Parameters, QueryResult, Row } from "./types.js";
 import {
   NativeDatabase,
   type NativeConnection,
@@ -135,7 +135,7 @@ class Connection {
   #native: NativeConnection;
   #requestId = 0;
 
-  constructor(path: string, options: DatabaseOptions) {
+  constructor(path: string, options: BoxDBOptions) {
     this.readOnly = options.readOnly ?? false;
     this.#native = new NativeDatabase(
       path,
@@ -457,20 +457,20 @@ class TransactionSession extends Queries implements TransactionHandle {
 }
 
 /** A connection owned by a dedicated native thread. */
-export class Database extends Queries {
+export class BoxDB extends Queries {
   readonly name: string;
   readonly memory: boolean;
   private readonly transactionTimeoutMs: number;
 
-  private constructor(path: string, options: DatabaseOptions) {
+  private constructor(path: string, options: BoxDBOptions) {
     super(new Connection(path, options), new Queue(options.maxPendingQueries), undefined, true);
     this.name = path;
     this.memory = path === ":memory:";
     this.transactionTimeoutMs = options.transactionTimeoutMs ?? DEFAULT_TRANSACTION_TIMEOUT_MS;
   }
 
-  static async open(path = ":memory:", options: DatabaseOptions = {}): Promise<Database> {
-    if (typeof path !== "string") throw new TypeError("Database path must be a string");
+  static async open(path = ":memory:", options: BoxDBOptions = {}): Promise<BoxDB> {
+    if (typeof path !== "string") throw new TypeError("BoxDB path must be a string");
     if (
       options.format !== undefined &&
       options.format !== "binary" &&
@@ -495,7 +495,7 @@ export class Database extends Queries {
       "transactionTimeoutMs",
     );
     options.signal?.throwIfAborted();
-    const db = new Database(path, options);
+    const db = new BoxDB(path, options);
     try {
       await db.connection.request("open", "", [], options.signal);
       options.signal?.throwIfAborted();

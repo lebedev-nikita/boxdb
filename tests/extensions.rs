@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, SchemaFormat, Value};
 
 #[test]
@@ -154,7 +157,7 @@ fn regular_expressions_support_unicode_extraction_and_replacement() {
 }
 
 #[test]
-fn vector_tables_find_nearest_rows_and_survive_binary_snapshots() {
+fn vector_tables_find_nearest_rows_and_survive_binary_conversion() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("vectors.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
@@ -170,11 +173,11 @@ fn vector_tables_find_nearest_rows_and_survive_binary_snapshots() {
         db.execute("INSERT INTO embeddings VALUES(4,'[1,2]')")
             .is_err()
     );
-    let snapshot = db.export(Format::Binary).unwrap();
+    let snapshot = files::converted_bytes(&mut db, Format::Binary).unwrap();
     drop(db);
     let mut reopened = Database::open(&path, Format::Binary).unwrap();
     assert_eq!(reopened.execute(query).unwrap(), result);
-    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    let mut restored = files::open_bytes(&snapshot).unwrap();
     assert_eq!(restored.execute(query).unwrap(), result);
     assert_eq!(
         restored
@@ -192,11 +195,11 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
         let path = directory.path().join(format!("{format:?}"));
         let mut db = Database::open(&path, format).unwrap();
         db.execute("CREATE TABLE terms(name TEXT COLLATE text_nocase CHECK(regexp_like(name,'^\\w+$')), amount DECIMAL(12,2), adjusted DECIMAL(12,2) GENERATED ALWAYS AS (decimal_round(amount+CAST('0.10' AS DECIMAL),2,'half_even')) STORED); CREATE INDEX folded ON terms(text_lower(name)); INSERT INTO terms(name,amount) VALUES('Ёж','0.20')").unwrap();
-        let snapshot = db.export(format).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
         drop(db);
         for mut restored in [
-            Database::open(&path, format).unwrap(),
-            Database::from_snapshot(&snapshot).unwrap(),
+            files::open(&path, format).unwrap(),
+            files::open_bytes(&snapshot).unwrap(),
         ] {
             assert_eq!(
                 restored
@@ -221,7 +224,7 @@ fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     assert!(sql.contains("text_lower"));
     assert!(sql.contains("Decimal"));
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
-    let mut restored = Database::from_snapshot(&yaml).unwrap();
+    let mut restored = files::open_bytes(&yaml).unwrap();
     restored
         .execute("INSERT INTO terms(name,amount) VALUES('Ёж','0.20')")
         .unwrap();
@@ -246,8 +249,8 @@ fn full_text_search_supports_ranking_highlights_and_substrings() {
             .rows,
         vec![vec![Value::Text("abcdefghij".into())]]
     );
-    let snapshot = db.export(Format::Binary).unwrap();
-    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    let snapshot = files::converted_bytes(&mut db, Format::Binary).unwrap();
+    let mut restored = files::open_bytes(&snapshot).unwrap();
     assert_eq!(
         restored
             .execute("SELECT rowid FROM documents WHERE documents MATCH 'sqlite'")
@@ -266,8 +269,8 @@ fn spatial_indexes_find_overlapping_regions() {
         db.execute(query).unwrap()[0].rows,
         vec![vec![Value::Integer(1)]]
     );
-    let snapshot = db.export(Format::Binary).unwrap();
-    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    let snapshot = files::converted_bytes(&mut db, Format::Binary).unwrap();
+    let mut restored = files::open_bytes(&snapshot).unwrap();
     assert_eq!(
         restored.execute(query).unwrap()[0].rows,
         vec![vec![Value::Integer(1)]]

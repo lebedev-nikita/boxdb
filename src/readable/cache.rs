@@ -256,14 +256,6 @@ impl SnapshotCache {
         }
         Ok(snapshot.unpublished)
     }
-    pub fn export(&self, db: &Connection) -> Result<Vec<u8>> {
-        self.refresh(db)?;
-        let cache = self.snapshot.borrow();
-        let snapshot = cache.as_ref().unwrap();
-        let mut bytes = vec![];
-        snapshot.write(&mut bytes)?;
-        Ok(bytes)
-    }
     pub fn publish(
         &self,
         db: &Connection,

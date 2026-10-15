@@ -97,8 +97,8 @@ boxdb convert db/schema.yaml restored.db --format binary
 ```
 
 Keep the original migration files when continuing migrations on a restored
-schema. These dumps bootstrap an empty database; use `boxdb convert` or
-`Database::export` for a complete snapshot with data. The library exposes
+schema. These dumps bootstrap an empty database; use `boxdb convert` for a
+complete database with data. The library exposes
 `Database::dump_schema` and `Database::dump_schema_file` with `SchemaFormat`.
 
 ## Why stock DBMate is insufficient

@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 use rusqlite::Connection;
 
@@ -113,7 +116,8 @@ fn every_boxdb_write_path_stores_utc_in_both_formats() {
         let expected = vec![vec![Value::Text(UTC.into())]; 5];
         assert_eq!(raw(&mut db, "events"), expected);
         for snapshot in [Format::Binary, Format::Readable] {
-            let mut restored = Database::from_snapshot(&db.export(snapshot).unwrap()).unwrap();
+            let mut restored =
+                files::open_bytes(&files::converted_bytes(&mut db, snapshot).unwrap()).unwrap();
             assert_eq!(raw(&mut restored, "events"), expected);
         }
         if format == Format::Binary {
@@ -198,8 +202,8 @@ fn instant_arrays_normalize_typed_parameters_and_sql_json() {
         raw(&mut db, "t"),
         vec![vec![Value::Text(format!(r#"[["{UTC}",null],[]]"#))]; 2]
     );
-    let snapshot = db.export(Format::Readable).unwrap();
-    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    let snapshot = files::converted_bytes(&mut db, Format::Readable).unwrap();
+    let mut restored = files::open_bytes(&snapshot).unwrap();
     assert_eq!(
         db.execute("SELECT ts FROM t").unwrap()[0].rows,
         restored.execute("SELECT ts FROM t").unwrap()[0].rows
@@ -361,10 +365,10 @@ fn a_temp_table_cannot_redirect_main_instant_normalization() {
 fn readable_import_normalizes_offsets_without_replaying_user_triggers() {
     let mut db = Database::memory();
     db.execute(&format!("CREATE TABLE events(ts INSTANT); INSERT INTO events VALUES('{UTC}'); CREATE TABLE audit(message TEXT); CREATE TRIGGER log AFTER UPDATE ON events BEGIN INSERT INTO audit VALUES('updated'); END")).unwrap();
-    let yaml = String::from_utf8(db.export(Format::Readable).unwrap())
+    let yaml = String::from_utf8(files::converted_bytes(&mut db, Format::Readable).unwrap())
         .unwrap()
         .replace(UTC, OFFSET);
-    let mut imported = Database::from_snapshot(yaml.as_bytes()).unwrap();
+    let mut imported = files::open_bytes(yaml.as_bytes()).unwrap();
     assert_eq!(
         raw(&mut imported, "events"),
         vec![vec![Value::Text(UTC.into())]]
@@ -385,10 +389,10 @@ fn readable_import_normalizes_generated_instants_in_the_engine() {
         &[Value::Text(UTC.into())],
     )
     .unwrap();
-    let yaml = String::from_utf8(db.export(Format::Readable).unwrap())
+    let yaml = String::from_utf8(files::converted_bytes(&mut db, Format::Readable).unwrap())
         .unwrap()
         .replace(UTC, OFFSET);
-    let mut imported = Database::from_snapshot(yaml.as_bytes()).unwrap();
+    let mut imported = files::open_bytes(yaml.as_bytes()).unwrap();
     assert_eq!(
         raw(&mut imported, "events"),
         vec![vec![Value::Text(UTC.into())]]

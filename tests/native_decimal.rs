@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
@@ -290,8 +293,8 @@ fn bytea_values_cannot_be_mistaken_for_decimal_envelopes() {
         db.execute("SELECT v FROM blobs").unwrap()[0].rows,
         vec![vec![Value::Bytea(bytes.clone())], vec![Value::Bytea(bytes)]]
     );
-    let snapshot = db.export(Format::Binary).unwrap();
-    let mut restored = Database::from_snapshot(&snapshot).unwrap();
+    let snapshot = files::converted_bytes(&mut db, Format::Binary).unwrap();
+    let mut restored = files::open_bytes(&snapshot).unwrap();
     assert_eq!(
         restored
             .execute("SELECT typeof(v),hex(v) FROM blobs")
@@ -489,17 +492,17 @@ fn text_column_comparisons_to_computed_decimals_agree_with_index_searches() {
 }
 
 #[test]
-fn native_decimal_columns_and_computed_values_survive_reopening_and_snapshots() {
+fn native_decimal_columns_and_computed_values_survive_reopening_and_conversion() {
     let directory = tempfile::tempdir().unwrap();
     for format in [Format::Binary, Format::Readable] {
         let path = directory.path().join(format!("{format:?}"));
         let mut db = Database::open(&path, format).unwrap();
         db.execute("CREATE TABLE prices(amount DECIMAL(20,2), other DECIMAL(20,2)); INSERT INTO prices VALUES('12.50','12.50')").unwrap();
-        let snapshot = db.export(format).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
         drop(db);
         for mut restored in [
-            Database::open(&path, format).unwrap(),
-            Database::from_snapshot(&snapshot).unwrap(),
+            files::open(&path, format).unwrap(),
+            files::open_bytes(&snapshot).unwrap(),
         ] {
             let row = &restored
                 .execute(
@@ -577,9 +580,9 @@ fn decimal_sorting_with_large_temporary_records_keeps_standard_binary_format() {
     ] {
         assert_eq!(rows[index][0], Value::Decimal(expected.into()));
     }
-    let bytes = db.export(Format::Binary).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Binary).unwrap();
     assert_eq!(&bytes[..16], b"SQLite format 3\0");
-    let mut restored = Database::from_snapshot(&bytes).unwrap();
+    let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(
         restored
             .execute("SELECT v FROM data ORDER BY v DESC LIMIT 2")

@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
@@ -109,7 +112,7 @@ fn reopened_files_preserve_generated_values_after_commit_and_rollback() {
 }
 
 #[test]
-fn snapshots_restore_typed_generated_columns_from_their_source_values() {
+fn conversion_preserves_typed_generated_columns_from_their_source_values() {
     let mut db = Database::memory();
     db.execute(
         "CREATE TABLE derived (
@@ -124,7 +127,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
     )
     .unwrap();
     for format in [Format::Binary, Format::Readable] {
-        let bytes = db.export(format).unwrap();
+        let bytes = files::converted_bytes(&mut db, format).unwrap();
         if format == Format::Readable {
             let documents: Vec<serde_json::Value> =
                 serde_saphyr::from_slice_multiple(&bytes).unwrap();
@@ -141,7 +144,7 @@ fn snapshots_restore_typed_generated_columns_from_their_source_values() {
                 })
             );
         }
-        let mut restored = Database::from_snapshot(&bytes).unwrap();
+        let mut restored = files::open_bytes(&bytes).unwrap();
         assert_eq!(
             restored
                 .execute("SELECT enabled,code,amount FROM derived")

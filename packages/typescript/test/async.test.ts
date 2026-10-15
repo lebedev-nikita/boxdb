@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { Database } from "../src/index.js";
+import { BoxDB } from "../src/index.js";
 
-const connections: Database[] = [];
+const connections: BoxDB[] = [];
 const directories: string[] = [];
 
-it("opens the primary Database API asynchronously", async () => {
-  const db = await Database.open();
+it("opens the primary BoxDB API asynchronously", async () => {
+  const db = await BoxDB.open();
   try {
     await db.exec("CREATE TABLE users(name TEXT)");
     await db.execute("INSERT INTO users VALUES(?)", ["Ada"]);
@@ -17,8 +17,8 @@ it("opens the primary Database API asynchronously", async () => {
     await db.close();
   }
 });
-async function open(path?: string): Promise<Database> {
-  const db = await Database.open(path);
+async function open(path?: string): Promise<BoxDB> {
+  const db = await BoxDB.open(path);
   connections.push(db);
   return db;
 }
@@ -31,7 +31,7 @@ it("keeps timers running while a write waits for another connection's lock", asy
   const directory = mkdtempSync(join(tmpdir(), "boxdb-async-"));
   directories.push(directory);
   const path = join(directory, "data.db");
-  await using holder = await Database.open(path);
+  await using holder = await BoxDB.open(path);
   await holder.exec("CREATE TABLE users(name TEXT)");
   const db = await open(path);
   const lock = await holder.begin({ mode: "immediate" });
@@ -55,7 +55,7 @@ it("cancels a default transaction waiting for a writer and keeps the connection 
   const directory = mkdtempSync(join(tmpdir(), "boxdb-begin-cancel-"));
   directories.push(directory);
   const path = join(directory, "data.db");
-  await using holder = await Database.open(path);
+  await using holder = await BoxDB.open(path);
   await holder.exec("CREATE TABLE item(id INTEGER)");
   const db = await open(path);
   await using lock = await holder.begin();
@@ -81,7 +81,7 @@ it.each([false, true])(
     const directory = mkdtempSync(join(tmpdir(), "boxdb-async-"));
     directories.push(directory);
     const path = join(directory, "data.db");
-    await using holder = await Database.open(path);
+    await using holder = await BoxDB.open(path);
     await holder.exec("CREATE TABLE users(name TEXT)");
     const db = await open(path);
     const lock = await holder.begin({ mode: "immediate" });
@@ -143,7 +143,7 @@ it("drains accepted queries on close and rejects new queries", async () => {
 });
 
 it("validates format options before opening a connection", async () => {
-  await expect(Database.open(":memory:", { format: "invalid" as "binary" })).rejects.toBeInstanceOf(
+  await expect(BoxDB.open(":memory:", { format: "invalid" as "binary" })).rejects.toBeInstanceOf(
     TypeError,
   );
 });

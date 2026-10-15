@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
@@ -32,7 +35,7 @@ fn native_values_and_bytea_have_exactly_one_storage_tag_byte() {
 }
 
 #[test]
-fn bytea_payloads_are_never_confused_with_native_tags_and_survive_snapshots() {
+fn bytea_payloads_are_never_confused_with_native_tags_and_survive_conversion() {
     let payloads = [
         vec![],
         b"d12".to_vec(),
@@ -69,13 +72,13 @@ fn bytea_payloads_are_never_confused_with_native_tags_and_survive_snapshots() {
         .map(|p| vec![Value::Bytea(p.clone())])
         .collect::<Vec<_>>();
     for format in [Format::Binary, Format::Readable] {
-        let snapshot = db.export(format).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
         if format == Format::Readable {
             let text = std::str::from_utf8(&snapshot).unwrap();
             assert!(text.contains("blob: '00ff'"), "{text}");
             assert!(!text.contains("blob: '6200ff'"), "{text}");
         }
-        let mut restored = Database::from_snapshot(&snapshot).unwrap();
+        let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(
             restored.execute("SELECT v FROM blobs ORDER BY id").unwrap()[0].rows,
             expected
@@ -154,7 +157,8 @@ fn codec_versions_are_database_metadata_and_unknown_versions_are_rejected() {
     let path = directory.path().join("codec.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
     db.execute("CREATE TABLE blobs(v BYTEA)").unwrap();
-    let mut restored = Database::from_snapshot(&db.export(Format::Binary).unwrap()).unwrap();
+    let mut restored =
+        files::open_bytes(&files::converted_bytes(&mut db, Format::Binary).unwrap()).unwrap();
     assert_eq!(
         restored
             .execute("SELECT version FROM __boxdb_codec")
@@ -162,11 +166,11 @@ fn codec_versions_are_database_metadata_and_unknown_versions_are_rejected() {
             .rows,
         vec![vec![Value::Integer(1)]]
     );
-    let readable = db.export(Format::Readable).unwrap();
+    let readable = files::converted_bytes(&mut db, Format::Readable).unwrap();
     let text = String::from_utf8(readable).unwrap();
     assert!(text.contains("codec_version: 1"), "{text}");
     assert!(
-        Database::from_snapshot(
+        files::open_bytes(
             text.replace("codec_version: 1", "codec_version: 99")
                 .as_bytes()
         )

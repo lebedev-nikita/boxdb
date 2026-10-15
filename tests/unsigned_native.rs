@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Type, Value};
 
 #[test]
@@ -28,8 +31,8 @@ fn uint64_preserves_full_range_in_parameters_literals_and_snapshots() {
         ]
     );
     for format in [Format::Binary, Format::Readable] {
-        let snapshot = db.export(format).unwrap();
-        let mut restored = Database::from_snapshot(&snapshot).unwrap();
+        let snapshot = files::converted_bytes(&mut db, format).unwrap();
+        let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(
             restored.execute("SELECT n FROM t ORDER BY rowid").unwrap()[0].rows,
             rows
@@ -139,7 +142,7 @@ fn typed_columns_use_standard_integer_records_for_small_uints() {
         Value::Integer(n) => n as usize,
         _ => panic!(),
     };
-    let bytes = db.export(Format::Binary).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Binary).unwrap();
     let page_size = usize::from(u16::from_be_bytes([bytes[16], bytes[17]]));
     let page = &bytes[(root - 1) * page_size..root * page_size];
     assert_eq!(page[0], 13);

@@ -1,6 +1,6 @@
 export {
-  Database,
-  Database as default,
+  BoxDB,
+  BoxDB as default,
   type QueryOptions,
   type Diagnostics,
   type TransactionClient,
@@ -9,7 +9,7 @@ export {
 } from "./database.js";
 export { BoxDBError, findBoxDBError, type BoxDBErrorOptions } from "./error.js";
 export type {
-  DatabaseOptions,
+  BoxDBOptions,
   Parameters,
   QueryResult,
   Row,

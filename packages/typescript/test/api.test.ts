@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import { Database } from "../src/index.js";
+import { BoxDB } from "../src/index.js";
 
 test("tagged queries compose identifiers and fragments with bound values", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   const query = db.query<{
     value: string;
   }>`SELECT ${"O'Reilly"} AS ${db.identifier("value")} ${db.fragment`WHERE ${1} = ${1}`}`;
@@ -18,7 +18,7 @@ test("tagged queries compose identifiers and fragments with bound values", async
 test.each(["commit", "rollback"] as const)(
   "root writes wait for transaction %s and execute outside it",
   async (finish) => {
-    await using db = await Database.open();
+    await using db = await BoxDB.open();
     await db.exec("CREATE TABLE item(id INTEGER)");
     await using tx = await db.begin();
     await tx.execute("INSERT INTO item VALUES(1)");
@@ -41,7 +41,7 @@ test.each(["commit", "rollback"] as const)(
 );
 
 test("root requests queued behind begin execute in order after the transaction", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   const beginning = db.begin();
   const first = db.exec("INSERT INTO item VALUES(2)");
@@ -59,7 +59,7 @@ test("root requests queued behind begin execute in order after the transaction",
 });
 
 test("root transaction requests also wait for the current transaction to finish", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   await using first = await db.begin();
   const beginning = db.begin();
@@ -77,7 +77,7 @@ test("root transaction requests also wait for the current transaction to finish"
 });
 
 test("waiting root queries consume capacity and can be cancelled without cancelling the transaction", async () => {
-  await using db = await Database.open(":memory:", { maxPendingQueries: 1 });
+  await using db = await BoxDB.open(":memory:", { maxPendingQueries: 1 });
   await db.exec("CREATE TABLE item(id INTEGER)");
   await using tx = await db.begin();
   const controller = new AbortController();
@@ -94,7 +94,7 @@ test("waiting root queries consume capacity and can be cancelled without cancell
 });
 
 test("draining close executes accepted root queries after the transaction finishes", async () => {
-  const db = await Database.open(":memory:", { maxPendingQueries: 1 });
+  const db = await BoxDB.open(":memory:", { maxPendingQueries: 1 });
   try {
     await using tx = await db.begin();
     const pending = db.execute("SELECT 7 AS answer");
@@ -108,7 +108,7 @@ test("draining close executes accepted root queries after the transaction finish
 });
 
 test("using transactions own their connection and roll back unfinished work", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER PRIMARY KEY)");
   {
     await using tx = await db.begin();
@@ -127,7 +127,7 @@ test("using transactions own their connection and roll back unfinished work", as
 });
 
 test("a failed commit can be repaired and retried", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec(
     "CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(id INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)",
   );
@@ -141,7 +141,7 @@ test("a failed commit can be repaired and retried", async () => {
 });
 
 test("close drains a transaction while allowing its handle to commit", async () => {
-  const db = await Database.open();
+  const db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   const tx = await db.begin();
   await tx.query`INSERT INTO item VALUES (1)`;
@@ -154,13 +154,11 @@ test("close drains a transaction while allowing its handle to commit", async () 
 
 test("open respects pre-aborted signals", async () => {
   const reason = new Error("cancel open");
-  await expect(Database.open(":memory:", { signal: AbortSignal.abort(reason) })).rejects.toBe(
-    reason,
-  );
+  await expect(BoxDB.open(":memory:", { signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
 });
 
 test("abort close interrupts running work and rolls back an active transaction", async () => {
-  const db = await Database.open();
+  const db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   const tx = await db.begin();
   const pending =
@@ -173,7 +171,7 @@ test("abort close interrupts running work and rolls back an active transaction",
 });
 
 test("SQL cannot bypass transaction handle ownership", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await expect(db.exec("/* comment */ BEGIN")).rejects.toThrow();
   await using tx = await db.begin();
   await expect(tx.exec("COMMIT")).rejects.toThrow();
@@ -182,14 +180,14 @@ test("SQL cannot bypass transaction handle ownership", async () => {
 });
 
 test("run rejects a returning write before it changes data", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await db.exec("CREATE TABLE item(id INTEGER)");
   await expect(db.query`INSERT INTO item VALUES(1) RETURNING id`.run()).rejects.toThrow();
   expect(await db.query`SELECT * FROM item`).toEqual([]);
 });
 
 test("queue capacity rejects excess work and exposes waiting and execution durations", async () => {
-  await using db = await Database.open(":memory:", { maxPendingQueries: 1 });
+  await using db = await BoxDB.open(":memory:", { maxPendingQueries: 1 });
   const controller = new AbortController();
   const busy =
     db.query`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000000) SELECT sum(x) FROM n`.execute(
@@ -209,7 +207,7 @@ test("queue capacity rejects excess work and exposes waiting and execution durat
 });
 
 test("a queued nested begin prevents the parent from committing over its handle", async () => {
-  await using db = await Database.open();
+  await using db = await BoxDB.open();
   await using tx = await db.begin();
   const nested = tx.begin();
   const committed = tx.commit();

@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "common/files.rs"]
+mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
@@ -62,7 +65,7 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     let keys = db.execute("SELECT * FROM keys").unwrap();
     let query = "SELECT id,n,typeof(n) FROM cells ORDER BY id";
     let before = db.execute(query).unwrap();
-    let bytes = db.export(Format::Readable).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
     let yaml = std::str::from_utf8(&bytes).unwrap();
     assert!(yaml.starts_with("---\nkind: database\nversion: 3\n"));
     assert!(yaml.contains("values:\n  id:"));
@@ -77,20 +80,23 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
         .unwrap();
     assert_eq!(first_row["values"]["id"], 0);
     assert!(first_row["values"]["n"].is_null());
-    let mut restored = Database::from_snapshot(&bytes).unwrap();
+    let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(restored.execute(query).unwrap(), before);
     assert_eq!(restored.execute("SELECT * FROM keys").unwrap(), keys);
-    assert_eq!(restored.export(Format::Readable).unwrap(), bytes);
+    assert_eq!(
+        files::converted_bytes(&mut restored, Format::Readable).unwrap(),
+        bytes
+    );
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("cells.yaml");
-    let mut file = Database::restore(&path, &bytes).unwrap();
+    let mut file = files::write_converted(&path, &bytes).unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     let update = "UPDATE cells SET n='edited\nblock\n' WHERE id=1";
     file.execute(update).unwrap();
     db.execute(update).unwrap();
     assert_eq!(
         std::fs::read(&path).unwrap(),
-        db.export(Format::Readable).unwrap()
+        files::converted_bytes(&mut db, Format::Readable).unwrap()
     );
     assert_eq!(file.execute(query).unwrap(), db.execute(query).unwrap());
 }
@@ -160,8 +166,8 @@ fn handwritten_yaml_supports_comments_blocks_and_named_columns() {
 fn yaml_stream_handles_more_than_a_thousand_documents() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(n INT64); WITH RECURSIVE rows(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<1100) INSERT INTO t SELECT n FROM rows").unwrap();
-    let bytes = db.export(Format::Readable).unwrap();
-    let mut restored = Database::from_snapshot(&bytes).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
+    let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(
         restored.execute("SELECT COUNT(*),SUM(n) FROM t").unwrap()[0].rows,
         vec![vec![Value::Integer(1100), Value::Integer(605550)]]
@@ -193,14 +199,17 @@ fn invalid_yaml_cannot_publish_a_database() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("invalid.yaml");
     for yaml in invalid {
-        assert!(Database::from_snapshot(yaml.as_bytes()).is_err(), "{yaml}");
-        assert!(Database::restore(&path, yaml.as_bytes()).is_err(), "{yaml}");
+        assert!(files::open_bytes(yaml.as_bytes()).is_err(), "{yaml}");
+        assert!(
+            files::write_converted(&path, yaml.as_bytes()).is_err(),
+            "{yaml}"
+        );
         assert!(!path.exists());
     }
 }
 
 #[test]
-fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
+fn cached_yaml_matches_file_conversion_after_sqlite_mutations() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("cached.yaml");
     let mut db = Database::open(&path, Format::Readable).unwrap();
@@ -229,12 +238,12 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
         reference.execute(sql).unwrap();
         assert_eq!(
             std::fs::read(&path).unwrap(),
-            reference.export(Format::Readable).unwrap(),
+            files::converted_bytes(&mut reference, Format::Readable).unwrap(),
             "{sql}"
         );
         assert_eq!(
-            db.export(Format::Readable).unwrap(),
-            reference.export(Format::Readable).unwrap(),
+            files::converted_bytes(&mut db, Format::Readable).unwrap(),
+            files::converted_bytes(&mut reference, Format::Readable).unwrap(),
             "{sql}"
         );
     }
@@ -242,8 +251,8 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
     assert!(db.execute(invalid).is_err());
     assert!(reference.execute(invalid).is_err());
     assert_eq!(
-        db.export(Format::Readable).unwrap(),
-        reference.export(Format::Readable).unwrap()
+        files::converted_bytes(&mut db, Format::Readable).unwrap(),
+        files::converted_bytes(&mut reference, Format::Readable).unwrap()
     );
     db.execute("UPDATE dates SET day='2024-03-01T00:00:00.000000Z'")
         .unwrap();
@@ -252,7 +261,7 @@ fn cached_yaml_matches_full_snapshots_after_sqlite_mutations() {
         .unwrap();
     assert_eq!(
         std::fs::read(&path).unwrap(),
-        reference.export(Format::Readable).unwrap()
+        files::converted_bytes(&mut reference, Format::Readable).unwrap()
     );
 }
 
@@ -263,7 +272,7 @@ fn cached_yaml_handles_complex_names_and_main_tables_shadowed_by_temp() {
     let mut db = Database::open(&path, Format::Readable).unwrap();
     db.execute("CREATE TABLE t(\"line\nbreak\" TEXT,\" ORDER BY \" TEXT,\"<<\" TEXT); INSERT INTO t VALUES('first','second','third')").unwrap();
     db.execute("CREATE TEMP TABLE t(ignored TEXT); INSERT INTO temp.t VALUES('temporary'); UPDATE main.t SET \"<<\"='updated'").unwrap();
-    let mut imported = Database::from_snapshot(&std::fs::read(&path).unwrap()).unwrap();
+    let mut imported = files::open_bytes(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(
         imported.execute("SELECT * FROM t").unwrap()[0].rows,
         vec![vec![
@@ -273,7 +282,7 @@ fn cached_yaml_handles_complex_names_and_main_tables_shadowed_by_temp() {
         ]]
     );
     assert_eq!(
-        db.export(Format::Readable).unwrap(),
-        imported.export(Format::Readable).unwrap()
+        files::converted_bytes(&mut db, Format::Readable).unwrap(),
+        files::converted_bytes(&mut imported, Format::Readable).unwrap()
     );
 }
