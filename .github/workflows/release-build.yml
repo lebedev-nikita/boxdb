@@ -334,7 +334,11 @@ jobs:
 
           repository = os.environ["GITHUB_REPOSITORY"]
           tag = "v" + os.environ["BOXDB_RELEASE_VERSION"]
-          release = json.loads(subprocess.check_output(["gh", "api", f"repos/{repository}/releases/tags/{tag}"], text=True))
+          pages = json.loads(subprocess.check_output(["gh", "api", f"repos/{repository}/releases?per_page=100", "--paginate", "--slurp"], text=True))
+          matches = [release for page in pages for release in page if release["tag_name"] == tag]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one release draft for the tag")
+          release = matches[0]
           expected = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in Path("release-assets").iterdir()}
           if not release["draft"] or len(release["assets"]) != len(expected):
               raise SystemExit("Release is not a complete draft")
@@ -343,8 +347,8 @@ jobs:
                   raise SystemExit("Draft release has missing or unexpected assets")
               if asset.get("digest") and asset["digest"] != "sha256:" + expected[asset["name"]]:
                   raise SystemExit("Draft release asset differs from its verified build artifact")
+          subprocess.run(["gh", "api", "--method", "PATCH", f"repos/{repository}/releases/{release['id']}", "-F", "draft=false"], check=True)
           PY
-          gh release edit "v$BOXDB_RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
       - name: Publish Go module version
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
