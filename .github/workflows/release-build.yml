@@ -70,6 +70,8 @@ jobs:
       - name: Build CLI
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
+          # sqlite-vec uses BSD integer aliases without including their system header.
+          CFLAGS_x86_64_unknown_linux_musl: "-D_GNU_SOURCE -include sys/types.h"
         run: cargo build --release --locked --target "$BOXDB_RELEASE_TARGET"
       - name: Smoke test installed CLI behavior
         env:
