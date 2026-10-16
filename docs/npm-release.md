@@ -13,16 +13,76 @@ requires glibc 2.35+. Installations do not run scripts or download binaries.
 The CLI exposes `boxdb` through npm's `bin` mechanism. Adapters declare the client
 and their integration libraries as peer dependencies.
 
-## Prepare
+## Publish through GitHub Actions
 
-Push the release commit and wait for the **npm packages** workflow to pass.
-It builds native code on both platforms, assembles all five archives,
+Update `Cargo.toml` and the package manifests to the release version, then push
+that commit to `main`. Start the **npm packages** workflow with publishing enabled:
+
+```sh
+just publish-npm
+```
+
+This dispatches `.github/workflows/npm.yml` on `main` with `publish=true`.
+Pushing a matching `vX.Y.Z` tag also builds and publishes that version. Ordinary
+branch pushes, pull requests and manual runs without `publish=true` only build
+and verify packages.
+
+The workflow builds native code on both platforms, assembles all five archives,
 and installs those exact archives on both platforms with Node.js 22 and 24 and
 Bun. Checks cover SQL, CLI arguments/stdin/errors, adapter queries, Better Auth
 registration and sessions, and bundled licenses.
-The workflow only uploads artifacts; it never publishes to npm.
 
-From the same commit, with Bun and authenticated `gh` available:
+After every verification job passes, the publish job downloads the same
+`boxdb-npm` artifact, validates its checksums and source commit, and publishes
+with npm OIDC and provenance. It does not rebuild packages. The job uses the
+`npm` GitHub environment and requires `id-token: write`; no npm token or local
+npm login is needed. All five packages are public with the `latest` tag, with
+the client published before its adapters. Concurrent publish jobs are serialized.
+
+A release tag must equal `v` plus the archive version. Already published
+versions are skipped only when registry integrity matches the archive;
+conflicting versions are rejected. Publishing the packages is not atomic.
+For a partial release, rerun the failed publish job from the original workflow
+run so it uses the same archives.
+
+## One-time trusted publisher setup
+
+In the repository's GitHub environment settings, create `npm` with deployment
+branch policies allowing the `main` branch and `v*` tags. Leave required
+reviewers unset for unattended releases.
+
+For each package, configure a GitHub Actions trusted publisher with:
+
+- Repository: `lebedev-nikita/boxdb`
+- Workflow filename: `npm.yml`
+- Environment: `npm`
+- Permission: allow direct `npm publish`
+
+With npm 11.15.0 or newer and package write access, configure this through the
+npm CLI. Login and the initial trust request require browser authentication/2FA;
+subsequent releases do not:
+
+```sh
+npm login --auth-type=web
+for package in client cli drizzle-adapter db0-adapter better-auth-adapter; do
+  npm trust github "@boxdb/$package" \
+    --repository=lebedev-nikita/boxdb --file=npm.yml --environment=npm \
+    --allow-publish --yes
+  sleep 2
+done
+```
+
+If npm offers to remember 2FA for five minutes, that covers the remaining
+packages. Use `npm trust list @boxdb/client` (and each other package) to inspect
+existing bindings before creating them again. Do not revoke unrelated bindings.
+A new binding must complete its first successful publish within two days or it
+expires; recreate an expired binding before releasing.
+See npm's [trusted publishing guide](https://docs.npmjs.com/trusted-publishers/)
+and [`npm trust` reference](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
+
+## Inspect archives or publish locally
+
+To inspect archives from a successful workflow at the current checkout's commit:
 
 ```sh
 just npm-prepare WORKFLOW_RUN_ID
@@ -30,42 +90,15 @@ just npm-prepare WORKFLOW_RUN_ID
 
 This downloads the verified `boxdb-npm` artifact into `target/npm`, checks its
 source commit and checksums, runs the installed-package smoke tests locally and
-performs `npm publish --dry-run` for each archive. It also creates
-`target/npm/Publish BoxDB.command` for macOS. The release manifest records the
-source commit and hashes of the archives to review.
+performs `npm publish --dry-run` for each pending archive. The release manifest
+records the source commit and hashes of the archives.
 
-## Publish
-
-The npm account must own the `boxdb` scope or have publishing permission there.
-For the first release, create the free public-package organization `boxdb` on
-npm before publishing.
-
-Run:
-
-```sh
-just publish-npm
-```
-
-The command installs workspace dependencies and runs the static checks. It reuses
-the prepared archives or downloads them from this commit's npm workflow, waiting
-for that workflow to succeed if it is still running. Push the release commit to
-GitHub first. Existing archives are preserved when resuming a partial release.
-
-It signs in through npm's browser flow if necessary, shows the account,
-versions and source commit, and asks for confirmation. Complete npm's 2FA prompts
-when requested. All five packages are published publicly with the `latest` tag
-from the reviewed archives, without rebuilding. The client is published before
-the adapters. No npm token is stored in this repo or GitHub Actions.
-
-If publishing stops partway through, rerun the same command. Already published
-versions are skipped only when their registry integrity matches the local
-archive; conflicting versions are rejected. Publishing the packages is not
-atomic. Keep the prepared archives until all five are published.
-
-npm can accept an upload before the version becomes available. The command saves
-accepted uploads in `target/npm/publish-state.json` and waits for their registry
-integrity to match. Rerunning resumes that wait without uploading them again.
-Keep this state file with the prepared archives until publication is complete.
+For a manual local release, use `just npm-ready` to prepare the archives, then
+run `bun run npm:publish` or open `target/npm/Publish BoxDB.command`. This path
+requires interactive confirmation and npm login/2FA. It publishes the reviewed
+archives without rebuilding. Rerunning skips matching published versions and
+resumes waiting for accepted uploads recorded in `target/npm/publish-state.json`.
+Keep that state file with the prepared archives until publication is complete.
 
 ## Local development
 

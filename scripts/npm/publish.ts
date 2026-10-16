@@ -7,6 +7,32 @@ import { output, readRelease, registry, root } from "./release.js";
 
 const release = readRelease();
 const dryRun = process.argv.includes("--dry-run");
+const trustedPublishing = process.argv.includes("--trusted-publishing");
+
+if (trustedPublishing) {
+  if (
+    process.env.GITHUB_ACTIONS !== "true" ||
+    process.env.GITHUB_REPOSITORY !== "lebedev-nikita/boxdb" ||
+    !process.env.ACTIONS_ID_TOKEN_REQUEST_URL ||
+    !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  ) {
+    throw new Error("Trusted publishing requires the BoxDB GitHub Actions OIDC environment");
+  }
+  if (release.commit !== process.env.GITHUB_SHA)
+    throw new Error("Release archives must match the publishing workflow commit");
+  const tag = `refs/tags/v${release.version}`;
+  if (
+    !(process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF === tag) &&
+    !(
+      process.env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
+      process.env.GITHUB_REF === "refs/heads/main"
+    )
+  ) {
+    throw new Error(
+      "Publish from main with workflow_dispatch or a tag matching the release version",
+    );
+  }
+}
 
 function npm(args: string[]) {
   const result = spawnSync("npm", [...args, `--registry=${registry}`], {
@@ -107,37 +133,41 @@ for (const pkg of pending) {
   ]);
 }
 if (dryRun) process.exit(0);
-if (!process.stdin.isTTY)
-  throw new Error("Run npm:publish in an interactive terminal for confirmation and npm 2FA");
+if (trustedPublishing) {
+  console.log(`Publishing verified archives from ${release.commit} with GitHub Actions OIDC`);
+} else {
+  if (!process.stdin.isTTY)
+    throw new Error("Run npm:publish in an interactive terminal for confirmation and npm 2FA");
 
-let identity = npm(["whoami"]);
-if (identity.status !== 0) {
-  interactive(["login", "--auth-type=web"]);
-  identity = npm(["whoami"]);
-}
-if (identity.status !== 0) throw new Error(identity.stderr);
-const username = identity.stdout.trim();
-console.log(
-  `\nPublish as ${username}: ${pending.map((p) => packageId(p)).join(", ") || "no remaining uploads"}`,
-);
-console.log(`Source commit: ${release.commit}`);
-
-if (pending.length > 0) {
-  const prompt = createInterface({ input: process.stdin, output: process.stdout });
-  let answer: string;
-  try {
-    answer = await prompt.question("Publish these public packages to npm? [y/N] ");
-  } finally {
-    prompt.close();
+  let identity = npm(["whoami"]);
+  if (identity.status !== 0) {
+    interactive(["login", "--auth-type=web"]);
+    identity = npm(["whoami"]);
   }
-  if (!/^y(es)?$/i.test(answer.trim())) {
-    console.log("Cancelled.");
-    process.exit(0);
+  if (identity.status !== 0) throw new Error(identity.stderr);
+  const username = identity.stdout.trim();
+  console.log(
+    `\nPublish as ${username}: ${pending.map((p) => packageId(p)).join(", ") || "no remaining uploads"}`,
+  );
+  console.log(`Source commit: ${release.commit}`);
+
+  if (pending.length > 0) {
+    const prompt = createInterface({ input: process.stdin, output: process.stdout });
+    let answer: string;
+    try {
+      answer = await prompt.question("Publish these public packages to npm? [y/N] ");
+    } finally {
+      prompt.close();
+    }
+    if (!/^y(es)?$/i.test(answer.trim())) {
+      console.log("Cancelled.");
+      process.exit(0);
+    }
   }
 }
 
 for (const pkg of pending) {
-  // Recheck after the human confirmation; publish the reviewed bytes without rebuilding.
+  // Publish the verified bytes without rebuilding, including after local confirmation.
   readRelease();
   interactive([
     "publish",
@@ -145,6 +175,7 @@ for (const pkg of pending) {
     "--access=public",
     "--ignore-scripts",
     "--tag=latest",
+    ...(trustedPublishing ? ["--provenance"] : []),
   ]);
   recordAccepted(pkg);
   processing.push(pkg);
