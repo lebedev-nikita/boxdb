@@ -347,8 +347,8 @@ jobs:
                   raise SystemExit("Draft release has missing or unexpected assets")
               if asset.get("digest") and asset["digest"] != "sha256:" + expected[asset["name"]]:
                   raise SystemExit("Draft release asset differs from its verified build artifact")
+          subprocess.run(["gh", "api", "--method", "PATCH", f"repos/{repository}/releases/{release['id']}", "-F", "draft=false"], check=True)
           PY
-          gh release edit "v$BOXDB_RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
       - name: Publish Go module version
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
