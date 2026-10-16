@@ -114,7 +114,7 @@ func TestMigrationCancellationRollsBackAndRetainsEarlierVersions(t *testing.T) {
 	}
 	migrations, err := boxdb.NewMigrationSet(append(append([]boxdb.MigrationFile{}, migrationFiles...), boxdb.MigrationFile{
 		Filename: "20261015000001_insert_events.sql",
-		SQL:      "-- migrate:up\n" + strings.Repeat("INSERT INTO events VALUES('2024-01-01T00:00:00Z');\n", 5000) + "-- migrate:down\nDELETE FROM events;\n",
+		SQL:      "-- migrate:up\nINSERT INTO events VALUES('2024-01-01T00:00:00Z');\nWITH RECURSIVE numbers(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM numbers WHERE x<1000000000) SELECT sum(x) FROM numbers;\n-- migrate:down\nDELETE FROM events;\n",
 	}))
 	if err != nil {
 		t.Fatal(err)
