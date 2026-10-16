@@ -17,8 +17,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes libclang-dev
       - run: cargo fmt --all --check
       - run: rustfmt --edition 2024 --check benches/support/workload.rs
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --no-deps --workspace --exclude boxdb-rusqlite --exclude boxdb-sqlite-sys --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - name: Verify published Rust package contents and dependency chain
+        run: cargo package --locked -p boxdb-sqlite-sys -p boxdb-rusqlite -p boxdb
       - name: Benchmark CLI and performance report contract tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Benchmark correctness smoke test

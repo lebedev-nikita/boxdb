@@ -226,11 +226,11 @@ fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
     let document: serde_json::Value = serde_saphyr::from_slice(&yaml).unwrap();
     assert_eq!(
-        document["tables"]["terms"]["columns"]["amount"],
+        document["tables"]["terms"]["columns"]["amount?"],
         "DECIMAL(12, 2)"
     );
     assert!(
-        document["tables"]["terms"]["columns"]["adjusted"]
+        document["tables"]["terms"]["columns"]["adjusted?"]
             .as_str()
             .unwrap()
             .contains("decimal_round")

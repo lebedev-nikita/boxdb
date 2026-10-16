@@ -99,8 +99,8 @@ functions are `decimal_round` and `decimal_div`, both returning native decimals.
 
 ## Engine architecture and verification
 
-[Cargo](../Cargo.toml) patches `libsqlite3-sys` to the vendored SQLite 3.53.2
-bundle. [Checked source transformations](../vendor/libsqlite3-sys/boxdb.rs)
+[Cargo](../Cargo.toml) depends directly on `boxdb-sqlite-sys`, the vendored SQLite
+3.53.2 bundle. [Checked source transformations](../vendor/libsqlite3-sys/boxdb.rs)
 apply at build time to the pinned amalgamation; every patch anchor must match
 exactly once. [C helpers](../vendor/libsqlite3-sys/boxdb_decimal.inc) recognize
 values and connect VDBE operations to

@@ -50,7 +50,8 @@ boxdb schema dump data.db --format=yaml > schema.yaml
 Migrations run through BoxDB and preserve extended types. Each version commits
 atomically; applied files are checked for changes. Schema dumps include type and
 migration metadata without application rows. SQL is the default export format;
-YAML uses the readable database stream. See [migration and restoration usage](docs/migrations.md).
+YAML exports a logical schema with nullable columns marked as `name?`;
+it is separate from readable database storage. See [migration and restoration usage](docs/migrations.md).
 
 ## SQL and types
 
@@ -60,6 +61,7 @@ UUID, JSON, UTC instants, calendar dates/datetimes, intervals and typed arrays. 
 UUID, INSTANT, DATE, DATETIME and INTERVAL are native engine values with typed
 comparison and indexing. JSON is validated opaque text; JSON/JSONB SQL functions
 and operators are disabled.
+Table column names cannot end in `?`, which marks nullable columns in YAML schema exports.
 Bind decimal strings for exact input. See [native decimals](docs/native-decimal.md).
 See [temporal arithmetic](docs/temporal.md), [type declarations](src/types.rs) and the
 [storage and validation contract](docs/storage.md).
@@ -77,14 +79,16 @@ one writer per file. See [storage formats](docs/storage.md) and
 
 ## Language clients
 
-For Rust, add this checkout as a path dependency:
+Install the experimental Rust library from crates.io:
 
 ```sh
-cargo add boxdb --path /absolute/path/to/boxdb
+cargo add boxdb
 ```
 
 The [library source](src/lib.rs) includes a minimal example;
 `cargo doc --no-deps --open` opens the API reference.
+The crate bundles BoxDB's SQLite engine and extensions; building requires native
+build tools and libclang. A local path dependency also works without Cargo patches.
 
 The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
 with a nonblocking API. Follow its build and installation instructions, or
@@ -115,3 +119,4 @@ to run that scenario alone, or `just --list` for individual client tasks.
 See [benchmark commands and methodology](docs/benchmarks.md) and
 [UTC instant examples](docs/temporal.md) for specialized workflows.
 See [npm releases](docs/npm-release.md) to build, verify and publish the npm packages.
+See [Rust releases](docs/rust-release.md) to package and publish the Cargo crates.

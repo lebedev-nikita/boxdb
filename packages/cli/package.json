@@ -1,6 +1,6 @@
 {
   "name": "@boxdb/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "BoxDB command line database with typed SQLite columns and readable YAML storage",
   "license": "MIT",
   "repository": {

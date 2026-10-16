@@ -62,6 +62,7 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         return Ok((render(tokens), None));
     }
     let name = identifier(first)?;
+    super::validate_column_name(&name)?;
     let mut end = 1;
     let mut depth = 0usize;
     while let Some(token) = tokens.get(end) {
@@ -358,6 +359,9 @@ impl Declaration {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (name, _) in &columns {
+            super::validate_column_name(name)?;
+        }
         let mut index = 0usize;
         let scratch = loop {
             let name = format!("__boxdb_ctas_{index}");

@@ -2,7 +2,7 @@
 //! live in TEMP; native decimal precision checks are part of the stored schema.
 use crate::{Error, Result, Type, Value, decimal};
 use rusqlite::{
-    Connection,
+    Connection, OptionalExtension,
     functions::FunctionFlags,
     types::{Value as SqlValue, ValueRef},
 };
@@ -58,6 +58,28 @@ const META_SQL: &str = "CREATE TABLE IF NOT EXISTS __boxdb_columns(table_name TE
 pub(crate) type Types = BTreeMap<(String, String), Type>;
 pub(crate) fn quote(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
+}
+pub(crate) fn validate_column_name(name: &str) -> Result<()> {
+    if name.ends_with('?') {
+        return Err(Error::new(format!(
+            "column names cannot end with '?': {name}"
+        )));
+    }
+    Ok(())
+}
+pub(crate) fn validate_table_column_names(db: &Connection) -> Result<()> {
+    let invalid_name: Option<String> = db
+        .query_row(
+            "SELECT c.name FROM pragma_table_list t JOIN pragma_table_xinfo(t.name,t.schema) c
+             WHERE t.type IN ('table','virtual','shadow') AND substr(c.name,-1)='?' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(name) = invalid_name {
+        validate_column_name(&name)?;
+    }
+    Ok(())
 }
 pub(crate) fn keyword(mut sql: &str) -> &str {
     loop {
@@ -255,6 +277,14 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
         return Ok(None);
     };
     let main = main_name(name).is_some();
+    for operation in operations {
+        if let AlterTableOperation::RenameColumn {
+            new_column_name, ..
+        } = operation
+        {
+            validate_column_name(&new_column_name.value)?;
+        }
+    }
     let table = name
         .0
         .last()

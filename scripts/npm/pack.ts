@@ -76,6 +76,8 @@ for (const { directory: source, name: packageName, binary } of releasePackages) 
   if (binary) {
     mkdirSync(join(stage, "licenses"));
     for (const [path, filename] of [
+      ["rusqlite/LICENSE", "rusqlite.txt"],
+      ["libsqlite3-sys/LICENSE", "libsqlite3-sys.txt"],
       ["sqlean/LICENSE", "sqlean.txt"],
       ["sqlean/regexp/pcre2/LICENSE", "pcre2.txt"],
       ["sqlite-vec/LICENSE-MIT", "sqlite-vec-MIT.txt"],

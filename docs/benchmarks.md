@@ -42,7 +42,7 @@ It does not isolate the cost of the native-type dispatch alone.
 ## Client-only harness
 
 The direct command below links **both clients to BoxDB's patched SQLite** because
-the root workspace patches `libsqlite3-sys`. It measures API/storage overhead
+both use `boxdb-rusqlite` and `boxdb-sqlite-sys`. It measures API/storage overhead
 and remains the harness for the revision regression gate. It is not the
 unmodified SQLite comparison above.
 

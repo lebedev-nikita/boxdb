@@ -601,6 +601,9 @@ impl Database {
             if ddl {
                 let _guard = InternalGuard::enter(&self.internal);
                 self.connection.flush_prepared_statement_cache();
+                if matches!(keyword.as_str(), "CREATE" | "ALTER") {
+                    schema::validate_table_column_names(&self.connection)?;
+                }
                 if self.readable.is_some()
                     && self.connection.query_row(
                         "SELECT EXISTS(SELECT 1 FROM pragma_table_list WHERE schema='main' AND type='virtual')",

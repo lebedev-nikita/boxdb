@@ -263,7 +263,7 @@ fn enum_constraints_survive_reopening_conversion_and_schema_exports() {
                 let document: serde_json::Value = serde_saphyr::from_slice(&dump).unwrap();
                 assert_eq!(
                     document["tables"]["tasks"]["columns"]["status"],
-                    "ENUM('todo', 'it''s, Done') NOT NULL DEFAULT 'todo'"
+                    "ENUM('todo', 'it''s, Done') DEFAULT 'todo'"
                 );
                 continue;
             }
