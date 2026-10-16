@@ -128,6 +128,71 @@ jobs:
           path: target/release-assets/boxdb-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
+  go-native:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: ubuntu-22.04
+            platform: linux-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      BOXDB_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      BOXDB_GO_PLATFORM: ${{ matrix.platform }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install SQLite binding build dependency
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes libclang-dev
+      - name: Build native Go library
+        run: go run packages/go/build.go -release
+      - name: Package native Go library
+        run: |
+          boxdb_go_stage="target/go-release/staging"
+          mkdir -p "$boxdb_go_stage/lib" "$boxdb_go_stage/include" "$boxdb_go_stage/licenses"
+          cp packages/go/native/lib/libboxdb_go.a "$boxdb_go_stage/lib/"
+          cp packages/go/native/boxdb.h "$boxdb_go_stage/include/"
+          cp packages/go/README.md LICENSE "$boxdb_go_stage/"
+          cp vendor/sqlean/LICENSE "$boxdb_go_stage/licenses/sqlean.txt"
+          cp vendor/rusqlite/LICENSE "$boxdb_go_stage/licenses/rusqlite.txt"
+          cp vendor/libsqlite3-sys/LICENSE "$boxdb_go_stage/licenses/libsqlite3-sys.txt"
+          cp vendor/sqlean/regexp/pcre2/LICENSE "$boxdb_go_stage/licenses/pcre2.txt"
+          cp vendor/sqlite-vec/LICENSE-MIT "$boxdb_go_stage/licenses/sqlite-vec-MIT.txt"
+          cp vendor/sqlite-vec/LICENSE-APACHE "$boxdb_go_stage/licenses/sqlite-vec-APACHE.txt"
+          COPYFILE_DISABLE=1 tar -C "$boxdb_go_stage" -czf "target/go-release/boxdb-go-${BOXDB_RELEASE_VERSION}-${BOXDB_GO_PLATFORM}.tar.gz" \
+            lib/libboxdb_go.a include/boxdb.h README.md LICENSE \
+            licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt \
+            licenses/rusqlite.txt licenses/libsqlite3-sys.txt
+      - name: Verify standalone Go module with the packaged library
+        run: |
+          boxdb_go_standalone=$(mktemp -d)
+          mkdir -p "$boxdb_go_standalone/native"
+          tar -xzf "target/go-release/boxdb-go-${BOXDB_RELEASE_VERSION}-${BOXDB_GO_PLATFORM}.tar.gz" -C "$boxdb_go_standalone/native"
+          git archive HEAD packages/go | tar -x -C "$boxdb_go_standalone"
+          export CGO_ENABLED=1
+          export CGO_LDFLAGS="-L$boxdb_go_standalone/native/lib"
+          cd "$boxdb_go_standalone/packages/go"
+          go vet ./...
+          go test -race -count=1 ./...
+      - name: Upload native Go archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: boxdb-go-${{ matrix.platform }}
+          path: target/go-release/boxdb-go-${{ needs.version.outputs.version }}-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
+
   source:
     needs: version
     runs-on: ubuntu-24.04
@@ -151,7 +216,7 @@ jobs:
           if-no-files-found: error
 
   assemble:
-    needs: [version, binaries, source]
+    needs: [version, binaries, go-native, source]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -173,9 +238,9 @@ jobs:
 
           version = os.environ["BOXDB_RELEASE_VERSION"]
           directory = Path("release-assets")
-          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", *[f"{name}-{version}.crate" for name in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys")]]
+          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", *[f"boxdb-go-{version}-{platform}.tar.gz" for platform in ("darwin-arm64", "linux-x64")], *[f"{name}-{version}.crate" for name in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys")]]
           if {path.name for path in directory.iterdir()} != set(names):
-              raise SystemExit("Expected both CLI archives and all three Cargo source packages")
+              raise SystemExit("Expected both CLI archives, both native Go archives and all three Cargo source packages")
           for name in names[:2]:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
@@ -185,6 +250,13 @@ jobs:
                       raise SystemExit("Invalid CLI archive member: " + name)
                   if not archive.getmember("boxdb").mode & 0o111:
                       raise SystemExit("CLI archive does not preserve executable permissions")
+          for name in names[2:4]:
+              with tarfile.open(directory / name, "r:gz") as archive:
+                  members = archive.getmembers()
+                  if {member.name for member in members} != {"lib/libboxdb_go.a", "include/boxdb.h", "README.md", "LICENSE", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:
+                      raise SystemExit("Incomplete native Go archive: " + name)
+                  if not all(member.isfile() and member.size > 0 for member in members):
+                      raise SystemExit("Invalid native Go archive member: " + name)
           for package in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys"):
               with tarfile.open(directory / f"{package}-{version}.crate", "r:gz") as archive:
                   prefix = f"{package}-{version}/"
@@ -271,3 +343,8 @@ jobs:
                   raise SystemExit("Draft release asset differs from its verified build artifact")
           PY
           gh release edit "v$BOXDB_RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Publish Go module version
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/packages/go/v$BOXDB_RELEASE_VERSION" \
+            -f "sha=$BOXDB_RELEASE_COMMIT"

@@ -6,12 +6,37 @@ and TypeScript clients. Its API follows the standard SQL interfaces used by
 [go-sqlite3](https://github.com/mattn/go-sqlite3) and
 [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql).
 
-## Build and install from this checkout
+## Install a release
+
+Requires Go 1.23+, a C compiler, and `CGO_ENABLED=1`. Prebuilt native libraries
+are available for macOS ARM64 (macOS 11+) and Linux x64 (glibc 2.35+). Download
+the native library matching the Go module version, then add the driver to your
+application:
+
+```sh
+BOXDB_GO_VERSION=0.3.2
+BOXDB_GO_PLATFORM=darwin-arm64 # Use linux-x64 for Linux on amd64.
+BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
+mkdir -p "$BOXDB_GO_PREFIX"
+curl --fail --location \
+  "https://github.com/lebedev-nikita/boxdb/releases/download/v$BOXDB_GO_VERSION/boxdb-go-$BOXDB_GO_VERSION-$BOXDB_GO_PLATFORM.tar.gz" \
+  --output "$BOXDB_GO_PREFIX/native.tar.gz"
+tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
+export CGO_ENABLED=1
+export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.3.2
+```
+
+Keep `CGO_LDFLAGS` set when building, testing or running your application. The
+native library is linked into the application; deployment does not need Rust
+or a separate BoxDB shared library. Module releases use `packages/go/vX.Y.Z`
+Git tags, pointing to the same commit as the corresponding `vX.Y.Z` release.
+
+## Build from this checkout
 
 Requires Go 1.23+, Rust, a C compiler, libclang and Just on macOS or Linux.
 See the [repository prerequisites](../../README.md). Keep `CGO_ENABLED=1`;
 the native library must be built for the same OS and architecture as Go.
-No prebuilt Go native libraries are published yet.
 
 From the repository root:
 

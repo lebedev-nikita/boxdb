@@ -23,7 +23,10 @@ just cargo-package
 Cargo packages all three crates and builds their extracted archives using a
 temporary registry. This verifies dependencies that have not yet been published.
 Archives are written to `target/package`. GitHub's release workflow runs the
-same command and attaches all three `.crate` files alongside the CLI binaries.
+same command and attaches all three `.crate` files alongside the CLI binaries
+and native Go libraries. After publishing the complete GitHub release, it also
+creates the corresponding `packages/go/vX.Y.Z` module tag. See the
+[Go installation instructions](../packages/go/README.md#install-a-release).
 
 Before publication, also build a separate application outside this workspace
 with only a `boxdb` path dependency. Exercise native types and schema export
