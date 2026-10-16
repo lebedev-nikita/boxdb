@@ -52,9 +52,9 @@ npm-prepare run-id:
 npm-ready: npm-check
     bun run scripts/npm/ready.ts
 
-# Install dependencies, prepare verified archives and publish with npm confirmation.
-publish-npm: npm-ready
-    bun run npm:publish
+# Build, verify and publish main through GitHub Actions trusted publishing.
+publish-npm:
+    gh workflow run npm.yml --repo lebedev-nikita/boxdb --ref main --field publish=true
 
 # Package and verify the Rust library and both bundled SQLite implementation crates.
 cargo-package:
