@@ -213,7 +213,7 @@ fn extension_functions_and_collations_are_available_while_restoring_schema() {
 }
 
 #[test]
-fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
+fn schema_file_exports_support_extension_functions_and_decimal_declarations() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("schema.db");
     let mut db = Database::open(&path, Format::Binary).unwrap();
@@ -222,7 +222,7 @@ fn schema_file_exports_support_extension_functions_and_decimal_metadata() {
     let sql =
         String::from_utf8(Database::dump_schema_file(&path, SchemaFormat::Sql).unwrap()).unwrap();
     assert!(sql.contains("text_lower"));
-    assert!(sql.contains("Decimal"));
+    assert!(sql.contains("DECIMAL(12, 2)"));
     let yaml = Database::dump_schema_file(&path, SchemaFormat::Yaml).unwrap();
     let document: serde_json::Value = serde_saphyr::from_slice(&yaml).unwrap();
     assert_eq!(

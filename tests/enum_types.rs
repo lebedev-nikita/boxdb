@@ -255,10 +255,12 @@ fn enum_constraints_survive_reopening_conversion_and_schema_exports() {
         let dump = db.dump_schema(format).unwrap();
         let restored = directory.path().join(format!("schema-{format:?}.db"));
         match format {
-            SchemaFormat::Sql => rusqlite::Connection::open(&restored)
-                .unwrap()
-                .execute_batch(std::str::from_utf8(&dump).unwrap())
-                .unwrap(),
+            SchemaFormat::Sql => {
+                Database::open(&restored, Format::Binary)
+                    .unwrap()
+                    .execute(std::str::from_utf8(&dump).unwrap())
+                    .unwrap();
+            }
             SchemaFormat::Yaml => {
                 let document: serde_json::Value = serde_saphyr::from_slice(&dump).unwrap();
                 assert_eq!(

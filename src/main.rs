@@ -53,7 +53,7 @@ enum Command {
 }
 #[derive(Subcommand)]
 enum SchemaCommand {
-    /// Export schema and type metadata without application rows.
+    /// Export user schema without internal tables or application rows.
     Dump {
         database: PathBuf,
         #[arg(long, value_enum, default_value = "sql")]

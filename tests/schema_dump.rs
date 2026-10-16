@@ -5,6 +5,51 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
+fn schema_dumps_exclude_internal_tables() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("migrations");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(
+        dir.join("20261014000000_events.sql"),
+        "-- migrate:up\nCREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT, at INSTANT);\n-- migrate:down\nDROP TABLE events;\n",
+    )
+    .unwrap();
+    for storage in ["binary", "readable"] {
+        let source = temp.path().join(storage);
+        success(cli(&[
+            "migrate",
+            "up",
+            source.to_str().unwrap(),
+            "--format",
+            storage,
+            "--dir",
+            dir.to_str().unwrap(),
+        ]));
+        for format in ["sql", "yaml"] {
+            let dump = success(cli(&[
+                "schema",
+                "dump",
+                source.to_str().unwrap(),
+                "--format",
+                format,
+            ]));
+            assert!(dump.contains("events"));
+            for internal in [
+                "__boxdb_columns",
+                "__boxdb_codec",
+                "__boxdb_migrations",
+                "sqlite_sequence",
+            ] {
+                assert!(
+                    !dump.contains(internal),
+                    "{format} dump contains {internal}:\n{dump}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn yaml_column_keys_mark_nullable_columns_instead_of_sql_null_clauses() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source.db");
@@ -206,9 +251,10 @@ fn default_sql_dump_restores_types_and_objects_without_application_rows() {
         assert!(!dump.contains("private-row-must-not-be-exported"));
         assert_eq!(std::fs::read(&source).unwrap(), before);
         let restored = temp.path().join("restored.db");
-        let sqlite = rusqlite::Connection::open(&restored).unwrap();
-        sqlite.execute_batch(&dump).unwrap();
-        drop(sqlite);
+        success(cli(&[
+            restored.to_str().unwrap(),
+            &format!("--execute={dump}"),
+        ]));
         assert_eq!(
             query(&restored, "SELECT COUNT(*) FROM rich;")["rows"][0][0]["Integer"],
             0
@@ -280,7 +326,7 @@ fn yaml_dump_has_named_logical_columns() {
 }
 
 #[test]
-fn schema_restoration_preserves_applied_versions_so_up_can_continue() {
+fn schema_dump_keeps_migration_records_only_in_yaml() {
     let temp = tempfile::tempdir().unwrap();
     let dir = temp.path().join("migrations");
     std::fs::create_dir(&dir).unwrap();
@@ -320,49 +366,32 @@ fn schema_restoration_preserves_applied_versions_so_up_can_continue() {
         source.to_str().unwrap(),
         "--format=sql",
     ]));
-    rusqlite::Connection::open(&restored)
-        .unwrap()
-        .execute_batch(&dump)
-        .unwrap();
     success(cli(&[
+        restored.to_str().unwrap(),
+        &format!("--execute={dump}"),
+    ]));
+    let status: serde_json::Value = serde_json::from_str(&success(cli(&[
         "migrate",
         "status",
         restored.to_str().unwrap(),
         "--dir",
         dir.to_str().unwrap(),
-        "--check",
-    ]));
-    assert_eq!(
-        success(cli(&[
+        "--json",
+    ])))
+    .unwrap();
+    assert_eq!(status[0]["state"], "pending");
+    assert!(
+        !cli(&[
             "migrate",
-            "up",
+            "status",
             restored.to_str().unwrap(),
             "--dir",
             dir.to_str().unwrap(),
-            "--json"
-        ]))
-        .trim(),
-        "[]"
+            "--check",
+        ])
+        .status
+        .success()
     );
-    let second = dir.join("20261014000001_tags.sql");
-    std::fs::write(&second, "-- migrate:up\nALTER TABLE events ADD COLUMN tags TEXT[];\n-- migrate:down\nALTER TABLE events DROP COLUMN tags;\n").unwrap();
-    success(cli(&[
-        "migrate",
-        "up",
-        restored.to_str().unwrap(),
-        "--dir",
-        dir.to_str().unwrap(),
-    ]));
-    success(cli(&[
-        restored.to_str().unwrap(),
-        "-e",
-        "INSERT INTO events VALUES('2024-01-01T00:00:00Z','[\"restored\"]');",
-    ]));
-    assert_eq!(
-        query(&restored, "SELECT tags FROM events;")["rows"][0][0],
-        serde_json::json!({"Array":[{"Text":"restored"}]})
-    );
-    std::fs::remove_file(second).unwrap();
 }
 
 #[test]
@@ -630,7 +659,7 @@ fn yaml_dump_preserves_typed_columns_after_rename_and_add_column() {
 }
 
 #[test]
-fn yaml_dump_matches_the_example_and_is_independent_of_storage_and_data() {
+fn schema_dumps_match_the_example_and_are_independent_of_storage_and_data() {
     let temp = tempfile::tempdir().unwrap();
     let mut expected: serde_json::Value =
         serde_saphyr::from_str(include_str!("fixtures/schema.yaml")).unwrap();
@@ -653,6 +682,21 @@ fn yaml_dump_matches_the_example_and_is_independent_of_storage_and_data() {
         ]));
         let document: serde_json::Value = serde_saphyr::from_str(&dump).unwrap();
         assert_eq!(document, expected);
+        let sql = success(cli(&["schema", "dump", source.to_str().unwrap()]));
+        assert!(!sql.contains("__boxdb_"));
+        let restored = temp.path().join(format!("restored-{format}"));
+        success(cli(&[
+            restored.to_str().unwrap(),
+            &format!("--execute={sql}"),
+        ]));
+        let restored_schema: serde_json::Value = serde_saphyr::from_str(&success(cli(&[
+            "schema",
+            "dump",
+            restored.to_str().unwrap(),
+            "--format=yaml",
+        ])))
+        .unwrap();
+        assert_eq!(restored_schema, expected);
         if let Some(expected) = &canonical {
             assert_eq!(&dump, expected);
         } else {

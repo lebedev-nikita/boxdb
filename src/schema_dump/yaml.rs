@@ -300,6 +300,41 @@ fn column(name: &str, definition: &[Token], ty: Option<&Type>) -> Result<String>
     })
 }
 
+pub(super) fn table_sql(name: &str, sql: &str, types: &schema::Types) -> Result<String> {
+    let mut cursor = Sql::new(sql)?;
+    cursor.expect("CREATE")?;
+    cursor.expect("TABLE")?;
+    cursor.if_not_exists()?;
+    cursor.name()?;
+    let definitions = cursor.group()?;
+    let columns = split(&definitions)
+        .into_iter()
+        .map(|definition| {
+            if definition.first().is_some_and(|token| {
+                ["CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"]
+                    .iter()
+                    .any(|value| word(token, value))
+            }) {
+                return Ok(render(definition));
+            }
+            let column_name =
+                identifier(definition.first().ok_or_else(|| invalid("empty column"))?)?;
+            let declaration = column(
+                &column_name,
+                &definition[1..],
+                types.get(&(name.to_owned(), column_name.clone())),
+            )?;
+            Ok(format!("{} {declaration}", schema::quote(&column_name)))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(format!(
+        "CREATE TABLE {} ({}) {}",
+        schema::quote(name),
+        columns.join(", "),
+        render(&cursor.tokens[cursor.pos..]),
+    ))
+}
+
 fn omit_nullability(tokens: &[Token]) -> Vec<Token> {
     let mut output = vec![];
     let mut depth = 0usize;

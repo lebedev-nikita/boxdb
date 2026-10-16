@@ -142,19 +142,22 @@ boxdb schema dump data.db --format=sql > db/schema.sql
 boxdb schema dump data.db --format=yaml > db/schema.yaml
 ```
 
-SQL is the default. Both formats retain tables, indexes, views, triggers,
-constraints, logical type metadata and applied migration records. Application
-rows and AUTOINCREMENT sequence values are excluded. Dumping reads a consistent
+SQL is the default. Both formats retain user tables, indexes, views, triggers,
+constraints and logical types. Internal tables, application rows and
+AUTOINCREMENT sequence values are excluded. Dumping reads a consistent
 committed snapshot without modifying the source; virtual tables are unsupported.
 
-SQL contains standard physical SQLite declarations plus INSERT statements for
-BoxDB's type and migration metadata. Restore it through an ordinary SQLite
-client into a new database:
+SQL contains logical BoxDB declarations without metadata INSERT statements.
+Restore it through BoxDB into a new database:
 
 ```sh
-sqlite3 restored.db < db/schema.sql
+boxdb restored.db < db/schema.sql
 boxdb restored.db -e 'SELECT * FROM accounts'
 ```
+
+SQL dumps omit migration history, so restored databases report the original
+migrations as pending. YAML retains applied migration records in its
+`migrations` section.
 
 YAML exports a single `boxdb-schema` document with logical BoxDB declarations:
 
@@ -204,8 +207,7 @@ YAML schema dumps are export-only documents for inspection and version-control
 diffs. They cannot be opened as databases or imported through `boxdb convert`.
 The readable database stream is a separate format containing schemas and rows;
 `boxdb convert` converts complete databases between binary and readable storage.
-SQL dumps can bootstrap an empty database; keep the original migration files
-when continuing migrations on a database restored from SQL. The library exposes
+SQL dumps can bootstrap an empty database. The library exposes
 `Database::dump_schema` and `Database::dump_schema_file` with `SchemaFormat`.
 
 ## Why stock DBMate is insufficient

@@ -151,7 +151,7 @@ test("installed CLI forwards arguments and reads a database in the caller's dire
   const executable = join(directory, "node_modules/.bin/boxdb");
   const version = run(executable, ["--version"]);
   expect(version.status, version.stderr).toBe(0);
-  expect(version.stdout.trim()).toBe("boxdb 0.3.1");
+  expect(version.stdout.trim()).toBe("boxdb 0.3.2");
   const created = run(executable, [
     "database with spaces.db",
     "--json",

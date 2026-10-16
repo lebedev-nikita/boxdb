@@ -149,7 +149,7 @@ fn configure(db: &Connection, binary: bool, options: OpenOptions) -> Result<()> 
     Ok(())
 }
 impl Database {
-    /// Export schema and BoxDB metadata, excluding application rows and sequences.
+    /// Export user schema, excluding internal tables, application rows and sequences.
     pub fn dump_schema(&self, format: SchemaFormat) -> Result<Vec<u8>> {
         schema_dump::dump(&self.connection, format)
     }
