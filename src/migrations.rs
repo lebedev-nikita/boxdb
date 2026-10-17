@@ -426,13 +426,13 @@ fn rollback_after_error(db: &mut Database, error: Error) -> Error {
         rollback.and(restore)
     })();
     if cleanup.is_err() {
-        db.poisoned = true;
+        db.poisoned.set(true);
     }
     cleanup_error(error, cleanup)
 }
 
 fn require_idle(db: &Database) -> Result<()> {
-    if db.poisoned {
+    if db.poisoned.get() {
         return Err(
             Error::new("connection must be reopened after a publication failure".into())
                 .with_code("BOXDB_UNAVAILABLE"),

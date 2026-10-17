@@ -9,6 +9,12 @@ foreign keys enabled, a five-second busy timeout, and normal locking. Other
 connections using the same engine may use the file concurrently. Native values
 and their indexes require BoxDB's patched SQLite engine.
 
+Standalone binary writes acquire SQLite's writer before refreshing type
+validators, so concurrent schema changes cannot bypass validation. Validators
+are reused while the schema is unchanged. Explicit transactions retain their
+requested mode; upgrading an outdated deferred WAL snapshot to a writer can
+return `SQLITE_BUSY_SNAPSHOT`. BoxDB does not replay user transactions.
+
 Do not copy only a live `.db` file while ignoring its WAL. Use SQLite's backup
 API, `boxdb convert`, or [Litestream](replication.md). Binary databases are not
 limited to the size of RAM; BoxDB materializes query results. Readable YAML
