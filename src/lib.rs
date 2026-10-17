@@ -18,7 +18,7 @@ use std::{
     path::Path,
     rc::Rc,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -32,7 +32,6 @@ pub use recovery::{RecoveryReport, RejectedDocument};
 pub type Result<T> = std::result::Result<T, Error>;
 pub mod migrations;
 pub mod types;
-pub use rusqlite::InterruptHandle;
 pub use types::{Type, Value};
 mod decimal;
 mod extensions;
@@ -70,6 +69,19 @@ pub struct OpenOptions {
     pub busy_handler: Option<fn(i32) -> bool>,
     pub progress_handler: Option<fn() -> bool>,
 }
+/// Thread-safe cancellation of user SQL, allowing internal cleanup to finish.
+pub struct InterruptHandle {
+    sqlite: rusqlite::InterruptHandle,
+    cleanup: Arc<Mutex<()>>,
+}
+impl InterruptHandle {
+    /// Interrupt active SQL. Requests during internal cleanup are ignored.
+    pub fn interrupt(&self) {
+        if let Ok(_guard) = self.cleanup.try_lock() {
+            self.sqlite.interrupt();
+        }
+    }
+}
 pub struct Database {
     connection: Connection,
     format: Option<Format>,
@@ -84,6 +96,17 @@ pub struct Database {
     progress_operations: Cell<i32>,
     progress_callback: Cell<Option<fn() -> bool>>,
     internal: Arc<AtomicBool>,
+    interrupt_cleanup: Arc<Mutex<()>>,
+    cleanup_active: Cell<bool>,
+}
+struct CleanupGuard<'a> {
+    active: &'a Cell<bool>,
+    _lock: std::sync::MutexGuard<'a, ()>,
+}
+impl Drop for CleanupGuard<'_> {
+    fn drop(&mut self) {
+        self.active.set(false);
+    }
 }
 struct InternalGuard(Arc<AtomicBool>, bool);
 impl InternalGuard {
@@ -198,6 +221,8 @@ impl Database {
             progress_operations: Cell::new(1000),
             progress_callback: Cell::new(options.progress_handler),
             internal,
+            interrupt_cleanup: Arc::new(Mutex::new(())),
+            cleanup_active: Cell::new(false),
         })
     }
     pub fn memory() -> Self {
@@ -324,7 +349,10 @@ impl Database {
     }
     /// Obtain a thread-safe handle for interrupting an active SQLite operation.
     pub fn interrupt_handle(&self) -> InterruptHandle {
-        self.connection.get_interrupt_handle()
+        InterruptHandle {
+            sqlite: self.connection.get_interrupt_handle(),
+            cleanup: self.interrupt_cleanup.clone(),
+        }
     }
     /// Replace the default five-second busy timeout with a callback.
     /// Returning false stops waiting for a SQLite lock. A later busy_timeout PRAGMA
@@ -455,6 +483,21 @@ impl Database {
         })
     }
     fn with_progress_paused<T>(&self, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        if self.cleanup_active.get() {
+            return operation();
+        }
+        // Bindings may repeat sqlite3_interrupt until the cancelled request
+        // returns. Serialize with those calls as well as pausing callbacks, so
+        // an interrupt cannot turn a successful rollback into an unusable DB.
+        let lock = self.interrupt_cleanup.lock().map_err(|_| {
+            self.poisoned.set(true);
+            Error::internal("connection interruption gate is poisoned")
+        })?;
+        self.cleanup_active.set(true);
+        let _interrupts = CleanupGuard {
+            active: &self.cleanup_active,
+            _lock: lock,
+        };
         self.connection.progress_handler(0, None::<fn() -> bool>)?;
         let result = operation();
         match self
@@ -887,15 +930,31 @@ impl Database {
         }
         Ok(())
     }
-    fn refresh_read_metadata(&self) -> Result<()> {
+    fn refresh_read_metadata(&self, row_active: bool) -> Result<()> {
         let version = storage::data_version(&self.connection)?;
         if version != self.pager_version.get() {
-            let version = self.with_read_snapshot(|| {
+            if row_active
+                && self.connection.transaction_state(Some("main"))?
+                    == rusqlite::TransactionState::None
+            {
+                // Constant/TEMP/attached results have no main-column origins.
+                // Defer main metadata until a statement actually reads it.
+                return Ok(());
+            }
+            let load = || {
                 // Ordinary external DML changes the pager version, not the schema.
                 // Keep prepared queries and validators warm in that common case.
                 self.refresh_types(false)?;
                 storage::data_version(&self.connection)
-            })?;
+            };
+            let version = if row_active {
+                // SQLite already pins the main snapshot for this cursor.
+                // BEGIN here would leave an explicit transaction whose rollback
+                // can be interrupted until the outer cursor is dropped.
+                load()?
+            } else {
+                self.with_read_snapshot(load)?
+            };
             self.pager_version.set(version);
         }
         Ok(())
@@ -919,7 +978,7 @@ impl Database {
                 // SQLite may reprepare a cached statement on its first step.
                 // Read metadata after that step, including a changed SELECT *.
                 if rows.is_empty() {
-                    self.refresh_read_metadata()?;
+                    self.refresh_read_metadata(true)?;
                 }
                 let count = row.as_ref().column_count();
                 if hints.is_none() && !self.types.borrow().is_empty() {
@@ -969,7 +1028,7 @@ impl Database {
             }
         }
         if rows.is_empty() && readonly {
-            self.refresh_read_metadata()?;
+            self.refresh_read_metadata(false)?;
         }
         let columns = statement
             .column_names()
