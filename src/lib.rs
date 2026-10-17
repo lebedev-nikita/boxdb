@@ -78,9 +78,9 @@ pub struct Database {
     result_types: RefCell<HashMap<String, Rc<[Option<Type>]>>>,
     pager_version: Cell<u32>,
     validation_dirty: Cell<bool>,
-    data_version: i64,
+    schema_version: Cell<i64>,
     write_transaction_ready: bool,
-    poisoned: bool,
+    poisoned: Cell<bool>,
     progress_operations: Cell<i32>,
     progress_callback: Cell<Option<fn() -> bool>>,
     internal: Arc<AtomicBool>,
@@ -173,10 +173,15 @@ impl Database {
         options: OpenOptions,
     ) -> Result<Self> {
         configure(&connection, binary, options)?;
+        // Load the schema, validators and version markers from one snapshot.
+        // A concurrent commit after this snapshot will invalidate its markers.
+        let snapshot = connection.unchecked_transaction()?;
         let types = schema::load(&connection)?;
         schema::install(&connection, &types)?;
-        let data_version = connection.query_row("PRAGMA data_version", [], |r| r.get(0))?;
+        let schema_version =
+            connection.query_row("PRAGMA main.schema_version", [], |r| r.get(0))?;
         let pager_version = storage::data_version(&connection)?;
+        snapshot.commit()?;
         let internal = Arc::new(AtomicBool::new(false));
         authorizer(&connection, internal.clone())?;
         Ok(Self {
@@ -187,9 +192,9 @@ impl Database {
             result_types: RefCell::new(HashMap::new()),
             pager_version: Cell::new(pager_version),
             validation_dirty: Cell::new(false),
-            data_version,
+            schema_version: Cell::new(schema_version),
             write_transaction_ready: false,
-            poisoned: false,
+            poisoned: Cell::new(false),
             progress_operations: Cell::new(1000),
             progress_callback: Cell::new(options.progress_handler),
             internal,
@@ -304,7 +309,7 @@ impl Database {
     }
     /// Set SQLite's query-only guard, returning its previous value.
     pub fn query_only(&self, enabled: bool) -> Result<bool> {
-        if self.poisoned {
+        if self.poisoned.get() {
             return Err(Error::new(
                 "connection is unavailable; close it and check the database before reopening"
                     .into(),
@@ -389,27 +394,82 @@ impl Database {
         }
         result
     }
-    fn refresh(&mut self, force: bool) -> Result<()> {
+    fn refresh_types(&self, force: bool) -> Result<()> {
         let version = self
             .connection
-            .query_row("PRAGMA data_version", [], |r| r.get(0))?;
-        if force || version != self.data_version || self.validation_dirty.get() {
+            .query_row("PRAGMA main.schema_version", [], |r| r.get(0))?;
+        if force || version != self.schema_version.get() {
             let _guard = InternalGuard::enter(&self.internal);
             let types = schema::load(&self.connection)?;
-            let query_only: bool =
-                self.connection
-                    .pragma_query_value(None, "query_only", |row| row.get(0))?;
-            if !query_only {
-                schema::install(&self.connection, &types)?;
-            }
             self.types.replace(types);
             self.result_types.borrow_mut().clear();
-            self.validation_dirty.set(query_only);
-            self.pager_version
-                .set(storage::data_version(&self.connection)?);
-            self.data_version = version;
+            // Recreated tables can have identical logical types while losing
+            // their connection-local triggers, so schema identity matters too.
+            self.validation_dirty.set(true);
+            self.schema_version.set(version);
         }
         Ok(())
+    }
+    fn refresh(&self, force: bool) -> Result<()> {
+        let pager_version = self.with_read_snapshot(|| {
+            self.refresh_types(force)?;
+            if self.validation_dirty.get() {
+                let query_only: bool =
+                    self.connection
+                        .pragma_query_value(None, "query_only", |row| row.get(0))?;
+                if !query_only {
+                    let _guard = InternalGuard::enter(&self.internal);
+                    schema::install(&self.connection, &self.types.borrow())?;
+                    self.validation_dirty.set(false);
+                }
+            }
+            storage::data_version(&self.connection)
+        })?;
+        self.pager_version.set(pager_version);
+        Ok(())
+    }
+    fn with_read_snapshot<T>(&self, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        if !self.connection.is_autocommit() {
+            return operation();
+        }
+        let result = (|| {
+            self.connection.execute_batch("BEGIN")?;
+            let value = operation()?;
+            self.connection.execute_batch("COMMIT")?;
+            Ok(value)
+        })();
+        result.map_err(|error: Error| {
+            if !self.connection.is_autocommit()
+                && let Err(cleanup) = self.with_progress_paused(|| {
+                    self.connection
+                        .execute_batch("ROLLBACK")
+                        .map_err(Into::into)
+                })
+            {
+                self.poisoned.set(true);
+                return error.cleanup(cleanup);
+            }
+            // TEMP schema changes may have been rolled back with the snapshot.
+            self.validation_dirty.set(true);
+            error
+        })
+    }
+    fn with_progress_paused<T>(&self, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        self.connection.progress_handler(0, None::<fn() -> bool>)?;
+        let result = operation();
+        match self
+            .connection
+            .progress_handler(self.progress_operations.get(), self.progress_callback.get())
+        {
+            Ok(()) => result,
+            Err(restore) => {
+                self.poisoned.set(true);
+                Err(match result {
+                    Ok(_) => restore.into(),
+                    Err(error) => error.cleanup(restore.into()),
+                })
+            }
+        }
     }
     pub fn execute(&mut self, sql: &str) -> Result<Vec<QueryResult>> {
         self.execute_with_hook(sql, |_| Ok(()))
@@ -468,7 +528,7 @@ impl Database {
         })
     }
     fn statement_info_inner(&mut self, sql: &str) -> Result<StatementInfo> {
-        if self.poisoned {
+        if self.poisoned.get() {
             return Err(Error::new(
                 "connection is unavailable; close it and check the database before reopening"
                     .into(),
@@ -541,24 +601,27 @@ impl Database {
         outcome: OperationOutcome,
     ) -> Error {
         if error.fatal() {
-            self.poisoned = true;
+            self.poisoned.set(true);
         }
-        error.state(operation, outcome, self.in_transaction(), !self.poisoned)
+        error.state(
+            operation,
+            outcome,
+            self.in_transaction(),
+            !self.poisoned.get(),
+        )
     }
     fn cleanup_failure(&mut self, mut error: Error, sql: &str, refresh: bool) -> Error {
-        if !self.connection.is_autocommit()
-            && let Err(cleanup) = self.connection.execute_batch(sql)
-        {
-            self.poisoned = true;
-            error = error.cleanup(Error::from(cleanup).state(
-                ErrorOperation::Rollback,
-                OperationOutcome::Unknown,
-                self.in_transaction(),
-                false,
-            ));
-        }
-        if refresh && let Err(cleanup) = self.refresh(true) {
-            self.poisoned = true;
+        let cleanup = self.with_progress_paused(|| {
+            if !self.connection.is_autocommit() {
+                self.connection.execute_batch(sql)?;
+            }
+            if refresh {
+                self.refresh(true)?;
+            }
+            Ok(())
+        });
+        if let Err(cleanup) = cleanup {
+            self.poisoned.set(true);
             error = error.cleanup(cleanup);
         }
         error
@@ -569,13 +632,84 @@ impl Database {
         params: &[SqlValue],
         typed: bool,
     ) -> Result<QueryResult> {
-        if self.poisoned {
+        if self.poisoned.get() {
             return Err(Error::new(
                 "connection is unavailable; close it and check the database before reopening"
                     .into(),
             )
             .with_code("BOXDB_UNAVAILABLE"));
         }
+        let keyword = schema::keyword(sql);
+        if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("VALUES") {
+            return self.run(sql, params, typed);
+        }
+        let keyword = keyword.to_ascii_uppercase();
+        let standalone_write = self.format == Some(Format::Binary)
+            && self.connection.is_autocommit()
+            && match keyword.as_str() {
+                "SELECT" | "VALUES" | "EXPLAIN" | "BEGIN" | "SAVEPOINT" | "COMMIT" | "END"
+                | "RELEASE" | "ROLLBACK" | "PRAGMA" | "VACUUM" | "ATTACH" | "DETACH" => false,
+                // Preparation here is advisory. Reprepare after acquiring the
+                // writer and refreshing validators against its pinned schema.
+                "WITH" => !self
+                    .connection
+                    .prepare_cached(sql)
+                    .is_ok_and(|statement| statement.readonly()),
+                _ => true,
+            };
+        if !standalone_write {
+            return self.execute_statement(sql, params, typed);
+        }
+        // Own the writer before reading metadata. A competing DDL commit can
+        // otherwise land between refresh() and SQLite's implicit write lock.
+        if let Err(error) = self.connection.execute_batch("BEGIN IMMEDIATE") {
+            let error = error.into();
+            return Err(if self.connection.is_autocommit() {
+                error
+            } else {
+                self.cleanup_failure(error, "ROLLBACK", true)
+            });
+        }
+        let result = self
+            .execute_statement(sql, params, typed)
+            .and_then(|result| {
+                // The writer is still held, so these types and the pager marker
+                // describe the same schema. A later commit must invalidate it.
+                self.pager_version
+                    .set(storage::data_version(&self.connection)?);
+                Ok(result)
+            });
+        self.write_transaction_ready = false;
+        let result = match result {
+            Err(error)
+                if error.result_code() == Some(rusqlite::ffi::SQLITE_INTERRUPT)
+                    || error.fatal() =>
+            {
+                return Err(self.cleanup_failure(error, "ROLLBACK", true));
+            }
+            result => result,
+        };
+        if !self.connection.is_autocommit()
+            && let Err(commit) = self.connection.execute_batch("COMMIT")
+        {
+            let commit = Error::from(commit);
+            let error = match result {
+                Ok(_) => commit,
+                Err(error) => error.cleanup(commit),
+            };
+            return Err(self.cleanup_failure(error, "ROLLBACK", true));
+        }
+        // Complete the implicit transaction even after a statement error:
+        // SQLite's OR FAIL may have preserved earlier row changes. OR ROLLBACK
+        // has already ended the transaction and needs no further cleanup.
+        result
+    }
+    fn execute_statement(
+        &mut self,
+        sql: &str,
+        params: &[SqlValue],
+        typed: bool,
+    ) -> Result<QueryResult> {
         let keyword = schema::keyword(sql);
         if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("VALUES") {
             return self.run(sql, params, typed);
@@ -718,7 +852,7 @@ impl Database {
                 if outer_autocommit && let Some(file) = &self.readable {
                     storage::check_commit_constraints(&self.connection)?;
                     if let Err(e) = file.publish(&self.connection) {
-                        self.poisoned = true;
+                        self.poisoned.set(true);
                         return Err(e);
                     }
                 }
@@ -737,10 +871,8 @@ impl Database {
         }
         if control {
             self.write_transaction_ready = false;
-            self.refresh(true)?;
+            self.refresh(keyword == "ROLLBACK")?;
         } else if !readonly {
-            self.pager_version
-                .set(storage::data_version(&self.connection)?);
             self.write_transaction_ready = true;
         }
         result
@@ -750,7 +882,7 @@ impl Database {
             && let Some(file) = &self.readable
             && let Err(e) = file.publish(&self.connection)
         {
-            self.poisoned = true;
+            self.poisoned.set(true);
             return Err(e);
         }
         Ok(())
@@ -758,14 +890,12 @@ impl Database {
     fn refresh_read_metadata(&self) -> Result<()> {
         let version = storage::data_version(&self.connection)?;
         if version != self.pager_version.get() {
-            // External DDL can change column origins without changing logical
-            // types (for example, replacing a view). Invalidate both together.
-            self.result_types.borrow_mut().clear();
-            let types = schema::load(&self.connection)?;
-            if types != *self.types.borrow() {
-                self.types.replace(types);
-                self.validation_dirty.set(true);
-            }
+            let version = self.with_read_snapshot(|| {
+                // Ordinary external DML changes the pager version, not the schema.
+                // Keep prepared queries and validators warm in that common case.
+                self.refresh_types(false)?;
+                storage::data_version(&self.connection)
+            })?;
             self.pager_version.set(version);
         }
         Ok(())

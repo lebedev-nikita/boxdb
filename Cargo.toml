@@ -58,3 +58,7 @@ cc = "1"
 [[bench]]
 name = "sqlite_vs_boxdb"
 harness = false
+
+[[bench]]
+name = "concurrent_writes"
+harness = false

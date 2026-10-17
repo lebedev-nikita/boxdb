@@ -51,6 +51,36 @@ cargo bench --locked --bench sqlite_vs_boxdb -- --help
 cargo bench --locked --bench sqlite_vs_boxdb -- --json /tmp/boxdb-client-benchmark.json
 ```
 
+## Concurrent binary clients
+
+[The process benchmark](../benches/concurrent_writes.rs) measures reads,
+autocommit updates and batches of 50 updates in `BEGIN IMMEDIATE` transactions,
+using one or four independent clients and schemas with one or 16 typed tables:
+
+```sh
+cargo bench --locked --bench concurrent_writes -- --json /tmp/boxdb-concurrent.json
+```
+
+Each case discards a warmup and retains seven samples. Process startup and
+connection opening finish before a start barrier. Timings include lock waits
+and durable commits with BoxDB's normal WAL/FULL settings. Every sample checks
+the exact final counter and `quick_check`. `--directory` selects the filesystem;
+`--writes`, `--reads`, `--batch` and `--samples` control the workload.
+Throughput uses the longest worker's elapsed time, excluding report encoding
+and process teardown.
+
+The JSON contains throughput, raw latencies, p50/p95/p99 and busy retry counts.
+Autocommit latencies are per statement; transaction latencies are per complete
+batch divided by its write count, including commit. Standalone busy failures and
+rejected `BEGIN` commands are retried with 1 ms backoff for up to 30 seconds;
+their time is included. Transaction bodies are never replayed. These retries
+belong to the benchmark, not the BoxDB client.
+
+To compare revisions, build and retain each executable before measuring, then
+alternate their runs on the same idle machine with identical arguments. Report
+the median across samples and retain raw results; filesystem flush times can
+dominate short writes.
+
 ## Measurement
 
 [The shared harness](../benches/support/workload.rs) generates identical deterministic
