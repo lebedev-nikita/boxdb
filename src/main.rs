@@ -1,5 +1,5 @@
 use boxdb::{
-    Database, Error, Format, QueryResult, Result, SchemaFormat,
+    CheckMode, CheckStatus, Database, Error, Format, QueryResult, Result, SchemaFormat,
     migrations::{MigrationSet, MigrationState},
 };
 use clap::{Parser, Subcommand};
@@ -33,6 +33,34 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Rebuild indexes from readable tables into a new binary database.
+    Repair {
+        source: PathBuf,
+        destination: PathBuf,
+        #[arg(long, required = true)]
+        rebuild_indexes: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Salvage available data into a new database; completeness is not guaranteed.
+    Recover {
+        source: PathBuf,
+        destination: PathBuf,
+        #[arg(long, value_enum, default_value = "binary")]
+        format: Format,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check an existing database without changing it.
+    Check {
+        database: PathBuf,
+        #[arg(long, conflicts_with = "full")]
+        quick: bool,
+        #[arg(long)]
+        full: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Inspect and export database schemas.
     Schema {
         #[command(subcommand)]
@@ -99,14 +127,72 @@ enum MigrationCommand {
     },
 }
 fn main() {
-    if let Err(error) = run(Cli::parse()) {
-        eprintln!("boxdb: {error}");
+    let cli = Cli::parse();
+    let json = cli.json
+        || matches!(
+            &cli.command,
+            Some(
+                Command::Check { json: true, .. }
+                    | Command::Repair { json: true, .. }
+                    | Command::Recover { json: true, .. }
+            )
+        );
+    if let Err(error) = run(cli) {
+        if json {
+            eprintln!(
+                "{}",
+                serde_json::to_string(&error).expect("serialize error")
+            );
+        } else {
+            eprintln!("boxdb: {error}");
+        }
         std::process::exit(1);
     }
 }
 fn run(cli: Cli) -> Result<()> {
     if let Some(command) = cli.command {
         return match command {
+            Command::Repair {
+                source,
+                destination,
+                json,
+                ..
+            } => print_recovery(&Database::repair_file(source, destination)?, json),
+            Command::Recover {
+                source,
+                destination,
+                format,
+                json,
+            } => print_recovery(&Database::recover_file(source, destination, format)?, json),
+            Command::Check {
+                database,
+                quick,
+                json,
+                ..
+            } => {
+                let report = Database::check_file(
+                    database,
+                    if quick {
+                        CheckMode::Quick
+                    } else {
+                        CheckMode::Full
+                    },
+                )?;
+                if json {
+                    println!("{}", serde_json::to_string(&report)?);
+                } else {
+                    println!("{:?} (complete: {})", report.status, report.complete);
+                    for issue in &report.issues {
+                        println!("{}: {}: {}", issue.check, issue.code, issue.message);
+                    }
+                }
+                if report.status != CheckStatus::Valid {
+                    return Err(
+                        Error::new("database check did not pass".into()).with_context("check")
+                    );
+                }
+                Ok(())
+            }
             Command::Schema {
                 command: SchemaCommand::Dump { database, format },
             } => {
@@ -280,6 +366,31 @@ fn run(cli: Cli) -> Result<()> {
     }
     if !pending.trim().is_empty() {
         execute(&mut db, &pending, cli.json)?;
+    }
+    Ok(())
+}
+fn print_recovery(report: &boxdb::RecoveryReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string(report)?);
+    } else {
+        println!(
+            "Recovered {} rows; output: {:?}; loss possible: {}",
+            report.recovered_rows, report.output.status, report.loss_possible
+        );
+        for warning in &report.warnings {
+            println!("{warning}");
+        }
+        if let Some(path) = &report.rejected_path {
+            println!("Rejected fragments: {}", path.display());
+        }
+        for issue in &report.output.issues {
+            println!("{}: {}", issue.code, issue.message);
+        }
+    }
+    if report.output.status != CheckStatus::Valid || !report.output.complete {
+        return Err(Error::new(
+            "recovered output requires further repair; inspect the report".into(),
+        ));
     }
     Ok(())
 }

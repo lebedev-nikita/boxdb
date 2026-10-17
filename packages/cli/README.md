@@ -22,5 +22,10 @@ Intel macOS and Linux ARM64 are not supported by this npm release.
 Run `boxdb data.db` for the interactive shell, or pipe SQL on stdin. `--help`
 lists options and subcommands; `.help` lists shell commands.
 
+Use `boxdb check data.db --full` for diagnostics. `boxdb repair data.db repaired.db
+--rebuild-indexes` rebuilds indexes, and `boxdb recover damaged.db recovered.db`
+salvages available data. Both write new destinations. See
+[recovery contracts and limitations](../../docs/recovery.md).
+
 See the [BoxDB documentation](https://github.com/lebedev-nikita/boxdb#readme)
 for storage formats, supported types, migrations and language clients.

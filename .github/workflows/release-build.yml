@@ -111,7 +111,7 @@ jobs:
           boxdb_release_stage="target/release-assets/staging"
           mkdir -p "$boxdb_release_stage/docs" "$boxdb_release_stage/assets" "$boxdb_release_stage/licenses"
           cp "target/${BOXDB_RELEASE_TARGET}/release/boxdb" README.md LICENSE "$boxdb_release_stage/"
-          cp docs/replication.md "$boxdb_release_stage/docs/"
+          cp docs/replication.md docs/recovery.md docs/client-errors.md "$boxdb_release_stage/docs/"
           cp assets/icon.svg "$boxdb_release_stage/assets/"
           cp vendor/sqlean/LICENSE "$boxdb_release_stage/licenses/sqlean.txt"
           cp vendor/rusqlite/LICENSE "$boxdb_release_stage/licenses/rusqlite.txt"
@@ -120,7 +120,7 @@ jobs:
           cp vendor/sqlite-vec/LICENSE-MIT "$boxdb_release_stage/licenses/sqlite-vec-MIT.txt"
           cp vendor/sqlite-vec/LICENSE-APACHE "$boxdb_release_stage/licenses/sqlite-vec-APACHE.txt"
           COPYFILE_DISABLE=1 tar -C "$boxdb_release_stage" -czf "target/release-assets/$boxdb_release_archive" \
-            boxdb README.md LICENSE docs/replication.md assets/icon.svg \
+            boxdb README.md LICENSE docs/replication.md docs/recovery.md docs/client-errors.md assets/icon.svg \
             licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt \
             licenses/rusqlite.txt licenses/libsqlite3-sys.txt
       - name: Upload CLI archive
@@ -246,7 +246,7 @@ jobs:
           for name in names[:2]:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
-                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:
+                  if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "docs/recovery.md", "docs/client-errors.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:
                       raise SystemExit("Incomplete CLI archive: " + name)
                   if not all(member.isfile() and member.size > 0 for member in members):
                       raise SystemExit("Invalid CLI archive member: " + name)

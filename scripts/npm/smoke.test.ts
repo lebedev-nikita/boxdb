@@ -5,6 +5,9 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "../..");
+const releaseVersion = JSON.parse(
+  readFileSync(join(root, "packages/typescript/package.json"), "utf8"),
+).version as string;
 const directory = mkdtempSync(join(tmpdir(), "boxdb-npm-"));
 
 function run(command: string, args: string[], input?: string) {
@@ -21,9 +24,7 @@ function run(command: string, args: string[], input?: string) {
 beforeAll(() => {
   writeFileSync(join(directory, "package.json"), '{"private":true,"type":"module"}');
   for (const name of ["cli", "client", "drizzle-adapter", "db0-adapter", "better-auth-adapter"]) {
-    const version = JSON.parse(readFileSync(join(root, "packages/typescript/package.json"), "utf8"))
-      .version as string;
-    const archive = join(root, `target/npm/boxdb-${name}-${version}.tgz`);
+    const archive = join(root, `target/npm/boxdb-${name}-${releaseVersion}.tgz`);
     const installed = run("npm", [
       "install",
       archive,
@@ -151,7 +152,7 @@ test("installed CLI forwards arguments and reads a database in the caller's dire
   const executable = join(directory, "node_modules/.bin/boxdb");
   const version = run(executable, ["--version"]);
   expect(version.status, version.stderr).toBe(0);
-  expect(version.stdout.trim()).toBe("boxdb 0.3.2");
+  expect(version.stdout.trim()).toBe(`boxdb ${releaseVersion}`);
   const created = run(executable, [
     "database with spaces.db",
     "--json",

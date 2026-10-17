@@ -19,6 +19,7 @@ fn main() {
     cc::Build::new()
         .files(c_sources(Path::new("vendor/sqlean/text")))
         .files(c_sources(Path::new("vendor/sqlean/regexp")))
+        .files(c_sources(Path::new("vendor/sqlite-recovery")))
         .include("vendor/sqlean")
         .include(std::env::var("DEP_SQLITE3_INCLUDE").expect("bundled SQLite headers"))
         .define("SQLITE_CORE", None)

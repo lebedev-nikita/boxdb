@@ -5,6 +5,67 @@ use std::time::Duration;
 const BIN: &str = env!("CARGO_BIN_EXE_boxdb");
 
 #[test]
+fn recovery_commands_publish_new_files_and_machine_readable_reports() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.yaml");
+    let recovered = directory.path().join("recovered.db");
+    let repaired = directory.path().join("repaired.db");
+    let readable = directory.path().join("recovered.yaml");
+    let mut db = boxdb::Database::open(&source, boxdb::Format::Readable).unwrap();
+    db.execute("CREATE TABLE items(id INTEGER PRIMARY KEY); INSERT INTO items VALUES(1)")
+        .unwrap();
+    drop(db);
+    for (command, destination, extra) in [
+        ("recover", &recovered, vec![]),
+        ("repair", &repaired, vec!["--rebuild-indexes"]),
+        ("recover", &readable, vec!["--format", "readable"]),
+    ] {
+        let output = Command::new(BIN)
+            .arg(command)
+            .arg(&source)
+            .arg(destination)
+            .arg("--json")
+            .args(extra)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["output"]["status"], "valid");
+        assert_eq!(report["recovered_rows"], 1);
+    }
+}
+
+#[test]
+fn check_reports_invalid_files_as_json_and_never_creates_a_source() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("data.db");
+    let missing = Command::new(BIN)
+        .arg("check")
+        .arg(&path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    assert!(!path.exists());
+    std::fs::write(&path, b"SQLite format 3\0broken").unwrap();
+    let output = Command::new(BIN)
+        .arg("check")
+        .arg(&path)
+        .args(["--full", "--json"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "invalid");
+    assert!(!report["issues"].as_array().unwrap().is_empty());
+    assert_eq!(std::fs::read(&path).unwrap(), b"SQLite format 3\0broken");
+}
+
+#[test]
 fn cli_provides_bundled_extensions_without_loading_shared_libraries() {
     let output = Command::new(BIN)
         .args(["--json", "-e", "SELECT decimal_div('0.3','1',1,'half_even') AS amount, text_lower('ПРИВЕТ') AS word, regexp_substr('order #123','\\d+') AS digits, vec_distance_cosine('[1,0]','[0,1]') AS distance"])

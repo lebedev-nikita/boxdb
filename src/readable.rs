@@ -14,6 +14,240 @@ use std::{collections::BTreeMap, fmt};
 mod cache;
 pub(crate) use cache::SnapshotCache;
 
+/// Top-level YAML document markers cannot occur inside indented scalar content.
+pub(crate) fn documents(bytes: &[u8]) -> Vec<(usize, &[u8])> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut start_line = 1;
+    let mut offset = 0;
+    for (index, line) in bytes.split_inclusive(|b| *b == b'\n').enumerate() {
+        if line.starts_with(b"---") && line.get(3).is_none_or(u8::is_ascii_whitespace) {
+            if offset > start
+                && bytes[start..offset]
+                    .split(|b| *b == b'\n')
+                    .any(|l| !l.iter().all(u8::is_ascii_whitespace) && !l.starts_with(b"#"))
+            {
+                result.push((start_line, &bytes[start..offset]));
+            }
+            start = offset;
+            start_line = index + 1;
+        }
+        offset += line.len();
+    }
+    if start < bytes.len() {
+        result.push((start_line, &bytes[start..]));
+    }
+    result
+}
+
+pub(crate) fn check_documents(bytes: &[u8], report: &mut crate::CheckReport) {
+    for (index, (line, bytes)) in documents(bytes).iter().enumerate() {
+        if let Err(error) = parse_record(bytes) {
+            let location = error
+                .location()
+                .map(|l| *line + l.line() as usize - 1)
+                .unwrap_or(*line);
+            report.issue(
+                "yaml",
+                &Error::new("invalid YAML document".into()).with_code("BOXDB_YAML"),
+            );
+            let issue = report.issues.last_mut().unwrap();
+            issue.document = Some(index + 1);
+            issue.line = Some(location);
+            if report.issues.len() >= 1000 {
+                break;
+            }
+        }
+    }
+}
+
+pub(crate) type Rejected = (crate::RejectedDocument, Vec<u8>);
+
+fn parse_record(bytes: &[u8]) -> std::result::Result<Record, serde_saphyr::DeserializeError> {
+    serde_saphyr::from_slice_with_options(
+        bytes,
+        serde_saphyr::options! {
+            strict_booleans: true, reject_unsupported_tags: true,
+            budget: serde_saphyr::budget! {
+                max_documents: 1,
+                max_nodes: bytes.len().saturating_add(16),
+                max_events: bytes.len().saturating_mul(2).saturating_add(16),
+                max_total_scalar_bytes: MAX_SNAPSHOT,
+                max_total_comment_bytes: MAX_SNAPSHOT,
+            },
+        },
+    )
+}
+
+/// Recover only independently delimited documents. Metadata is never inferred.
+pub(crate) fn salvage(bytes: &[u8]) -> Result<(Connection, Vec<Rejected>)> {
+    if bytes.len() > MAX_SNAPSHOT {
+        return Err(Error::new("readable database exceeds 256 MiB limit".into()));
+    }
+    let mut parsed = vec![];
+    let mut rejected = vec![];
+    for (index, (line, fragment)) in documents(bytes).into_iter().enumerate() {
+        match parse_record(fragment) {
+            Ok(record) => parsed.push((index + 1, line, record, fragment)),
+            Err(_) => rejected.push((
+                crate::RejectedDocument {
+                    document: index + 1,
+                    line,
+                    code: "BOXDB_YAML".into(),
+                    message: "invalid YAML document".into(),
+                },
+                fragment.to_vec(),
+            )),
+        }
+    }
+    if !matches!(
+        parsed.first(),
+        Some((1, _, Record::Database { version: 3, .. }, _))
+    ) {
+        return Err(
+            Error::new("recovery requires an intact readable header".into())
+                .with_code("BOXDB_FORMAT"),
+        );
+    }
+    if parsed
+        .iter()
+        .skip(1)
+        .any(|(_, _, record, _)| matches!(record, Record::Database { .. }))
+    {
+        return Err(Error::new("duplicate readable header".into()).with_code("BOXDB_FORMAT"));
+    }
+    let mut base = vec![];
+    for (_, _, record, _) in &parsed {
+        if matches!(record, Record::Database { .. })
+            || matches!(record, Record::Schema { object_type, .. } if object_type == "table")
+            || matches!(record, Record::Row { table, .. } if table.starts_with("__boxdb_"))
+        {
+            write_document(&mut base, record)?;
+        }
+    }
+    let db = decode(&base)
+        .map_err(|error| error.with_context("recover readable schema and metadata"))?;
+    let types = schema::load(&db)?;
+    schema::install(&db, &types)?;
+    db.pragma_update(None, "foreign_keys", false)?;
+    db.execute_batch("BEGIN")?;
+    for (document, line, record, fragment) in &parsed {
+        let result = (|| -> Result<()> {
+            match record {
+                Record::Row {
+                    table,
+                    rowid: id,
+                    values,
+                } if !table.starts_with("__boxdb_") => {
+                    let columns = columns(&db, table)?;
+                    if columns.len() != values.len()
+                        || columns.iter().any(|name| !values.contains_key(name))
+                    {
+                        return Err(Error::new("row columns do not match table".into()));
+                    }
+                    let alias = rowid(&db, table)?;
+                    if id.is_some() && alias.is_none() {
+                        return Err(Error::new("unexpected rowid".into()));
+                    }
+                    for (column, value) in values {
+                        if let Some(ty) = types.get(&(table.clone(), column.clone())) {
+                            schema::decode(ty, value.0.clone())
+                                .map_err(|error| error.with_code("BOXDB_INVALID_VALUE"))?;
+                        }
+                    }
+                    let names = alias
+                        .into_iter()
+                        .chain(columns.iter().map(String::as_str))
+                        .map(quote)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let sql = format!(
+                        "INSERT INTO {}({names}) VALUES({})",
+                        quote(table),
+                        vec!["?"; columns.len() + usize::from(alias.is_some())].join(",")
+                    );
+                    let rowid = id.map(SqlValue::Integer).unwrap_or(SqlValue::Null);
+                    let parameters = alias
+                        .map(|_| &rowid)
+                        .into_iter()
+                        .chain(columns.iter().map(|name| &values[name].0))
+                        .cloned()
+                        .map(crate::decimal::WireValue::new);
+                    db.prepare_cached(&sql)?
+                        .execute(rusqlite::params_from_iter(parameters))?;
+                }
+                _ => {}
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            rejected.push((
+                crate::RejectedDocument {
+                    document: *document,
+                    line: *line,
+                    code: error.code().into(),
+                    message: "row document could not be restored".into(),
+                },
+                fragment.to_vec(),
+            ));
+        }
+    }
+    // Application triggers are installed after rows, so recovery does not replay writes.
+    for (document, line, record, fragment) in &parsed {
+        let result = (|| -> Result<()> {
+            match record {
+                Record::Schema {
+                    object_type,
+                    name,
+                    sql,
+                    ..
+                } if object_type != "table" => {
+                    if !["index", "view", "trigger"].contains(&object_type.as_str())
+                        || !sql.trim_start().to_ascii_uppercase().starts_with("CREATE ")
+                    {
+                        return Err(Error::new("invalid schema record".into()));
+                    }
+                    db.prepare(sql)?.execute([])?;
+                    if !db.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1 AND type=?2)",
+                        rusqlite::params![name, object_type],
+                        |row| row.get::<_, bool>(0),
+                    )? {
+                        return Err(Error::new("mismatched schema record".into()));
+                    }
+                }
+                Record::Sequence { table, value }
+                    if db.execute(
+                        "UPDATE sqlite_sequence SET seq=?1 WHERE name=?2",
+                        rusqlite::params![value, table],
+                    )? == 0 =>
+                {
+                    db.execute(
+                        "INSERT INTO sqlite_sequence VALUES(?1,?2)",
+                        rusqlite::params![table, value],
+                    )?;
+                }
+                _ => {}
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            rejected.push((
+                crate::RejectedDocument {
+                    document: *document,
+                    line: *line,
+                    code: error.code().into(),
+                    message: "schema or sequence document could not be restored".into(),
+                },
+                fragment.to_vec(),
+            ));
+        }
+    }
+    db.execute_batch("COMMIT")?;
+    rejected.sort_by_key(|(document, _)| document.document);
+    Ok((db, rejected))
+}
+
 /// Native SQLite cells have natural YAML scalars. BLOBs use an explicit hex
 /// mapping so text, byte arrays and numbers remain distinguishable on import.
 struct Cell(SqlValue);
@@ -270,7 +504,7 @@ fn columns(db: &Connection, table: &str) -> Result<Vec<String>> {
         .query_map([table], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?)
 }
-fn rowid(db: &Connection, table: &str) -> Result<Option<&'static str>> {
+pub(crate) fn rowid(db: &Connection, table: &str) -> Result<Option<&'static str>> {
     let without: bool = db.query_row(
         "SELECT wr FROM pragma_table_list WHERE schema='main' AND name=?1",
         [table],
@@ -523,7 +757,8 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
         return Err(Error::new("invalid readable format version".into()));
     };
     if *codec_version != libsqlite3_sys::wire::VERSION {
-        return Err(Error::new("unsupported BoxDB BLOB codec version".into()));
+        return Err(Error::new("unsupported BoxDB BLOB codec version".into())
+            .with_code("BOXDB_UNSUPPORTED_CODEC"));
     }
     if records
         .iter()

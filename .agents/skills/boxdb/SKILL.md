@@ -1,6 +1,6 @@
 ---
 name: boxdb
-description: Use BoxDB from Rust, TypeScript, Go or the CLI, including Drizzle, Better Auth and db0 integrations. Read the matching client guide before writing application queries, transactions, schemas or migrations. This skill covers application usage rather than BoxDB engine development.
+description: Use BoxDB from Rust, TypeScript, Go or the CLI, including Drizzle, Better Auth, db0, file diagnostics and recovery. Read the matching client guide before writing application queries, transactions, schemas or migrations. Covers application usage rather than BoxDB engine development.
 ---
 
 # Use BoxDB
@@ -21,7 +21,8 @@ Read only the guides relevant to the task.
   connection ownership and bigint values. Queries execute asynchronously.
 - Go: [packages/go/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/go/README.md).
   Use this for the cgo build, `database/sql`, connection pooling, contexts and
-  Scanner/Valuer types. Go native libraries must be built from a checkout.
+  Scanner/Valuer types. Use a prebuilt native library matching the Go module
+  version, or build it from a checkout.
 - Rust: [README.md](https://github.com/lebedev-nikita/boxdb/blob/main/README.md#language-clients)
   and the example and public API in [src/lib.rs](https://github.com/lebedev-nikita/boxdb/blob/main/src/lib.rs).
   In a checkout, use `cargo doc --no-deps --open` for the API reference.
@@ -78,10 +79,37 @@ boxdb schema dump database.yaml --format yaml > db/schema.yaml
 Read [migrations](https://github.com/lebedev-nikita/boxdb/blob/main/docs/migrations.md)
 for migration commands and schema export details.
 
+## Diagnose and recover files
+
+For corruption, invalid stored values or a failed restore, read
+[diagnostics and recovery](https://github.com/lebedev-nikita/boxdb/blob/main/docs/recovery.md)
+and [client errors](https://github.com/lebedev-nikita/boxdb/blob/main/docs/client-errors.md).
+Use the matching client's file-maintenance API or the CLI:
+
+```sh
+boxdb check data.db --full --json
+boxdb repair data.db repaired.db --rebuild-indexes --json
+boxdb recover damaged.db recovered.db --json
+```
+
+- Check an existing source; maintenance does not create a missing database.
+  Inspect both report `status` and `complete`, even when the API returns no error.
+  `incomplete` means checks could not finish, not proven corruption.
+- Repair rebuilds indexes from readable tables into a new binary file. Recovery
+  salvages available SQLite or YAML data and always reports possible loss.
+  Inspect output validation and warnings before using it. Keep rejected YAML
+  fragments in the reported `.rejected` file; they contain source data.
+- Use new destinations and preserve the source with its SQLite sidecars. Stop
+  writers before recovery. Native values require BoxDB's engine; do not assume
+  an ordinary `sqlite3` export/import preserves them.
+- Branch on error codes rather than message text. Physical corruption invalidates
+  the connection; close it and diagnose the file. An `unknown` operation outcome
+  can include applied writes, so do not blindly retry. Keep cleanup failures with
+  the original error.
+- Use Litestream for binary replication and restoration, then check the restored
+  file with BoxDB. Readable YAML needs a separate file-backup strategy.
+
 ## Further references
 
-For failure handling, read
-[client errors](https://github.com/lebedev-nikita/boxdb/blob/main/docs/client-errors.md)
-and branch on error codes rather than message text. For full-text, vector,
-Unicode or regexp queries, read
+For full-text, vector, Unicode or regexp queries, read
 [extensions](https://github.com/lebedev-nikita/boxdb/blob/main/docs/extensions.md).

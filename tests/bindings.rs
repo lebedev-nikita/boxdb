@@ -40,7 +40,10 @@ fn native_reads_reject_invalid_values_written_outside_boxdb() {
     sqlite
         .execute("INSERT INTO t VALUES('invalid json')", [])
         .unwrap();
-    assert!(db.execute_native("SELECT j FROM t", &[]).is_err());
+    let error = db.execute_native("SELECT j FROM t", &[]).unwrap_err();
+    assert_eq!(error.code(), "BOXDB_INVALID_VALUE");
+    assert_eq!(error.operation(), Some(boxdb::ErrorOperation::Read));
+    assert_eq!(error.connection_usable(), Some(true));
 }
 
 #[test]

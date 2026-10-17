@@ -7,7 +7,21 @@ export {
   type TransactionHandle,
   type TransactionOptions,
 } from "./database.js";
-export { BoxDBError, findBoxDBError, type BoxDBErrorOptions } from "./error.js";
+export {
+  BoxDBError,
+  findBoxDBError,
+  type BoxDBErrorOptions,
+  type ErrorOperation,
+  type OperationOutcome,
+} from "./error.js";
+export type {
+  CheckMode,
+  CheckStatus,
+  CheckIssue,
+  CheckReport,
+  RejectedDocument,
+  RecoveryReport,
+} from "./maintenance.js";
 export type {
   BoxDBOptions,
   Parameters,

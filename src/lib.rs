@@ -23,8 +23,12 @@ use std::{
     },
     time::Duration,
 };
+mod diagnostics;
 mod error;
-pub use error::Error;
+pub use diagnostics::{Check, CheckIssue, CheckMode, CheckReport, CheckStatus};
+mod recovery;
+pub use error::{Error, ErrorOperation, OperationOutcome};
+pub use recovery::{RecoveryReport, RejectedDocument};
 pub type Result<T> = std::result::Result<T, Error>;
 pub mod migrations;
 pub mod types;
@@ -40,7 +44,8 @@ mod storage;
 #[cfg(doctest)]
 #[doc = include_str!("../tests/removed_snapshot_api.md")]
 mod removed_snapshot_api {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Format {
     Binary,
     Readable,
@@ -214,7 +219,16 @@ impl Database {
         format: Format,
         options: OpenOptions,
     ) -> Result<Self> {
-        let path = path.as_ref();
+        Self::open_inner(path.as_ref(), format, options).map_err(|error| {
+            error.state(
+                ErrorOperation::Open,
+                OperationOutcome::Unknown,
+                false,
+                false,
+            )
+        })
+    }
+    fn open_inner(path: &Path, format: Format, options: OpenOptions) -> Result<Self> {
         let detected = if path.exists() && path.metadata()?.len() > 0 {
             use std::io::Read;
             let mut header = [0u8; 16];
@@ -292,7 +306,8 @@ impl Database {
     pub fn query_only(&self, enabled: bool) -> Result<bool> {
         if self.poisoned {
             return Err(Error::new(
-                "connection must be reopened after a publication failure".into(),
+                "connection is unavailable; close it and check the database before reopening"
+                    .into(),
             )
             .with_code("BOXDB_UNAVAILABLE"));
         }
@@ -416,8 +431,18 @@ impl Database {
         }
         let mut results = vec![];
         for statement in split(sql)? {
-            before_statement(self)?;
-            results.push(self.execute_one(statement, &[], true)?);
+            let result =
+                before_statement(self).and_then(|()| self.execute_one(statement, &[], true));
+            match result {
+                Ok(result) => results.push(result),
+                Err(error) => {
+                    return Err(if results.is_empty() {
+                        error
+                    } else {
+                        error.script_failure()
+                    });
+                }
+            }
         }
         Ok(results)
     }
@@ -437,9 +462,16 @@ impl Database {
     /// Prepare a statement for validation and metadata, without running it.
     /// Execution uses the same connection's SQLite prepared statement cache.
     pub fn statement_info(&mut self, sql: &str) -> Result<StatementInfo> {
+        let result = self.statement_info_inner(sql);
+        result.map_err(|error| {
+            self.operation_error(error, ErrorOperation::Prepare, OperationOutcome::NotApplied)
+        })
+    }
+    fn statement_info_inner(&mut self, sql: &str) -> Result<StatementInfo> {
         if self.poisoned {
             return Err(Error::new(
-                "connection must be reopened after a publication failure".into(),
+                "connection is unavailable; close it and check the database before reopening"
+                    .into(),
             )
             .with_code("BOXDB_UNAVAILABLE"));
         }
@@ -486,9 +518,61 @@ impl Database {
         self.execute_one(sql, &values, typed)
     }
     fn execute_one(&mut self, sql: &str, params: &[SqlValue], typed: bool) -> Result<QueryResult> {
+        let result = self.execute_one_inner(sql, params, typed);
+        result.map_err(|error| {
+            let operation = match schema::keyword(sql).to_ascii_uppercase().as_str() {
+                "SELECT" | "VALUES" | "EXPLAIN" => ErrorOperation::Read,
+                "COMMIT" | "END" => ErrorOperation::Commit,
+                "ROLLBACK" => ErrorOperation::Rollback,
+                _ => ErrorOperation::Write,
+            };
+            let outcome = if operation == ErrorOperation::Read {
+                OperationOutcome::NotApplied
+            } else {
+                OperationOutcome::Unknown
+            };
+            self.operation_error(error, operation, outcome)
+        })
+    }
+    fn operation_error(
+        &mut self,
+        error: Error,
+        operation: ErrorOperation,
+        outcome: OperationOutcome,
+    ) -> Error {
+        if error.fatal() {
+            self.poisoned = true;
+        }
+        error.state(operation, outcome, self.in_transaction(), !self.poisoned)
+    }
+    fn cleanup_failure(&mut self, mut error: Error, sql: &str, refresh: bool) -> Error {
+        if !self.connection.is_autocommit()
+            && let Err(cleanup) = self.connection.execute_batch(sql)
+        {
+            self.poisoned = true;
+            error = error.cleanup(Error::from(cleanup).state(
+                ErrorOperation::Rollback,
+                OperationOutcome::Unknown,
+                self.in_transaction(),
+                false,
+            ));
+        }
+        if refresh && let Err(cleanup) = self.refresh(true) {
+            self.poisoned = true;
+            error = error.cleanup(cleanup);
+        }
+        error
+    }
+    fn execute_one_inner(
+        &mut self,
+        sql: &str,
+        params: &[SqlValue],
+        typed: bool,
+    ) -> Result<QueryResult> {
         if self.poisoned {
             return Err(Error::new(
-                "connection must be reopened after a publication failure".into(),
+                "connection is unavailable; close it and check the database before reopening"
+                    .into(),
             )
             .with_code("BOXDB_UNAVAILABLE"));
         }
@@ -532,12 +616,13 @@ impl Database {
                     .execute_batch("RELEASE __boxdb_declaration")?;
                 Ok(empty())
             })();
-            if result.is_err() {
-                let _ = self
-                    .connection
-                    .execute_batch("ROLLBACK TO __boxdb_declaration; RELEASE __boxdb_declaration");
-                let _ = self.refresh(true);
-            }
+            let result = result.map_err(|error| {
+                self.cleanup_failure(
+                    error,
+                    "ROLLBACK TO __boxdb_declaration; RELEASE __boxdb_declaration",
+                    true,
+                )
+            });
             if result.is_ok() {
                 self.publish_readable()?;
             }
@@ -586,16 +671,16 @@ impl Database {
         let result = self
             .run(sql, params, typed)
             .map(|result| if ddl { empty() } else { result });
-        if result.is_err() {
-            if guarded && !self.connection.is_autocommit() {
-                let _ = self
-                    .connection
-                    .execute_batch("ROLLBACK TO __boxdb_write; RELEASE __boxdb_write");
-            }
-            if ddl {
-                let _ = self.refresh(true);
-            }
-            return result;
+        if let Err(error) = result {
+            return Err(if guarded {
+                self.cleanup_failure(
+                    error,
+                    "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
+                    ddl,
+                )
+            } else {
+                error
+            });
         }
         let completion = (|| -> Result<()> {
             if ddl {
@@ -644,13 +729,11 @@ impl Database {
             Ok(())
         })();
         if let Err(e) = completion {
-            if guarded && !self.connection.is_autocommit() {
-                let _ = self
-                    .connection
-                    .execute_batch("ROLLBACK TO __boxdb_write; RELEASE __boxdb_write");
-                let _ = self.refresh(true);
-            }
-            return Err(e);
+            return Err(if guarded {
+                self.cleanup_failure(e, "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write", true)
+            } else {
+                e
+            });
         }
         if control {
             self.write_transaction_ready = false;
@@ -740,9 +823,11 @@ impl Database {
                     values.push(
                         if let Some(Some(ty)) = hints.as_ref().and_then(|h| h.get(i)) {
                             if typed {
-                                schema::decode(ty, value)?
+                                schema::decode(ty, value)
+                                    .map_err(|error| error.with_code("BOXDB_INVALID_VALUE"))?
                             } else {
-                                schema::decode(ty, value.clone())?;
+                                schema::decode(ty, value.clone())
+                                    .map_err(|error| error.with_code("BOXDB_INVALID_VALUE"))?;
                                 schema::native(value)
                             }
                         } else {

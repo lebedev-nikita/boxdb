@@ -16,3 +16,11 @@ headers. Builds do not download extension sources.
 
 The patched SQLite engine is vendored in `libsqlite3-sys/`; see its
 [build and source notes](libsqlite3-sys/README.md).
+
+`sqlite-recovery/` contains `sqlite3recover.c`, `sqlite3recover.h` and `dbdata.c`
+from the official [SQLite 3.53.2 source archive](https://sqlite.org/2026/sqlite-src-3530200.zip),
+under SQLite's public-domain blessing in each file. `dbdata.c` returns physical
+BLOB cells through BoxDB's wire transport, preserving native tags and BYTEA.
+`sqlite3recover.c` configures its private output connection with BoxDB's bundled
+functions and foreign-key checking disabled during salvage. The engine enables
+`SQLITE_ENABLE_DBPAGE_VTAB` for recovery. Page and record encodings are unchanged.

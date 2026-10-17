@@ -1,5 +1,6 @@
 import { Query, fragment, identifier, type Interpolation } from "./sql.js";
-import { BoxDBError } from "./error.js";
+import { BoxDBError, fromNativeError } from "./error.js";
+import { checkFile, repairFile, recoverFile } from "./maintenance.js";
 import type { BoxDBOptions, Parameters, QueryResult } from "./types.js";
 import {
   NativeDatabase,
@@ -196,20 +197,7 @@ class Connection {
         this.inTransaction = (cause as { inTransaction: boolean }).inTransaction;
       }
       signal?.throwIfAborted();
-      const error = cause as Error & {
-        code?: string;
-        resultCode?: number;
-        extendedCode?: number;
-      };
-      throw new BoxDBError(error instanceof Error ? error.message : String(cause), {
-        cause,
-        code:
-          typeof error?.code === "string" && error.code.startsWith("BOXDB_")
-            ? error.code
-            : "BOXDB_INTERNAL",
-        ...(typeof error?.resultCode === "number" ? { resultCode: error.resultCode } : {}),
-        ...(typeof error?.extendedCode === "number" ? { extendedCode: error.extendedCode } : {}),
-      });
+      throw fromNativeError(cause);
     } finally {
       signal?.removeEventListener("abort", cancel);
     }
@@ -456,6 +444,9 @@ class TransactionSession extends Queries implements TransactionHandle {
 
 /** A connection owned by a dedicated native thread. */
 export class BoxDB extends Queries {
+  static readonly checkFile = checkFile;
+  static readonly repairFile = repairFile;
+  static readonly recoverFile = recoverFile;
   readonly name: string;
   readonly memory: boolean;
   private readonly transactionTimeoutMs: number;

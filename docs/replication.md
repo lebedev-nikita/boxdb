@@ -17,6 +17,10 @@ litestream restore -o restored.db file:///absolute/path/to/replica
 boxdb restored.db -e 'SELECT * FROM accounts'
 ```
 
+Run `boxdb check restored.db --full` before returning a restored file to service;
+it checks BoxDB metadata and logical values as well as SQLite structure. See
+[diagnostics and recovery](recovery.md).
+
 Keep the replication process running alongside your application. To sync once,
 use `litestream replicate -once data.db file:///absolute/path/to/replica`.
 Restore into a new destination. For S3 and other remote storage, configure

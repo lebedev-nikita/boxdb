@@ -74,20 +74,35 @@ impl ReadableFile {
         self.cache.watch(db)
     }
     pub fn publish(&self, db: &Connection) -> Result<()> {
-        self.cache.publish(db, |snapshot| {
-            let parent = self.path.parent().unwrap();
-            let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-            {
-                let mut writer = BufWriter::with_capacity(64 * 1024, temp.as_file_mut());
-                snapshot.write(&mut writer)?;
-                writer.flush()?;
-            }
-            temp.as_file().sync_all()?;
-            temp.persist(&self.path)
-                .map_err(|e| Error::from(e.error).with_context("publish readable database"))?;
-            File::open(parent)?.sync_all()?;
-            Ok(())
-        })
+        let mut replaced = false;
+        self.cache
+            .publish(db, |snapshot| {
+                let parent = self.path.parent().unwrap();
+                let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+                {
+                    let mut writer = BufWriter::with_capacity(64 * 1024, temp.as_file_mut());
+                    snapshot.write(&mut writer)?;
+                    writer.flush()?;
+                }
+                temp.as_file().sync_all()?;
+                temp.persist(&self.path)
+                    .map_err(|e| Error::from(e.error).with_context("publish readable database"))?;
+                replaced = true;
+                File::open(parent)?.sync_all()?;
+                Ok(())
+            })
+            .map_err(|error| {
+                error.state(
+                    crate::ErrorOperation::Publish,
+                    if replaced {
+                        crate::OperationOutcome::Unknown
+                    } else {
+                        crate::OperationOutcome::NotApplied
+                    },
+                    !db.is_autocommit(),
+                    false,
+                )
+            })
     }
 }
 pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<()> {

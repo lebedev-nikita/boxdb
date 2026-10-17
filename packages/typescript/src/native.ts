@@ -41,6 +41,12 @@ if (platform !== "darwin-arm64" && platform !== "linux-x64") {
   );
 }
 const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node`) as {
+  maintainFile(
+    operation: string,
+    source: string,
+    destination: string | undefined,
+    mode: string,
+  ): Promise<string>;
   NativeMigrationSet: new (files: readonly MigrationFile[]) => NativeMigrationSet;
   NativeDatabase: new (
     path: string,
@@ -51,3 +57,4 @@ const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node
 };
 export const NativeDatabase = binding.NativeDatabase;
 export const NativeMigrationSet = binding.NativeMigrationSet;
+export const maintainFile = binding.maintainFile;

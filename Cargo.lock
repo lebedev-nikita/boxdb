@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "bigdecimal",
  "boxdb-rusqlite",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb-go"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "boxdb",
  "serde",
@@ -208,17 +208,18 @@ dependencies = [
 
 [[package]]
 name = "boxdb-node"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "boxdb",
  "napi",
  "napi-build",
  "napi-derive",
+ "serde_json",
 ]
 
 [[package]]
 name = "boxdb-rusqlite"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "bencher",
  "bitflags 2.13.2",
@@ -248,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "boxdb-sqlite-sys"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "bigdecimal",
  "bindgen",
