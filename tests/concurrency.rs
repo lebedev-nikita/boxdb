@@ -266,3 +266,38 @@ fn cancelling_metadata_preparation_keeps_the_connection_idle_and_reusable() {
         db.execute("SELECT j FROM t").unwrap();
     }
 }
+
+#[test]
+fn cancelling_metadata_refresh_during_a_select_preserves_the_database() {
+    use std::cell::{Cell, RefCell};
+    thread_local! { static REMAINING: Cell<usize> = const { Cell::new(0) }; }
+    thread_local! { static INTERRUPT: RefCell<Option<boxdb::InterruptHandle>> = const { RefCell::new(None) }; }
+    fn cancelled() -> bool {
+        REMAINING.with(|remaining| {
+            remaining.set(remaining.get().saturating_sub(1));
+            if remaining.get() == 0 {
+                INTERRUPT.with(|interrupt| interrupt.borrow().as_ref().unwrap().interrupt());
+            }
+        });
+        false
+    }
+    for steps in 1..=150 {
+        let mut db = Database::memory();
+        db.execute("CREATE TABLE t(j JSON); INSERT INTO t VALUES('{}')")
+            .unwrap();
+        INTERRUPT.with(|interrupt| *interrupt.borrow_mut() = Some(db.interrupt_handle()));
+        REMAINING.with(|remaining| remaining.set(steps));
+        db.progress_handler(1, Some(cancelled)).unwrap();
+        let _ = db.execute("SELECT j FROM t");
+        db.progress_handler(0, None).unwrap();
+        assert!(
+            !db.in_transaction(),
+            "transaction leaked after {steps} steps"
+        );
+        assert_eq!(
+            db.execute("SELECT j FROM t").unwrap()[0].rows,
+            vec![vec![Value::Json(serde_json::json!({}))]],
+            "database must remain usable after {steps} steps"
+        );
+    }
+}
