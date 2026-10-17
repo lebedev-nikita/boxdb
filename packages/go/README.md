@@ -14,7 +14,7 @@ the native library matching the Go module version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.3.2
+BOXDB_GO_VERSION=0.4.0
 BOXDB_GO_PLATFORM=darwin-arm64 # Use linux-x64 for Linux on amd64.
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
@@ -24,7 +24,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.3.2
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.4.0
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The
