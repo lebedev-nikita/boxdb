@@ -84,4 +84,33 @@ See the [TypeScript](../packages/typescript/README.md) and
 [Go](../packages/go/README.md) guides for usage. Contract coverage lives in the
 [Rust tests](../tests/errors.rs), [Go tests](../packages/go/boxdb_test.go), and
 [TypeScript tests](../packages/typescript/test/errors.test.ts).
-The CLI currently reports human-readable errors on stderr with exit status 1.
+The CLI reports errors on stderr with exit status 1. `--json` emits structured
+errors; maintenance reports are written separately to stdout.
+
+## Operation state and unusable connections
+
+Core connection errors retain the operation, outcome, transaction state and
+connection usability when known. Rust exposes `operation()`, `outcome()`,
+`in_transaction()`, `connection_usable()` and `cleanup_errors()`. TypeScript uses
+`operation`, `outcome`, `inTransaction`, `connectionUsable` and `cleanupErrors`;
+Go uses `Operation`, `Outcome`, `InTransaction`, `ConnectionUsable` and `Cleanup`.
+Missing state remains absent rather than being guessed.
+
+Read/preparation failures report `not_applied`. Failed writes conservatively
+report `unknown`, so callers must not blindly retry them. A failed SQL script can
+have committed earlier statements; its outcome is `unknown` even if its final
+statement was a read. Native cleanup failures remain attached to the primary
+error. No write replay is requested by the driver after an operation fails.
+
+`BOXDB_CORRUPT` and `BOXDB_NOTADB` invalidate the normal connection. Further
+queries and preparation return `BOXDB_UNAVAILABLE`; Go also marks that connection
+invalid for the pool. Constraint and argument errors do not invalidate it.
+`BOXDB_METADATA`, `BOXDB_UNSUPPORTED_CODEC` and `BOXDB_FORMAT` distinguish schema
+metadata, codec-version and file-format problems from engine corruption.
+Invalid projected logical values use `BOXDB_INVALID_VALUE`, keeping stored-data
+failures distinct from invalid query arguments.
+
+Readable publication failures invalidate the connection. A failure before file
+replacement reports `not_applied`; a failure after replacement, such as directory
+synchronization failure, reports `unknown`. Reopen and inspect durable data before
+deciding whether to repeat an operation. See [file diagnostics](recovery.md).

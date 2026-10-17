@@ -77,6 +77,10 @@ storage executes in memory and publishes a complete snapshot on commit, with
 one writer per file. See [storage formats](docs/storage.md) and
 [Litestream replication](docs/replication.md).
 
+Use `boxdb check data.db --full` to diagnose an existing file. Explicit `repair`
+and `recover` commands write to new destinations; see
+[diagnostics and recovery](docs/recovery.md) for their limits and client APIs.
+
 ## Language clients
 
 Install the experimental Rust library from crates.io:

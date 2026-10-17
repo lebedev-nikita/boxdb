@@ -209,3 +209,10 @@ through `errors.Is`; an interrupted native call also retains its BoxDB error
 through `errors.As`. A completed unrelated failure is not replaced by a racing
 cancellation. Transaction completion and cleanup can return joined errors.
 See the [error contract](../../docs/client-errors.md).
+
+File maintenance uses `boxdb.CheckFile(path, boxdb.CheckFull)`,
+`boxdb.RepairFile(source, destination)` and
+`boxdb.RecoverFile(source, destination, boxdb.Binary)`. Each returns a report and
+an error without opening a database/sql pool. Inspect the report even when the
+error is nil: recovery can lose data, and checks can report invalid or incomplete
+results. See [diagnostics and recovery](../../docs/recovery.md).

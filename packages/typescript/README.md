@@ -218,6 +218,15 @@ waiting for a transaction; cleanup always gets through.
 wait and execution durations in milliseconds. A duration covers a complete
 scheduled operation, including preparation and native execution.
 
+## File diagnostics and recovery
+
+For existing files, use `await BoxDB.checkFile(path, "full")`,
+`await BoxDB.repairFile(source, destination)` or
+`await BoxDB.recoverFile(source, destination, "binary")` independently of a live
+client. Reports distinguish invalid data from incomplete checks. Recovery can
+lose data even when its output passes validation; see
+[diagnostics and recovery](../../docs/recovery.md).
+
 ## SQL migrations
 
 ```ts

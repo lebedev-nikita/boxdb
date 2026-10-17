@@ -129,6 +129,59 @@ fn string(value: String) -> *mut c_char {
         .into_raw()
 }
 
+/// Execute file maintenance without initializing a normal BoxDB connection.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated JSON object.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn boxdb_go_maintenance(request: *const c_char) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        #[derive(Deserialize)]
+        struct FileCommand {
+            operation: String,
+            source: String,
+            destination: Option<String>,
+            mode: String,
+        }
+        let request = unsafe { CStr::from_ptr(request) }
+            .to_str()
+            .map_err(Error::validation)?;
+        let command: FileCommand = serde_json::from_str(request)?;
+        let destination = || {
+            command
+                .destination
+                .as_ref()
+                .ok_or_else(|| Error::new("missing destination".into()))
+        };
+        match command.operation.as_str() {
+            "check" => Ok(json!(Database::check_file(
+                command.source,
+                match command.mode.as_str() {
+                    "quick" => boxdb::CheckMode::Quick,
+                    "full" => boxdb::CheckMode::Full,
+                    _ => return Err(Error::new("mode must be quick or full".into())),
+                }
+            )?)),
+            "repair" => Ok(json!(Database::repair_file(
+                &command.source,
+                destination()?
+            )?)),
+            "recover" => Ok(json!(Database::recover_file(
+                &command.source,
+                destination()?,
+                match command.mode.as_str() {
+                    "binary" => Format::Binary,
+                    "readable" => Format::Readable,
+                    _ => return Err(Error::new("format must be binary or readable".into())),
+                }
+            )?)),
+            _ => Err(Error::new("unknown maintenance operation".into())),
+        }
+    }))
+    .unwrap_or_else(|_| Err(Error::internal("file maintenance panicked")));
+    string(response(result))
+}
+
 /// Validate SQL documents without opening a database.
 ///
 /// # Safety

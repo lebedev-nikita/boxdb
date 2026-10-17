@@ -2,6 +2,47 @@ use boxdb::{Database, Format, Value};
 use std::error::Error as _;
 
 #[test]
+fn physical_corruption_invalidates_the_connection_and_keeps_operation_state() {
+    use std::io::{Seek, SeekFrom, Write};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("data.db");
+    let mut db = Database::open(&path, Format::Binary).unwrap();
+    db.execute("CREATE TABLE items(id INTEGER PRIMARY KEY); INSERT INTO items VALUES(1)")
+        .unwrap();
+    drop(db);
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let root: i64 = raw
+        .query_row(
+            "SELECT rootpage FROM sqlite_schema WHERE name='items'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let page_size: i64 = raw.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap();
+    drop(raw);
+    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.seek(SeekFrom::Start(((root - 1) * page_size) as u64))
+        .unwrap();
+    file.write_all(&[0xff]).unwrap();
+    drop(file);
+    let mut db = Database::open(&path, Format::Binary).unwrap();
+    let error = db.execute("SELECT * FROM items").unwrap_err();
+    assert_eq!(error.code(), "BOXDB_CORRUPT");
+    assert_eq!(error.operation(), Some(boxdb::ErrorOperation::Read));
+    assert_eq!(error.connection_usable(), Some(false));
+    assert_eq!(error.in_transaction(), Some(false));
+    assert_eq!(error.outcome(), Some(boxdb::OperationOutcome::NotApplied));
+    assert_eq!(
+        db.execute("SELECT 1").unwrap_err().code(),
+        "BOXDB_UNAVAILABLE"
+    );
+    assert_eq!(
+        db.statement_info("SELECT 1").unwrap_err().code(),
+        "BOXDB_UNAVAILABLE"
+    );
+}
+
+#[test]
 fn unique_errors_preserve_boxdb_codes_and_source() {
     let mut db = Database::try_memory().unwrap();
     db.execute("CREATE TABLE users(name TEXT UNIQUE); INSERT INTO users VALUES('Ada')")
@@ -15,6 +56,21 @@ fn unique_errors_preserve_boxdb_codes_and_source() {
     assert_eq!(error.extended_code(), Some(2067));
     assert_eq!(error.to_string(), "UNIQUE constraint failed: users.name");
     assert!(error.source().unwrap().is::<rusqlite::Error>());
+}
+
+#[test]
+fn failed_scripts_do_not_claim_that_earlier_statements_were_not_applied() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE items(id INTEGER PRIMARY KEY)")
+        .unwrap();
+    let error = db
+        .execute("INSERT INTO items VALUES(1); SELECT * FROM missing")
+        .unwrap_err();
+    assert_eq!(error.outcome(), Some(boxdb::OperationOutcome::Unknown));
+    assert_eq!(
+        db.execute("SELECT id FROM items").unwrap()[0].rows,
+        vec![vec![Value::Integer(1)]]
+    );
 }
 
 #[test]
@@ -173,6 +229,9 @@ fn publication_failures_keep_io_sources_and_make_the_connection_unavailable() {
     let error = db.execute("INSERT INTO t VALUES(1)").unwrap_err();
     assert_eq!(error.code(), "BOXDB_IO");
     assert!(error.source().unwrap().is::<std::io::Error>());
+    assert_eq!(error.operation(), Some(boxdb::ErrorOperation::Publish));
+    assert_eq!(error.outcome(), Some(boxdb::OperationOutcome::NotApplied));
+    assert_eq!(error.connection_usable(), Some(false));
     assert_eq!(
         db.execute("SELECT * FROM t").unwrap_err().code(),
         "BOXDB_UNAVAILABLE"

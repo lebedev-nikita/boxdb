@@ -12,6 +12,7 @@ include = [
     "/src/**",
     "/build.rs",
     "/vendor/sqlean/**",
+    "/vendor/sqlite-recovery/**",
     "/tests/*.rs",
     "/tests/test_*.py",
     "/tests/common/**",

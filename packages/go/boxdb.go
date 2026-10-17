@@ -17,11 +17,16 @@ import (
 
 // Error is a failure reported by the BoxDB core.
 type Error struct {
-	Message      string `json:"message"`
-	Code         string `json:"code"`
-	ResultCode   *int   `json:"result_code"`
-	ExtendedCode *int   `json:"extended_code"`
-	cause        error
+	Message          string   `json:"message"`
+	Code             string   `json:"code"`
+	ResultCode       *int     `json:"result_code"`
+	ExtendedCode     *int     `json:"extended_code"`
+	Operation        string   `json:"operation"`
+	Outcome          string   `json:"outcome"`
+	InTransaction    *bool    `json:"in_transaction"`
+	ConnectionUsable *bool    `json:"connection_usable"`
+	Cleanup          []*Error `json:"cleanup"`
+	cause            error
 }
 
 func (e *Error) Error() string { return "boxdb: " + e.Message }
@@ -176,7 +181,7 @@ func (c *conn) reset(ctx context.Context) error {
 	}
 	return nil
 }
-func (c *conn) IsValid() bool { return c.native != nil && !c.invalid }
+func (c *conn) IsValid() bool { return c.native != nil && !c.invalid && !c.native.invalid }
 
 type transaction struct{ conn *conn }
 

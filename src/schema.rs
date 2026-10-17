@@ -50,7 +50,8 @@ fn check_codec(db: &Connection) -> Result<()> {
         .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if versions != [(1, libsqlite3_sys::wire::VERSION)] {
-        return Err(Error::new("unsupported BoxDB BLOB codec version".into()));
+        return Err(Error::new("unsupported BoxDB BLOB codec version".into())
+            .with_code("BOXDB_UNSUPPORTED_CODEC"));
     }
     Ok(())
 }
@@ -401,7 +402,8 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
         if row.get::<_, i64>(3)? != 1 || actual.as_deref() != Some(&expected) {
             return Err(Error::new(format!(
                 "BoxDB metadata does not match schema: {table}; change typed schemas through BoxDB"
-            )));
+            ))
+            .with_code("BOXDB_METADATA"));
         }
         let exists: bool = db.query_row(
             "SELECT EXISTS(SELECT 1 FROM pragma_table_xinfo(?1) WHERE name=?2)",
@@ -409,11 +411,13 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
             |r| r.get(0),
         )?;
         if !exists {
-            return Err(Error::new(
-                "BoxDB metadata references a missing column".into(),
-            ));
+            return Err(
+                Error::new("BoxDB metadata references a missing column".into())
+                    .with_code("BOXDB_METADATA"),
+            );
         }
-        let ty: Type = serde_json::from_str(&text)?;
+        let ty: Type = serde_json::from_str(&text)
+            .map_err(|error| Error::validation(error).with_code("BOXDB_METADATA"))?;
         if matches!(ty, Type::Decimal(_)) {
             let physical: String = db.query_row(
                 "SELECT type FROM pragma_table_xinfo(?1) WHERE name=?2",
@@ -426,7 +430,8 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
                 )));
             }
         }
-        ty.validate(&Value::Null)?;
+        ty.validate(&Value::Null)
+            .map_err(|error| error.with_code("BOXDB_METADATA"))?;
         types.insert((table, column), ty);
     }
     Ok(types)

@@ -57,7 +57,10 @@ func (db *nativeDB) callContext(ctx context.Context, command any, out any) error
 	return err
 }
 
-type nativeDB struct{ handle *C.boxdb_go_handle }
+type nativeDB struct {
+	handle  *C.boxdb_go_handle
+	invalid bool
+}
 
 func openNative(path string, readable bool) (*nativeDB, error) {
 	cpath := C.CString(path)
@@ -83,7 +86,22 @@ func (db *nativeDB) call(command any, out any) error {
 	request := C.CString(string(data))
 	defer C.free(unsafe.Pointer(request))
 	answer := C.boxdb_go_call(db.handle, request)
-	return decodeNative(answer, out)
+	err = decodeNative(answer, out)
+	var failure *Error
+	if errors.As(err, &failure) && failure.ConnectionUsable != nil && !*failure.ConnectionUsable {
+		db.invalid = true
+	}
+	return err
+}
+
+func nativeMaintenance(command any, out any) error {
+	data, err := json.Marshal(command)
+	if err != nil {
+		return &Error{Code: "BOXDB_VALIDATION", Message: err.Error(), cause: err}
+	}
+	request := C.CString(string(data))
+	defer C.free(unsafe.Pointer(request))
+	return decodeNative(C.boxdb_go_maintenance(request), out)
 }
 
 func validateMigrations(files []MigrationFile) error {

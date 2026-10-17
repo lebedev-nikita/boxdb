@@ -1,5 +1,37 @@
 use rusqlite::ffi;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorOperation {
+    Open,
+    Prepare,
+    Read,
+    Write,
+    Commit,
+    Rollback,
+    Publish,
+    Check,
+    Repair,
+    Recover,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationOutcome {
+    NotApplied,
+    Pending,
+    Committed,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+struct State {
+    operation: Option<ErrorOperation>,
+    outcome: Option<OperationOutcome>,
+    in_transaction: Option<bool>,
+    connection_usable: Option<bool>,
+}
+
 /// A BoxDB failure retaining its original cause and engine result codes.
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
@@ -8,6 +40,8 @@ pub struct Error {
     #[source]
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
     code: &'static str,
+    state: State,
+    cleanup: Vec<Error>,
 }
 
 impl Error {
@@ -16,6 +50,8 @@ impl Error {
             message,
             source: None,
             code: "BOXDB_VALIDATION",
+            state: State::default(),
+            cleanup: vec![],
         }
     }
 
@@ -49,6 +85,56 @@ impl Error {
             _ => None,
         }
     }
+
+    pub fn operation(&self) -> Option<ErrorOperation> {
+        self.state.operation
+    }
+    pub fn outcome(&self) -> Option<OperationOutcome> {
+        self.state.outcome
+    }
+    pub fn in_transaction(&self) -> Option<bool> {
+        self.state.in_transaction
+    }
+    pub fn connection_usable(&self) -> Option<bool> {
+        self.state.connection_usable
+    }
+    pub fn cleanup_errors(&self) -> &[Error] {
+        &self.cleanup
+    }
+
+    pub(crate) fn state(
+        mut self,
+        operation: ErrorOperation,
+        outcome: OperationOutcome,
+        in_transaction: bool,
+        usable: bool,
+    ) -> Self {
+        if self.state.operation.is_none() {
+            self.state.operation = Some(operation);
+        }
+        if self.state.outcome.is_none() {
+            self.state.outcome = Some(outcome);
+        }
+        self.state.in_transaction = Some(in_transaction);
+        self.state.connection_usable = Some(usable);
+        self
+    }
+
+    pub(crate) fn cleanup(mut self, error: Error) -> Self {
+        self.cleanup.push(error);
+        self
+    }
+    pub(crate) fn script_failure(mut self) -> Self {
+        self.state.outcome = Some(OperationOutcome::Unknown);
+        self
+    }
+
+    pub(crate) fn fatal(&self) -> bool {
+        matches!(
+            self.result_code(),
+            Some(ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB)
+        )
+    }
 }
 
 impl Error {
@@ -73,6 +159,8 @@ impl Error {
             message: error.to_string(),
             source: Some(Box::new(error)),
             code,
+            state: State::default(),
+            cleanup: vec![],
         }
     }
 
@@ -115,12 +203,17 @@ impl serde::Serialize for Error {
             code: &'static str,
             result_code: Option<i32>,
             extended_code: Option<i32>,
+            #[serde(flatten)]
+            state: State,
+            cleanup: &'a [Error],
         }
         Details {
             message: &self.message,
             code: self.code(),
             result_code: self.result_code(),
             extended_code: self.extended_code(),
+            state: self.state,
+            cleanup: &self.cleanup,
         }
         .serialize(serializer)
     }
