@@ -4,6 +4,79 @@ mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
+fn boolean_columns_use_yaml_booleans_and_roundtrip_through_updates() {
+    let temp = tempfile::tempdir().unwrap();
+    let binary = temp.path().join("source.db");
+    let readable = temp.path().join("data.yaml");
+    let mut db = Database::open(&binary, Format::Binary).unwrap();
+    db.execute("CREATE TABLE flags(id INT64 PRIMARY KEY,active BOOLEAN,alias BOOL,n INTEGER,untyped ANY); INSERT INTO flags VALUES(1,TRUE,FALSE,1,0),(2,FALSE,TRUE,0,1),(3,NULL,NULL,NULL,NULL)").unwrap();
+    let query = "SELECT * FROM flags ORDER BY id";
+    let expected = db.execute(query).unwrap();
+    Database::convert(&binary, &readable, Format::Readable).unwrap();
+    let bytes = std::fs::read(&readable).unwrap();
+    let documents: Vec<serde_json::Value> = serde_saphyr::from_slice_multiple(&bytes).unwrap();
+    let rows: Vec<_> = documents
+        .iter()
+        .filter(|doc| doc["kind"] == "row" && doc["table"] == "flags")
+        .map(|doc| doc["values"].clone())
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            serde_json::json!({"id": 1, "active": true, "alias": false, "n": 1, "untyped": 0}),
+            serde_json::json!({"id": 2, "active": false, "alias": true, "n": 0, "untyped": 1}),
+            serde_json::json!({"id": 3, "active": null, "alias": null, "n": null, "untyped": null}),
+        ]
+    );
+    let mut restored = Database::open(&readable, Format::Readable).unwrap();
+    assert_eq!(restored.execute(query).unwrap(), expected);
+    restored
+        .execute("UPDATE flags SET active=NOT active,alias=NOT alias WHERE id<3")
+        .unwrap();
+    let yaml = std::fs::read_to_string(&readable).unwrap();
+    assert!(yaml.contains("  active: true\n"));
+    assert!(yaml.contains("  active: false\n"));
+    assert!(!yaml.contains("  active: 0\n") && !yaml.contains("  active: 1\n"));
+    let expected = restored.execute(query).unwrap();
+    drop(restored);
+    assert_eq!(
+        Database::open(&readable, Format::Readable)
+            .unwrap()
+            .execute(query)
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn yaml_boolean_columns_follow_committed_schema_changes() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("data.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    db.execute("CREATE TABLE flags(id TEXT PRIMARY KEY,active BOOLEAN) WITHOUT ROWID; INSERT INTO flags VALUES('a',TRUE)").unwrap();
+    db.execute("BEGIN; DROP TABLE flags; CREATE TABLE flags(id TEXT PRIMARY KEY,active INTEGER) WITHOUT ROWID; INSERT INTO flags VALUES('b',0); ROLLBACK").unwrap();
+    let yaml = std::fs::read_to_string(&path).unwrap();
+    assert!(yaml.contains("  active: true\n"), "{yaml}");
+    assert_eq!(
+        db.execute("SELECT * FROM flags").unwrap()[0].rows,
+        vec![vec![Value::Text("a".into()), Value::Boolean(true)]]
+    );
+    db.execute("ALTER TABLE flags ADD COLUMN other BOOL DEFAULT FALSE; ALTER TABLE flags RENAME COLUMN active TO enabled; ALTER TABLE flags RENAME TO settings; UPDATE settings SET enabled=FALSE,other=TRUE").unwrap();
+    let yaml = std::fs::read_to_string(&path).unwrap();
+    assert!(yaml.contains("  enabled: false\n"), "{yaml}");
+    assert!(yaml.contains("  other: true\n"), "{yaml}");
+    let expected = db.execute("SELECT * FROM settings").unwrap();
+    drop(db);
+    assert_eq!(
+        Database::open(&path, Format::Readable)
+            .unwrap()
+            .execute("SELECT * FROM settings")
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
 fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE cells(id INT64 PRIMARY KEY,n ANY) STRICT")

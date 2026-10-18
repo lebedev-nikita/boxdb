@@ -528,10 +528,10 @@ struct TablePlan {
     select: String,
     lookup: Option<String>,
     prefix: Vec<u8>,
-    keys: Vec<(usize, Vec<u8>)>,
+    keys: Vec<(usize, Vec<u8>, bool)>,
 }
 impl TablePlan {
-    fn new(db: &Connection, name: &str) -> Result<Self> {
+    fn new(db: &Connection, name: &str, types: &schema::Types) -> Result<Self> {
         let columns = columns(db, name)?;
         let rowid = rowid(db, name)?;
         let selected = columns
@@ -570,7 +570,11 @@ impl TablePlan {
                 indented.extend_from_slice(b"  ");
                 indented.extend_from_slice(line.as_bytes());
             }
-            keys.push((index, indented));
+            let boolean = matches!(
+                types.get(&(name.to_owned(), columns[index].clone())),
+                Some(crate::Type::Boolean)
+            );
+            keys.push((index, indented, boolean));
         }
         Ok(Self {
             rowid,
@@ -588,10 +592,13 @@ impl TablePlan {
         }
         writer.write_all(b"values:\n")?;
         let offset = usize::from(self.rowid.is_some());
-        for (index, key) in &self.keys {
+        for (index, key, boolean) in &self.keys {
             writer.write_all(key)?;
             match row.get_ref(index + offset)? {
                 ValueRef::Null => writer.write_all(b" null\n")?,
+                ValueRef::Integer(n @ (0 | 1)) if *boolean => {
+                    writer.write_all(if n == 1 { b" true\n" } else { b" false\n" })?
+                }
                 ValueRef::Integer(n) => writeln!(writer, " {n}")?,
                 ValueRef::Real(n) if n.is_finite() => {
                     write_scalar(writer, &serde_saphyr::to_string(&n)?)?

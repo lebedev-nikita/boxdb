@@ -73,10 +73,10 @@ impl ReadableFile {
     pub fn watch(&self, db: &Connection) -> Result<()> {
         self.cache.watch(db)
     }
-    pub fn publish(&self, db: &Connection) -> Result<()> {
+    pub fn publish(&self, db: &Connection, types: &crate::schema::Types) -> Result<()> {
         let mut replaced = false;
         self.cache
-            .publish(db, |snapshot| {
+            .publish(db, types, |snapshot| {
                 let parent = self.path.parent().unwrap();
                 let mut temp = tempfile::NamedTempFile::new_in(parent)?;
                 {

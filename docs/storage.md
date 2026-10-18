@@ -187,11 +187,12 @@ values:
   id: 1
 ```
 
-Native cells use YAML numbers, strings and nulls. Quote text that looks like a
-number or boolean. BLOBs use a mapping such as `bytes: {blob: '00ff'}`; boolean
-scalars are imported as SQLite integers 0/1. Rows retain their accessible SQLite
-row IDs; generated columns are recomputed. The representation is independent of
-SQLite file bytes.
+BOOLEAN and BOOL columns use YAML `true`/`false`; nullable values use `null`.
+INTEGER and ANY columns retain numeric 0/1. Other cells use YAML numbers,
+strings and nulls. Quote text that looks like a number or boolean. BLOBs use a
+mapping such as `bytes: {blob: '00ff'}`; boolean scalars are imported as SQLite
+integers 0/1. Rows retain their accessible SQLite row IDs; generated columns are
+recomputed. The representation is independent of SQLite file bytes.
 
 Comments are accepted on import and omitted when snapshots are regenerated.
 Duplicate keys, unknown row columns and malformed cells are rejected.

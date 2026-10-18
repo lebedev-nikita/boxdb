@@ -303,7 +303,7 @@ impl Database {
                 let mut db = Self::new_with_options(connection, false, options)?;
                 file.watch(&db.connection)?;
                 if !path.exists() || path.metadata()?.len() == 0 {
-                    file.publish(&db.connection)?;
+                    file.publish(&db.connection, &db.types.borrow())?;
                 }
                 db.readable = Some(file);
                 db
@@ -412,7 +412,7 @@ impl Database {
                 }
                 Format::Readable => {
                     let file = storage::ReadableFile::open(path)?;
-                    file.publish(&transaction)?;
+                    file.publish(&transaction, &types)?;
                 }
             }
             Ok(())
@@ -894,7 +894,7 @@ impl Database {
                 // not publish that transaction's pending readable data.
                 if outer_autocommit && let Some(file) = &self.readable {
                     storage::check_commit_constraints(&self.connection)?;
-                    if let Err(e) = file.publish(&self.connection) {
+                    if let Err(e) = file.publish(&self.connection, &self.types.borrow()) {
                         self.poisoned.set(true);
                         return Err(e);
                     }
@@ -923,7 +923,7 @@ impl Database {
     fn publish_readable(&mut self) -> Result<()> {
         if self.connection.is_autocommit()
             && let Some(file) = &self.readable
-            && let Err(e) = file.publish(&self.connection)
+            && let Err(e) = file.publish(&self.connection, &self.types.borrow())
         {
             self.poisoned.set(true);
             return Err(e);

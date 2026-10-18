@@ -139,7 +139,7 @@ fn conversion_preserves_typed_generated_columns_from_their_source_values() {
                 row["values"],
                 serde_json::json!({
                     "id": 1,
-                    "enabled_source": 1,
+                    "enabled_source": true,
                     "amount_source": "12.50"
                 })
             );
