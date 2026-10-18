@@ -1,6 +1,6 @@
 {
   "name": "@boxdb/client",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "BoxDB queries and SQLite driver backed by the Rust core",
   "license": "MIT",
   "repository": {
