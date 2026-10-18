@@ -1,7 +1,7 @@
 //! Retain canonical row documents and rebuild only rows touched by SQLite.
 //! Hooks record identities only; querying happens after the SQL statement ends.
 use super::{LimitedWriter, Record, TablePlan, schema_records, sequence_records, write_document};
-use crate::{Error, Result};
+use crate::{Error, Result, schema};
 use rusqlite::{Connection, hooks::PreUpdateCase};
 use std::{
     cell::RefCell,
@@ -26,8 +26,8 @@ struct CachedTable {
     bytes: usize,
 }
 impl CachedTable {
-    fn load(db: &Connection, name: &str) -> Result<Self> {
-        let plan = TablePlan::new(db, name)?;
+    fn load(db: &Connection, name: &str, types: &schema::Types) -> Result<Self> {
+        let plan = TablePlan::new(db, name, types)?;
         let mut statement = db.prepare(&plan.select)?;
         let mut cursor = statement.query([])?;
         let mut size = 0usize;
@@ -71,15 +71,21 @@ impl CachedTable {
         )?;
         Ok(bytes)
     }
-    fn update(&mut self, db: &Connection, name: &str, changes: ChangedRows) -> Result<bool> {
+    fn update(
+        &mut self,
+        db: &Connection,
+        name: &str,
+        changes: ChangedRows,
+        types: &schema::Types,
+    ) -> Result<bool> {
         let Rows::Indexed(rows) = &mut self.rows else {
             // WITHOUT ROWID and fully shadowed rowid aliases are reloaded as a
             // whole table; their callback rowid arguments are undefined.
-            *self = Self::load(db, name)?;
+            *self = Self::load(db, name, types)?;
             return Ok(true);
         };
         if changes.whole_table {
-            *self = Self::load(db, name)?;
+            *self = Self::load(db, name, types)?;
             return Ok(true);
         }
         let mut statement = db.prepare_cached(self.plan.lookup.as_ref().unwrap())?;
@@ -136,7 +142,7 @@ impl Snapshot {
         writer.write_all(&self.sequences)?;
         Ok(())
     }
-    fn load(db: &Connection, version: i64) -> Result<Self> {
+    fn load(db: &Connection, version: i64, types: &schema::Types) -> Result<Self> {
         let records = schema_records(db)?;
         let mut header = vec![];
         write_document(&mut header, &records[0])?;
@@ -149,7 +155,7 @@ impl Snapshot {
             } = record
                 && object_type == "table"
             {
-                tables.insert(name.clone(), CachedTable::load(db, name)?);
+                tables.insert(name.clone(), CachedTable::load(db, name, types)?);
             }
         }
         Ok(Self {
@@ -197,24 +203,24 @@ impl SnapshotCache {
         ))?;
         Ok(())
     }
-    fn refresh(&self, db: &Connection) -> Result<bool> {
-        let result = self.refresh_inner(db);
+    fn refresh(&self, db: &Connection, types: &schema::Types) -> Result<bool> {
+        let result = self.refresh_inner(db, types);
         if result.is_err() {
             self.snapshot.replace(None);
         }
         result
     }
-    fn refresh_inner(&self, db: &Connection) -> Result<bool> {
+    fn refresh_inner(&self, db: &Connection, types: &schema::Types) -> Result<bool> {
         let version = db.query_row("PRAGMA main.schema_version", [], |r| r.get::<_, i64>(0))?;
         let changes = std::mem::take(&mut *self.changes.lock().unwrap_or_else(|e| e.into_inner()));
         let mut cache = self.snapshot.borrow_mut();
         if cache.as_ref().is_none_or(|s| s.schema_version != version) {
-            *cache = Some(Snapshot::load(db, version)?);
+            *cache = Some(Snapshot::load(db, version, types)?);
         } else {
             let snapshot = cache.as_mut().unwrap();
             for (name, changes) in changes {
                 if let Some(table) = snapshot.tables.get_mut(&name) {
-                    snapshot.unpublished |= table.update(db, &name, changes)?;
+                    snapshot.unpublished |= table.update(db, &name, changes, types)?;
                 }
             }
         }
@@ -259,9 +265,10 @@ impl SnapshotCache {
     pub fn publish(
         &self,
         db: &Connection,
+        types: &schema::Types,
         publish: impl FnOnce(&Snapshot) -> Result<()>,
     ) -> Result<()> {
-        if !self.refresh(db)? {
+        if !self.refresh(db, types)? {
             return Ok(());
         }
         {
