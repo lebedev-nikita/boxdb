@@ -36,8 +36,9 @@ WITHOUT ROWID and CREATE TABLE AS SELECT. An explicit STRICT suffix is accepted,
 including either ordering with WITHOUT ROWID. Standard types follow SQLite's
 [STRICT conversion rules](https://www.sqlite.org/stricttables.html): lossless
 conversions such as text `'42'` into an integer are allowed; incompatible values
-are rejected. ANY preserves each value's storage class. A column without a
-declared type becomes ANY. Integer declarations accept SQLite INTEGER or an
+are rejected. Every column declaration requires an explicit type, including
+generated columns and ALTER TABLE additions. Use explicit ANY to preserve each
+value's storage class. Integer declarations accept SQLite INTEGER or an
 explicit bit width (see [type declarations](../src/types.rs));
 floating-point aliases map to REAL. INT64 and the SQL alias SERIAL map to
 INTEGER, including SQLite's rowid alias and AUTOINCREMENT behavior.

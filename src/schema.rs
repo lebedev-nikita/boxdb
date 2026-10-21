@@ -110,10 +110,7 @@ fn main_name(name: &ObjectName) -> Option<&str> {
 }
 fn extension(input: &str) -> Result<Option<Type>> {
     let name = input.trim().to_ascii_uppercase();
-    if matches!(
-        name.as_str(),
-        "REAL" | "DOUBLE" | "TEXT" | "BLOB" | "ANY" | ""
-    ) {
+    if matches!(name.as_str(), "REAL" | "DOUBLE" | "TEXT" | "BLOB" | "ANY") {
         return Ok(None);
     }
     // SERIAL uses SQLite's rowid-backed INTEGER.
@@ -150,6 +147,12 @@ pub(crate) struct Declaration {
     pub columns: Vec<(String, Type)>,
 }
 pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
+    if column.data_type.to_string().trim().is_empty() {
+        return Err(Error::new(format!(
+            "column {} requires an explicit type",
+            column.name.value
+        )));
+    }
     if let Some(ty) = extension(&column.data_type.to_string())? {
         ty.validate(&Value::Null)?;
         if matches!(ty, Type::Enum(_))
@@ -238,7 +241,6 @@ pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
         return Ok(Some(ty));
     }
     let native = match column.data_type.to_string().to_ascii_uppercase().as_str() {
-        "" => Some("ANY"),
         "DOUBLE" => Some("REAL"),
         _ => None,
     };

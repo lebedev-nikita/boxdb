@@ -1,6 +1,34 @@
 use boxdb::{Database, Format, Value};
 
 #[test]
+fn column_declarations_require_an_explicit_type() {
+    let mut db = Database::memory();
+    db.execute("CREATE TABLE existing(id INTEGER PRIMARY KEY); ATTACH ':memory:' AS other")
+        .unwrap();
+    for sql in [
+        "CREATE TABLE rejected(value)",
+        "CREATE TABLE rejected(id INTEGER, value NOT NULL)",
+        "CREATE TABLE rejected(value DEFAULT 1) STRICT",
+        "CREATE TABLE rejected(id INTEGER, value AS (id + 1))",
+        "CREATE TABLE rejected(value \"\")",
+        "CREATE TEMP TABLE rejected(value)",
+        "CREATE TABLE other.rejected(value)",
+        "ALTER TABLE existing ADD COLUMN value",
+        "ALTER TABLE existing ADD COLUMN value DEFAULT 1",
+    ] {
+        assert!(db.statement_info(sql).is_err(), "prepare: {sql}");
+        assert!(db.execute(sql).is_err(), "execute: {sql}");
+    }
+    for table in ["rejected", "temp.rejected", "other.rejected"] {
+        assert!(db.execute(&format!("SELECT * FROM {table}")).is_err());
+    }
+    assert_eq!(
+        db.execute("SELECT * FROM existing").unwrap()[0].columns,
+        vec!["id"]
+    );
+}
+
+#[test]
 fn ordinary_tables_are_strict_without_an_explicit_keyword() {
     for format in [None, Some(Format::Binary), Some(Format::Readable)] {
         let temp = tempfile::tempdir().unwrap();
@@ -76,7 +104,7 @@ fn explicit_strict_and_without_rowid_options_preserve_extended_types() {
 #[test]
 fn strict_tables_support_native_aliases_any_temp_and_sqlite_constraints() {
     let mut db = Database::memory();
-    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INT64 PRIMARY KEY AUTOINCREMENT,n INT64,r DOUBLE,v ANY,untyped,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
+    db.execute("/* strict policy */ CREATE TABLE [quoted table]([id] INT64 PRIMARY KEY AUTOINCREMENT,n INT64,r DOUBLE,v ANY,untyped ANY,word TEXT UNIQUE ON CONFLICT IGNORE)").unwrap();
     db.execute("INSERT INTO [quoted table](n,r,v,untyped,word) VALUES(9223372036854775807,0.5,'001',x'00ff','a')").unwrap();
     assert_eq!(
         db.execute("SELECT id,n,r,v,typeof(v),untyped FROM [quoted table]")

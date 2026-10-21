@@ -45,15 +45,9 @@ Read only the guides relevant to the task.
   before accessing row fields. Results are `unknown[]`; `get()` returns
   `unknown`. Derive application types from validated data. Query APIs accept
   no result-type generic; see the TypeScript guide for validation examples.
-- Create and alter typed schemas through BoxDB. Ordinary table creation is
-  STRICT by default. Use `DECIMAL` for exact amounts and bind decimal strings;
-  see [native decimals](https://github.com/lebedev-nikita/boxdb/blob/main/docs/native-decimal.md).
-- Keep JSON as complete validated documents. Serialize and parse in the client;
-  SQL JSON/JSONB inspection and editing are unavailable.
 - Follow the selected client's value mappings. TypeScript integer results use
   bigint; Go UINT64 results above INT64_MAX use decimal strings that can be
-  scanned into uint64. Preserve canonical temporal strings when microseconds
-  matter; see [temporal types](https://github.com/lebedev-nikita/boxdb/blob/main/docs/temporal.md).
+  scanned into uint64.
 - Execute transaction work through its transaction handle. TypeScript root
   requests wait for the active transaction; finish it before awaiting root work.
   Adapters borrow the client, so its owner closes it.
@@ -63,6 +57,66 @@ Read only the guides relevant to the task.
 - Keep the standard SQLite file format distinct from SQL compatibility: native
   values and indexes require BoxDB's patched engine. Use BoxDB's conversion or
   SQLite backup facilities for live binary databases, accounting for the WAL.
+
+## SQL differences from SQLite
+
+Read [storage and type declarations](https://github.com/lebedev-nikita/boxdb/blob/main/docs/storage.md#extended-schema)
+before writing schemas or migrations. Create and alter typed schemas through
+BoxDB so logical metadata stays consistent.
+
+- Declare every column's type explicitly, including generated columns and
+  ALTER TABLE additions. Use explicit `ANY` to preserve storage classes.
+  Ordinary tables are STRICT by default; lossless conversions such as `'42'`
+  to INTEGER remain allowed. CREATE TABLE AS SELECT infers physical types,
+  using ANY where necessary, but does not infer extended logical metadata.
+- Use `INTEGER` or `INT8/16/32/64`, and `UINT8/16/32/64` for unsigned integers.
+  `INT`, `SMALLINT` and `BIGINT` declarations are rejected. `INT64` and `SERIAL`
+  map to SQLite INTEGER, including rowid aliases with PRIMARY KEY. Use
+  `REAL`/`DOUBLE`, `VARCHAR(n)` and `DECIMAL(p,s)`; `FLOAT`, `DOUBLE PRECISION`,
+  `CHARACTER VARYING` and `NUMERIC` are unsupported. Integer widths, VARCHAR
+  length, BOOLEAN's 0/1 values and decimal precision/scale are enforced.
+- Declare enums inline as `ENUM('todo','doing','done')`, optionally with NOT NULL
+  and DEFAULT. Labels must be unique string literals; comparison and ordering
+  use BINARY text order, not declaration order. Other collations, named enum
+  types, ALTER TYPE and SQL casts to ENUM are unsupported. Rebuild the table
+  to change labels. Typed arrays use declarations such as `TEXT[]`, `INT64[][]`
+  and `ENUM('todo','done')[]`; serialize complete arrays as JSON in clients that
+  bind strings. `DOUBLE[]` is distinct from sqlite-vec's packed vectors.
+- Cast expressions explicitly, for example `CAST(? AS DECIMAL)` or
+  `CAST(? AS INSTANT)`. Native decimal, UUID, temporal and unsigned casts are
+  supported. SQL CAST does not cover every logical column type; see the
+  storage guide before adding extended casts.
+  JSON is an opaque validated document: serialize and parse in the client.
+  JSONB, SQL JSON/JSONB functions, document operators and JSON virtual tables
+  are unavailable.
+- For exact amounts, bind decimal strings and use `CAST('0.1' AS DECIMAL)` in
+  expressions; casting the REAL literal `0.1` preserves its binary approximation.
+  Read
+  [native decimals](https://github.com/lebedev-nikita/boxdb/blob/main/docs/native-decimal.md)
+  before arithmetic: REAL mixing requires explicit conversion, `/` and AVG
+  reject nonterminating decimal results, and assignments reject excess scale
+  without rounding. Use `decimal_div` and `decimal_round` for explicit rounding.
+  Unsigned arithmetic preserves width and rejects negative or overflowing
+  results; REAL arithmetic also requires explicit conversion.
+- Read [temporal types](https://github.com/lebedev-nikita/boxdb/blob/main/docs/temporal.md)
+  before temporal queries. INSTANT accepts an offset and normalizes to UTC;
+  DATETIME has no zone. Preserve canonical strings for microsecond precision.
+  Use native casts for temporal arithmetic and calls such as
+  `extract('year', value)`, `date_trunc('day', value)` and `make_interval(0,1)`.
+  SQLite's `date()`, `datetime()` and `strftime()` retain their text contracts.
+- Reserve `__boxdb_` names and avoid column names ending in `?` (reserved for
+  nullable YAML schema fields). Non-native logical types require main-database
+  tables; native scalar types also support TEMP and attached tables.
+
+```sql
+CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY,
+    status ENUM('todo','doing','done') NOT NULL DEFAULT 'todo',
+    budget DECIMAL(12,2),
+    due_at INSTANT,
+    tags TEXT[]
+);
+```
 
 ## Migrations and schema export
 
