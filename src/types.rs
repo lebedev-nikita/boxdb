@@ -22,6 +22,8 @@ pub enum Value {
     /// An RFC 3339 instant, normalized to UTC with microsecond precision.
     Instant(String),
     Date(String),
+    /// Time of day without a date or time zone, with microsecond precision.
+    Time(String),
     /// Calendar date and time without a time zone, with microsecond precision.
     DateTime(String),
     /// Separate signed months, days and microseconds.
@@ -52,6 +54,7 @@ pub enum Type {
     Json,
     Instant,
     Date,
+    Time,
     DateTime,
     Interval,
     Array(Box<Type>),
@@ -69,6 +72,7 @@ impl Type {
             Self::Uint64 => Some(Kind::Uint64),
             Self::Instant => Some(Kind::Instant),
             Self::Date => Some(Kind::Date),
+            Self::Time => Some(Kind::Time),
             Self::DateTime => Some(Kind::DateTime),
             Self::Interval => Some(Kind::Interval),
             _ => None,
@@ -180,6 +184,7 @@ impl Type {
             "JSON" => Self::Json,
             "INSTANT" => Self::Instant,
             "DATE" => Self::Date,
+            "TIME" => Self::Time,
             "DATETIME" => Self::DateTime,
             "INTERVAL" => Self::Interval,
             _ => return Err(Error::new(format!("unsupported or missing type: {input}"))),
@@ -276,6 +281,7 @@ impl Type {
             (Self::Uuid, Value::Uuid(s))
             | (Self::Instant, Value::Instant(s))
             | (Self::Date, Value::Date(s))
+            | (Self::Time, Value::Time(s))
             | (Self::DateTime, Value::DateTime(s))
             | (Self::Interval, Value::Interval(s)) => {
                 let kind = self.native_kind().unwrap();
@@ -285,6 +291,7 @@ impl Type {
                     Self::Uuid => Value::Uuid(text),
                     Self::Instant => Value::Instant(text),
                     Self::Date => Value::Date(text),
+                    Self::Time => Value::Time(text),
                     Self::DateTime => Value::DateTime(text),
                     Self::Interval => Value::Interval(text),
                     _ => unreachable!(),
@@ -308,6 +315,7 @@ impl Type {
             Value::Uuid(_) => Some(libsqlite3_sys::native::Kind::Uuid),
             Value::Instant(_) => Some(libsqlite3_sys::native::Kind::Instant),
             Value::Date(_) => Some(libsqlite3_sys::native::Kind::Date),
+            Value::Time(_) => Some(libsqlite3_sys::native::Kind::Time),
             Value::DateTime(_) => Some(libsqlite3_sys::native::Kind::DateTime),
             Value::Interval(_) => Some(libsqlite3_sys::native::Kind::Interval),
             _ => None,
@@ -355,6 +363,7 @@ impl Type {
             Self::Uuid => Value::Uuid(text),
             Self::Instant => Value::Instant(text),
             Self::Date => Value::Date(text),
+            Self::Time => Value::Time(text),
             Self::DateTime => Value::DateTime(text),
             Self::Interval => Value::Interval(text),
             Self::Json => Value::Json(serde_json::from_str(&text).map_err(Error::validation)?),
@@ -377,6 +386,7 @@ impl std::fmt::Display for Value {
             | Self::Uuid(s)
             | Self::Instant(s)
             | Self::Date(s)
+            | Self::Time(s)
             | Self::DateTime(s)
             | Self::Interval(s) => {
                 write!(f, "{s}")

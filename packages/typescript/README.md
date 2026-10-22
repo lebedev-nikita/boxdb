@@ -199,7 +199,8 @@ explicitly when serializing JSON. Unsafe integer inputs throw instead of roundin
 
 Results retain native decimal values as exact text. DECIMAL arithmetic, comparisons
 and ordering run in the engine; NUMERIC is not supported. UUID and temporal values
-return canonical strings: INSTANT uses UTC, DATETIME has no time zone, and temporal
+return canonical strings: INSTANT uses UTC, TIME has no date or time zone,
+DATETIME has no time zone, and temporal
 strings preserve microsecond precision. JSON and arrays remain opaque strings;
 SQL JSON processing is disabled. Blobs are `Buffer` values. See the
 [native decimal guide](../../docs/native-decimal.md) and

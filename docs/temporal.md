@@ -1,6 +1,6 @@
 # Native temporal values
 
-BoxDB's patched SQLite provides INSTANT, DATE, DATETIME and INTERVAL values.
+BoxDB's patched SQLite provides INSTANT, DATE, TIME, DATETIME and INTERVAL values.
 They retain their types in expressions, indexes, temporary records and snapshots.
 Rust exposes matching Type variants and string-backed Value variants; DATETIME
 uses DateTime in Rust serialization. TypeScript and Go return strings.
@@ -9,16 +9,17 @@ uses DateTime in Rust serialization. TypeScript and Go return strings.
 | --- | --- | --- |
 | INSTANT | A UTC moment; input includes an offset or Z | `2024-02-29T16:00:00.123456+04:00` |
 | DATE | Gregorian date without time or zone | `2024-02-29` |
+| TIME | Time of day without a date or zone | `12:34:56.123456` |
 | DATETIME | Calendar date and time without a zone | `2024-02-29T12:00:00.123456` |
 | INTERVAL | Separate signed months, days and microseconds | `1 month 2 days 03:04:05.000006` or `P1M2DT3H4M5.000006S` |
 
 Dates and datetimes have years 0000 through 9999. INSTANT normalizes offsets to
-UTC. DATETIME rejects offsets. Named zones and connection-local timezone
+UTC. TIME and DATETIME reject offsets. Named zones and connection-local timezone
 settings are not part of these types.
 
 ## Precision across language clients
 
-INSTANT, DATETIME and the time component of INTERVAL share microsecond precision
+INSTANT, TIME, DATETIME and the time component of INTERVAL share microsecond precision
 (six fractional second digits); DATE has day precision. Microseconds support
 interchange with types such as [Python datetime](https://docs.python.org/3/library/datetime.html#datetime.datetime.resolution)
 and [PostgreSQL timestamp/interval](https://www.postgresql.org/docs/current/datatype-datetime.html)
@@ -29,8 +30,21 @@ Finer input is rounded to the nearest microsecond, with ties to even:
 `.123456500` becomes `.123456`, and `.123457500` becomes `.123458`.
 Rounding can carry into the next second or date; results outside the supported
 date range are rejected. INTERVAL combines its time quantities before rounding.
-INSTANT and DATETIME input accept up to nine fractional digits; greater input
+INSTANT, TIME and DATETIME input accept up to nine fractional digits; greater input
 precision and leap seconds are rejected. Canonical output always has six digits.
+
+TIME accepts `HH:MM:SS` with an optional fraction, with hours 00–23. Rounding
+past `23:59:59.999999` wraps to `00:00:00.000000`; `24:00:00` input is rejected.
+It compares by time of day in its own domain. Explicit DATETIME/INSTANT casts
+to TIME discard the date (INSTANT uses UTC); assignment requires an explicit
+cast. TIME cannot be cast to a date or datetime without supplying a date.
+
+```sql
+CREATE TABLE schedule(opens TIME);
+INSERT INTO schedule VALUES('09:30:00');
+SELECT opens FROM schedule;
+-- time 09:30:00.000000
+```
 
 Clients preserve temporal precision as canonical strings. JavaScript's
 [Date](https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-time-values-and-time-range)

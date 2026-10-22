@@ -23,6 +23,9 @@ type Instant string
 // Date is a calendar date without a time zone.
 type Date string
 
+// Time is a time of day without a date or time zone, with microsecond precision.
+type Time string
+
 // DateTime is a calendar date and time without a time zone.
 type DateTime string
 
@@ -32,11 +35,13 @@ type Interval string
 func (value UUID) Value() (driver.Value, error)     { return string(value), nil }
 func (value Instant) Value() (driver.Value, error)  { return string(value), nil }
 func (value Date) Value() (driver.Value, error)     { return string(value), nil }
+func (value Time) Value() (driver.Value, error)     { return string(value), nil }
 func (value DateTime) Value() (driver.Value, error) { return string(value), nil }
 func (value Interval) Value() (driver.Value, error) { return string(value), nil }
 func (value *UUID) Scan(source any) error           { return scanNative(value, source) }
 func (value *Instant) Scan(source any) error        { return scanNative(value, source) }
 func (value *Date) Scan(source any) error           { return scanNative(value, source) }
+func (value *Time) Scan(source any) error           { return scanNative(value, source) }
 func (value *DateTime) Scan(source any) error       { return scanNative(value, source) }
 func (value *Interval) Scan(source any) error       { return scanNative(value, source) }
 

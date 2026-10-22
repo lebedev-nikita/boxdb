@@ -57,8 +57,8 @@ it is separate from readable database storage. See [migration and restoration us
 
 SQLite executes queries directly. Tables created through BoxDB are STRICT by
 default; extended types include bounded integers, string enums, exact decimals,
-UUID, JSON, UTC instants, calendar dates/datetimes, intervals and typed arrays. DECIMAL,
-UUID, INSTANT, DATE, DATETIME and INTERVAL are native engine values with typed
+UUID, JSON, UTC instants, calendar dates/datetimes, times of day, intervals and typed arrays. DECIMAL,
+UUID, INSTANT, DATE, TIME, DATETIME and INTERVAL are native engine values with typed
 comparison and indexing. JSON is validated opaque text; JSON/JSONB SQL functions
 and operators are disabled.
 Table column names cannot end in `?`, which marks nullable columns in YAML schema exports.

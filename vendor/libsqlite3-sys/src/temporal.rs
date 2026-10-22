@@ -4,7 +4,9 @@ use crate::{
     native::Kind,
 };
 use bigdecimal::{BigDecimal, RoundingMode};
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, SecondsFormat, Timelike, Utc};
+use chrono::{
+    DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Timelike, Utc,
+};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{FromPrimitive, Signed, ToPrimitive, Zero};
@@ -57,6 +59,45 @@ fn precision(text: &str) -> Result<()> {
         return Err(invalid());
     }
     Ok(())
+}
+fn time(text: &str) -> Result<NaiveTime> {
+    let bytes = text.as_bytes();
+    if bytes.len() < 8
+        || bytes[..8].iter().enumerate().any(|(i, b)| {
+            if i == 2 || i == 5 {
+                *b != b':'
+            } else {
+                !b.is_ascii_digit()
+            }
+        })
+        || (bytes.len() > 8
+            && (bytes[8] != b'.' || bytes.len() == 9 || !bytes[9..].iter().all(u8::is_ascii_digit)))
+    {
+        return Err(invalid());
+    }
+    precision(text)?;
+    let value = NaiveTime::parse_from_str(text, "%H:%M:%S%.f").map_err(|_| invalid())?;
+    if value.nanosecond() >= 1_000_000_000 {
+        return Err(invalid());
+    }
+    Ok(rounded_datetime(NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_time(value))?.time())
+}
+pub(crate) fn time_bytes(value: NaiveTime) -> Vec<u8> {
+    (u64::from(value.num_seconds_from_midnight()) * 1_000_000
+        + u64::from(value.nanosecond() / 1_000))
+    .to_be_bytes()
+    .to_vec()
+}
+pub(crate) fn read_time(bytes: &[u8]) -> Result<NaiveTime> {
+    let micros = u64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?);
+    if micros >= DAY as u64 {
+        return Err(invalid());
+    }
+    NaiveTime::from_num_seconds_from_midnight_opt(
+        (micros / 1_000_000) as u32,
+        (micros % 1_000_000) as u32 * 1_000,
+    )
+    .ok_or_else(invalid)
 }
 pub(crate) fn datetime(text: &str) -> Result<NaiveDateTime> {
     precision(text)?;
@@ -317,6 +358,7 @@ pub(crate) fn datetime_bytes(value: NaiveDateTime) -> Vec<u8> {
 }
 pub(crate) fn encode(kind: Kind, text: &str) -> Result<Vec<u8>> {
     match kind {
+        Kind::Time => Ok(time_bytes(time(text)?)),
         Kind::Date => Ok(date(text)?.num_days_from_ce().to_be_bytes().to_vec()),
         Kind::DateTime => Ok(datetime_bytes(datetime(text)?)),
         Kind::Instant => Ok(datetime_bytes(instant(text)?.naive_utc())),
@@ -326,6 +368,7 @@ pub(crate) fn encode(kind: Kind, text: &str) -> Result<Vec<u8>> {
 }
 pub(crate) fn text(kind: Kind, bytes: &[u8]) -> Result<String> {
     match kind {
+        Kind::Time => Ok(read_time(bytes)?.format("%H:%M:%S%.6f").to_string()),
         Kind::Date => Ok(read_date(bytes)?.format("%Y-%m-%d").to_string()),
         Kind::DateTime => Ok(read_datetime(bytes)?
             .format("%Y-%m-%dT%H:%M:%S%.6f")
@@ -357,6 +400,9 @@ pub(crate) fn cast(target: Kind, source: Kind, bytes: &[u8], assignment: bool) -
         return Err(Error("native assignment requires an explicit cast".into()));
     }
     match target {
+        Kind::Time if matches!(source, Kind::DateTime | Kind::Instant) => {
+            Ok(time_bytes(value.time()))
+        }
         Kind::Date => Ok(value.date().num_days_from_ce().to_be_bytes().to_vec()),
         Kind::DateTime | Kind::Instant => Ok(datetime_bytes(value)),
         _ => Err(Error("unsupported native conversion".into())),

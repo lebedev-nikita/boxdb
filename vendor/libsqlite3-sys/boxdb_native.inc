@@ -119,7 +119,7 @@ static int boxdbNativeCompare(const Mem *a, const Mem *b){
 }
 static int boxdbRank(const Mem *p){
   int kind=boxdbKind(p);
-  if( kind ) return (kind==1 || kind>=7) ? 1 : (kind==5 ? 5 : kind+1);
+  if( kind ) return (kind==1 || (kind>=7 && kind<=10)) ? 1 : (kind==5 ? 5 : kind+1);
   if( p->flags&(MEM_Int|MEM_IntReal|MEM_Real) ) return 1;
   return p->flags&MEM_Str ? 100 : 101;
 }
@@ -138,7 +138,7 @@ static int boxdbNativeAffinityCompare(Mem *left, Mem *right, CollSeq *coll, u8 a
   return rc;
 }
 
-static int boxdbIsUnsigned(const Mem *p){ return boxdbNativeKind(p)>=7; }
+static int boxdbIsUnsigned(const Mem *p){ int kind=boxdbNativeKind(p); return kind>=7 && kind<=10; }
 static int boxdbNumeric(const Mem *p){
   return boxdbIsUnsigned(p) || boxdbIsDecimal(p) || (p->flags&(MEM_Int|MEM_IntReal|MEM_Real));
 }

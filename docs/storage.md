@@ -63,8 +63,11 @@ are translated into physical types and, where applicable, portable CHECKs:
 | ENUM('a','b',...) | TEXT with a membership CHECK and BINARY collation |
 | DOUBLE | REAL with 64-bit floating-point values |
 | BYTEA | BLOB with a storage-class CHECK |
-| DECIMAL, UUID, INSTANT, DATE, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
+| DECIMAL, UUID, INSTANT, DATE, TIME, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
+
+TIME uses the `h` tag followed by eight unsigned big-endian bytes counting
+microseconds since midnight, from 0 through 86,399,999,999.
 
 Declare string enums inline:
 

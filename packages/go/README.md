@@ -178,11 +178,12 @@ time zone), and BOOLEAN returns integer 0/1 (which `Scan` accepts into
 `bool`). Serialize arrays explicitly. BoxDB validates logical values on both
 reads and writes.
 
-`Decimal`, `UUID`, `Instant`, `Date`, `DateTime` and `Interval` implement
+`Decimal`, `UUID`, `Instant`, `Date`, `Time`, `DateTime` and `Interval` implement
 `sql.Scanner` and `driver.Valuer` with string storage. Use matching SQL columns
 or explicit casts: the engine validates and normalizes values, while the Go
 codecs preserve exact text without converting decimals to float64 or calendar
-values to a time zone. Use `sql.Null[T]` for nullable values.
+values to a time zone. `boxdb.Time("09:30:00")` binds to a TIME column and reads
+back as `"09:30:00.000000"`, without a date or zone. Use `sql.Null[T]` for nullable values.
 
 ```go
 amount := boxdb.Decimal("9007199254740993.01")

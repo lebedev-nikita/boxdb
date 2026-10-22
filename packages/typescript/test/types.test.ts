@@ -50,3 +50,17 @@ test("execute returns unvalidated rows in both object and raw modes", async () =
   // @ts-expect-error QueryResult cannot carry an unvalidated application row type.
   expectTypeOf<QueryResult<{ id: string }>>();
 });
+
+test("TIME parameters and results preserve time of day at microsecond precision", async () => {
+  await using db = await BoxDB.open();
+  await db.exec("CREATE TABLE schedule(at TIME)");
+  await db.query`INSERT INTO schedule VALUES(${"12:34:56.123456789"})`;
+  expect(await db.query`SELECT at,typeof(at) AS kind FROM schedule`).toEqual([
+    { at: "12:34:56.123457", kind: "time" },
+  ]);
+  await using tx = await db.begin();
+  expect(await tx.query`SELECT CAST(${"00:00:00"} AS TIME) AS at`.get()).toEqual({
+    at: "00:00:00.000000",
+  });
+  await expect(tx.query`INSERT INTO schedule VALUES(${"12:00:00Z"})`).rejects.toThrow();
+});
