@@ -188,9 +188,12 @@ values:
   id: 1
 ```
 
-BOOLEAN and BOOL columns use YAML `true`/`false`; nullable values use `null`.
-INTEGER and ANY columns retain numeric 0/1. Other cells use YAML numbers,
-strings and nulls. Quote text that looks like a number or boolean. BLOBs use a
+Columns containing SQL NULL are omitted from row `values`; missing columns are
+restored as NULL, even when a column has a DEFAULT. Rows containing only NULLs
+use `values: {}`. JSON documents remain opaque, including any nulls within them.
+BOOLEAN and BOOL columns use YAML `true`/`false`.
+INTEGER and ANY columns retain numeric 0/1. Other cells use YAML numbers and
+strings. Quote text that looks like a number, boolean or null. BLOBs use a
 mapping such as `bytes: {blob: '00ff'}`; boolean scalars are imported as SQLite
 integers 0/1. Rows retain their accessible SQLite row IDs; generated columns are
 recomputed. The representation is independent of SQLite file bytes.
