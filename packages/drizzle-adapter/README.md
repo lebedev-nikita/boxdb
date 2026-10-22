@@ -52,11 +52,12 @@ const invoices = sqliteTable("invoices", {
 });
 ```
 
-`decimal`, `uuid`, `instant`, `date`, `dateTime` and `interval` use strings for
+`decimal`, `uuid`, `instant`, `date`, `time`, `dateTime` and `interval` use strings for
 parameters and results. BoxDB validates and normalizes values in the declared
 SQL columns; exact decimals and temporal microseconds survive without conversion
 to JavaScript Number or Date. Builders expose the native SQL declarations for
-schema generation. Create matching columns through BoxDB migrations.
+schema generation. `time("opens")` declares a TIME column, using values such as
+`"09:30:00.000000"` without a date or zone. Create matching columns through BoxDB migrations.
 
 `json` serializes and parses complete documents in the client. `$type<T>()`
 describes the application type; it does not validate that shape at runtime.

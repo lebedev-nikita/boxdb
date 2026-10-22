@@ -10,6 +10,7 @@ import {
   instant,
   interval,
   json,
+  time,
   uuid,
 } from "../src/index.js";
 
@@ -107,4 +108,20 @@ it("round trips native identifiers, microsecond calendar values and opaque JSON 
     document: null,
   });
   await expect(db.insert(events).values({ ...input, day: "2024-02-30" })).rejects.toThrow();
+});
+
+it("round trips TIME columns as strings without adding dates or zones", async () => {
+  const schedule = sqliteTable("schedule", { at: time().notNull() });
+  expectTypeOf<typeof schedule.$inferSelect.at>().toEqualTypeOf<string>();
+  expect(schedule.at.getSQLType()).toBe("TIME");
+  await using client = await BoxDB.open();
+  await client.exec("CREATE TABLE schedule(at TIME NOT NULL)");
+  const db = createDrizzleDatabase(client, { schema: { schedule } });
+  expect(await db.insert(schedule).values({ at: "12:34:56.123456789" }).returning().get()).toEqual({
+    at: "12:34:56.123457",
+  });
+  expect(await db.select().from(schedule).where(eq(schedule.at, "12:34:56.123457")).get()).toEqual({
+    at: "12:34:56.123457",
+  });
+  await expect(db.insert(schedule).values({ at: "12:00:00Z" })).rejects.toThrow();
 });

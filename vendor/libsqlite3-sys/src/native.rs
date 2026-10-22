@@ -140,6 +140,7 @@ fn ordering_key(kind: i32, bytes: &[u8]) -> i128 {
                 ))
                 * crate::temporal::DAY
         }
+        11 => i128::from(u64::from_be_bytes(bytes.try_into().unwrap())),
         6 => {
             let value = crate::temporal::read_interval(bytes).unwrap();
             (i128::from(value.months) * 30 + i128::from(value.days)) * crate::temporal::DAY

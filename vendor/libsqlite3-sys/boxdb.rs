@@ -169,7 +169,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "    sqlite3ColumnDefault(v, pTab, iCol, regOut);",
-        "    sqlite3ColumnDefault(v, pTab, iCol, regOut);\n    if( boxdbNativeAffinityKind(pTab->aCol[iCol].affinity)>=7 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(pTab->aCol[iCol].affinity)<<8);",
+        "    sqlite3ColumnDefault(v, pTab, iCol, regOut);\n    if( boxdbNativeAffinityKind(pTab->aCol[iCol].affinity)>=7 && boxdbNativeAffinityKind(pTab->aCol[iCol].affinity)<=10 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(pTab->aCol[iCol].affinity)<<8);",
     );
     replace(
         "if( pOp->opcode==OP_Column ) pOp->p5 = p5;",
@@ -235,11 +235,11 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "      VdbeCoverage(v);\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);",
-        "      VdbeCoverage(v);\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);\n      if( boxdbNativeAffinityKind(exprAff)>=7 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(exprAff)<<8);",
+        "      VdbeCoverage(v);\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);\n      if( boxdbNativeAffinityKind(exprAff)>=7 && boxdbNativeAffinityKind(exprAff)<=10 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(exprAff)<<8);",
     );
     replace(
         "    }else{\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);",
-        "    }else{\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);\n      if( boxdbNativeAffinityKind(exprAff)>=7 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(exprAff)<<8);",
+        "    }else{\n      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);\n      if( boxdbNativeAffinityKind(exprAff)>=7 && boxdbNativeAffinityKind(exprAff)<=10 ) sqlite3VdbeChangeP5(v,boxdbNativeAffinityKind(exprAff)<<8);",
     );
     replace(
         "    sqlite3DequoteToken(&sType);\n    for(i=0; i<SQLITE_N_STDTYPE; i++){",
@@ -319,7 +319,7 @@ pub fn source(out_dir: &str) -> PathBuf {
     );
     replace(
         "  combined_flags = f1|f2;\n  assert( !sqlite3VdbeMemIsRowSet",
-        "  combined_flags = f1|f2;\n  if( !(combined_flags&MEM_Null) && (boxdbNativeKind(pMem1) || boxdbNativeKind(pMem2)) ){\n    int a=boxdbNativeKind(pMem1), b=boxdbNativeKind(pMem2);\n    if( a>=7 || b>=7 ) return boxdbUnsignedCompare(pMem1,pMem2);\n    if( a && (a==b || ((a==4 || a==5) && (b==4 || b==5))) ) return boxdbNativeCompare(pMem1,pMem2);\n    return boxdbRank(pMem1)-boxdbRank(pMem2);\n  }\n  if( (combined_flags&MEM_Null)==0 && (boxdbIsDecimal(pMem1) || boxdbIsDecimal(pMem2)) ){\n    int n1 = boxdbIsDecimal(pMem1) || (f1&(MEM_Int|MEM_IntReal|MEM_Real));\n    int n2 = boxdbIsDecimal(pMem2) || (f2&(MEM_Int|MEM_IntReal|MEM_Real));\n    if( n1 && n2 ) return boxdbDecimalCompare(pMem1, pMem2);\n    return n1 ? -1 : 1;\n  }\n  assert( !sqlite3VdbeMemIsRowSet",
+        "  combined_flags = f1|f2;\n  if( !(combined_flags&MEM_Null) && (boxdbNativeKind(pMem1) || boxdbNativeKind(pMem2)) ){\n    int a=boxdbNativeKind(pMem1), b=boxdbNativeKind(pMem2);\n    if( boxdbIsUnsigned(pMem1) || boxdbIsUnsigned(pMem2) ) return boxdbUnsignedCompare(pMem1,pMem2);\n    if( a && (a==b || ((a==4 || a==5) && (b==4 || b==5))) ) return boxdbNativeCompare(pMem1,pMem2);\n    return boxdbRank(pMem1)-boxdbRank(pMem2);\n  }\n  if( (combined_flags&MEM_Null)==0 && (boxdbIsDecimal(pMem1) || boxdbIsDecimal(pMem2)) ){\n    int n1 = boxdbIsDecimal(pMem1) || (f1&(MEM_Int|MEM_IntReal|MEM_Real));\n    int n2 = boxdbIsDecimal(pMem2) || (f2&(MEM_Int|MEM_IntReal|MEM_Real));\n    if( n1 && n2 ) return boxdbDecimalCompare(pMem1, pMem2);\n    return n1 ? -1 : 1;\n  }\n  assert( !sqlite3VdbeMemIsRowSet",
     );
     replace(
         "    /* RHS is an integer */\n    if( pRhs->flags & (MEM_Int|MEM_IntReal) ){",

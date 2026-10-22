@@ -275,6 +275,7 @@ impl Serialize for Cell {
                         libsqlite3_sys::native::Kind::Uint64 => "uint64",
                         libsqlite3_sys::native::Kind::Instant => "instant",
                         libsqlite3_sys::native::Kind::Date => "date",
+                        libsqlite3_sys::native::Kind::Time => "time",
                         libsqlite3_sys::native::Kind::DateTime => "datetime",
                         libsqlite3_sys::native::Kind::Interval => "interval",
                         _ => unreachable!(),
@@ -339,6 +340,7 @@ impl<'de> Deserialize<'de> for Cell {
                     Uint64(String),
                     Instant(String),
                     Date(String),
+                    Time(String),
                     DateTime(String),
                     Interval(String),
                 }
@@ -363,6 +365,7 @@ impl<'de> Deserialize<'de> for Cell {
                     WireCell::Uint64(s) => (Kind::Uint64, s),
                     WireCell::Instant(s) => (Kind::Instant, s),
                     WireCell::Date(s) => (Kind::Date, s),
+                    WireCell::Time(s) => (Kind::Time, s),
                     WireCell::DateTime(s) => (Kind::DateTime, s),
                     WireCell::Interval(s) => (Kind::Interval, s),
                 };

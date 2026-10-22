@@ -251,6 +251,7 @@ fn type_sql(ty: &Type) -> String {
         Type::Json => "JSON".into(),
         Type::Instant => "INSTANT".into(),
         Type::Date => "DATE".into(),
+        Type::Time => "TIME".into(),
         Type::DateTime => "DATETIME".into(),
         Type::Interval => "INTERVAL".into(),
         Type::Array(inner) => format!("{}[]", type_sql(inner)),

@@ -170,3 +170,36 @@ func TestJSONCodecKeepsDocumentsNumbersAndSQLNullDistinct(t *testing.T) {
 		}
 	}
 }
+
+func TestTimeCodecPreservesTimeOfDayAndNull(t *testing.T) {
+	var _ sql.Scanner = (*boxdb.Time)(nil)
+	var _ driver.Valuer = boxdb.Time("")
+	db, err := boxdb.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE schedule(at TIME); INSERT INTO schedule VALUES(NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO schedule VALUES(?)", boxdb.Time("12:34:56.123456789")); err != nil {
+		t.Fatal(err)
+	}
+	var at boxdb.Time
+	if err := db.QueryRow("SELECT at FROM schedule WHERE at IS NOT NULL").Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	if at != "12:34:56.123457" {
+		t.Fatalf("time = %q", at)
+	}
+	var nullable sql.Null[boxdb.Time]
+	if err := db.QueryRow("SELECT at FROM schedule WHERE at IS NULL").Scan(&nullable); err != nil || nullable.Valid {
+		t.Fatalf("NULL = %+v, error = %v", nullable, err)
+	}
+	if err := at.Scan(nil); err == nil || at != "12:34:56.123457" {
+		t.Fatalf("failed scan changed time: %q, error = %v", at, err)
+	}
+	if _, err := db.Exec("INSERT INTO schedule VALUES(?)", boxdb.Time("12:00:00+04:00")); err == nil {
+		t.Fatal("TIME accepted a time zone")
+	}
+}

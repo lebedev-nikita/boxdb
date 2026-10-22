@@ -176,6 +176,7 @@ fn output(value: Value) -> napi::Result<Cell> {
         | Value::Uuid(value)
         | Value::Instant(value)
         | Value::Date(value)
+        | Value::Time(value)
         | Value::DateTime(value)
         | Value::Interval(value) => Either5::D(value),
         Value::Bytea(value) => Either5::E(value.into()),

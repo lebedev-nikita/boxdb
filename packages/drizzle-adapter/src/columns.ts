@@ -31,6 +31,7 @@ export const instant = customType<{ data: string; driverData: string }>({
   dataType: () => "INSTANT",
 });
 export const date = customType<{ data: string; driverData: string }>({ dataType: () => "DATE" });
+export const time = customType<{ data: string; driverData: string }>({ dataType: () => "TIME" });
 export const dateTime = customType<{ data: string; driverData: string }>({
   dataType: () => "DATETIME",
 });

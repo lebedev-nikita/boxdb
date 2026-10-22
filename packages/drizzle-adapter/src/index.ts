@@ -1,5 +1,5 @@
 import { is } from "drizzle-orm";
-export { date, dateTime, decimal, instant, interval, json, uuid } from "./columns.js";
+export { date, dateTime, decimal, instant, interval, json, time, uuid } from "./columns.js";
 import { DefaultLogger, type Logger } from "drizzle-orm/logger";
 import {
   createTableRelationsHelpers,

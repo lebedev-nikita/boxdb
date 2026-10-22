@@ -14,7 +14,7 @@ the native library matching the Go module version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.4.3
+BOXDB_GO_VERSION=0.5.0
 BOXDB_GO_PLATFORM=darwin-arm64 # Use linux-x64 for Linux on amd64.
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
@@ -24,7 +24,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.4.3
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.5.0
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The
@@ -178,11 +178,12 @@ time zone), and BOOLEAN returns integer 0/1 (which `Scan` accepts into
 `bool`). Serialize arrays explicitly. BoxDB validates logical values on both
 reads and writes.
 
-`Decimal`, `UUID`, `Instant`, `Date`, `DateTime` and `Interval` implement
+`Decimal`, `UUID`, `Instant`, `Date`, `Time`, `DateTime` and `Interval` implement
 `sql.Scanner` and `driver.Valuer` with string storage. Use matching SQL columns
 or explicit casts: the engine validates and normalizes values, while the Go
 codecs preserve exact text without converting decimals to float64 or calendar
-values to a time zone. Use `sql.Null[T]` for nullable values.
+values to a time zone. `boxdb.Time("09:30:00")` binds to a TIME column and reads
+back as `"09:30:00.000000"`, without a date or zone. Use `sql.Null[T]` for nullable values.
 
 ```go
 amount := boxdb.Decimal("9007199254740993.01")

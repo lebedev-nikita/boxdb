@@ -36,7 +36,6 @@ fn temporal_types_have_distinct_names_without_timestamp_aliases() {
     assert_eq!(Type::parse("instant").unwrap(), Type::Instant);
     let mut db = Database::memory();
     for ty in [
-        "TIME",
         "TIMESTAMPTZ",
         "TIMESTAMP",
         "timestamp",
@@ -46,7 +45,6 @@ fn temporal_types_have_distinct_names_without_timestamp_aliases() {
         "TIME WITH TIME ZONE",
         "TIMESTAMP WITHOUT TIME ZONE",
         "TIMESTAMP WITH TIME ZONE",
-        "TIME[]",
         "TIMESTAMPTZ[]",
     ] {
         assert!(Type::parse(ty).is_err(), "{ty}");
@@ -56,7 +54,6 @@ fn temporal_types_have_distinct_names_without_timestamp_aliases() {
         );
     }
     for value in [
-        r#"{"Time":"12:00:00"}"#,
         r#"{"Timestamp":"2026-10-13T12:00:00Z"}"#,
         r#"{"Timestamptz":"2026-10-13T12:00:00Z"}"#,
     ] {

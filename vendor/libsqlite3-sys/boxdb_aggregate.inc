@@ -28,7 +28,7 @@ static int boxdbSumUpdate(sqlite3_context *ctx, SumCtx *p, Mem *value, int op){
 static int boxdbSumStep(sqlite3_context *ctx, SumCtx *p, Mem *value, int type){
   int kind=boxdbNativeKind(value);
   if( !p || type==SQLITE_NULL ) return 0;
-  if( kind>=7 ){
+  if( boxdbIsUnsigned(value) ){
     if( !p->decimalMode ) p->decimalMode=p->cnt ? 1 : 7;
     if( boxdbSumUpdate(ctx,p,value,1)==SQLITE_OK ){p->cnt++;p->approx=0;p->ovrfl=0;}
     return 1;

@@ -176,6 +176,7 @@ pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             Type::Uint64 => "UINT64",
             Type::Instant => "INSTANT",
             Type::Date => "DATE",
+            Type::Time => "TIME",
             Type::DateTime => "DATETIME",
             Type::Interval => "INTERVAL",
             Type::Bytea => "BLOB",
@@ -518,6 +519,7 @@ fn native_value(kind: libsqlite3_sys::native::Kind, text: String) -> Value {
         libsqlite3_sys::native::Kind::Decimal => Value::Decimal(text),
         libsqlite3_sys::native::Kind::Instant => Value::Instant(text),
         libsqlite3_sys::native::Kind::Date => Value::Date(text),
+        libsqlite3_sys::native::Kind::Time => Value::Time(text),
         libsqlite3_sys::native::Kind::DateTime => Value::DateTime(text),
         libsqlite3_sys::native::Kind::Interval => Value::Interval(text),
     }
@@ -547,11 +549,13 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
         }
         Value::Instant(text)
         | Value::Date(text)
+        | Value::Time(text)
         | Value::DateTime(text)
         | Value::Interval(text) => {
             let kind = match value {
                 Value::Instant(_) => libsqlite3_sys::native::Kind::Instant,
                 Value::Date(_) => libsqlite3_sys::native::Kind::Date,
+                Value::Time(_) => libsqlite3_sys::native::Kind::Time,
                 Value::DateTime(_) => libsqlite3_sys::native::Kind::DateTime,
                 _ => libsqlite3_sys::native::Kind::Interval,
             };
@@ -602,12 +606,14 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                     Value::Uuid(_)
                     | Value::Instant(_)
                     | Value::Date(_)
+                    | Value::Time(_)
                     | Value::DateTime(_)
                     | Value::Interval(_) => {
                         let ty = match v {
                             Value::Uuid(_) => Type::Uuid,
                             Value::Instant(_) => Type::Instant,
                             Value::Date(_) => Type::Date,
+                            Value::Time(_) => Type::Time,
                             Value::DateTime(_) => Type::DateTime,
                             _ => Type::Interval,
                         };
