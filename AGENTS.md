@@ -9,3 +9,6 @@ Keep SQLite's standard binary page and record encoding.
 
 Keep JSON as opaque validated documents. SQL JSON/JSONB inspection and editing
 are out of scope.
+
+Keep user documentation and the BoxDB usage skill
+(`.agents/skills/boxdb/SKILL.md`) in sync with public API and behavior changes.

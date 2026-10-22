@@ -100,8 +100,14 @@ BoxDB so logical metadata stays consistent.
   results; REAL arithmetic also requires explicit conversion.
 - Read [temporal types](https://github.com/lebedev-nikita/boxdb/blob/main/docs/temporal.md)
   before temporal queries. INSTANT accepts an offset and normalizes to UTC;
-  DATETIME has no zone. Preserve canonical strings for microsecond precision.
-  Use native casts for temporal arithmetic and calls such as
+  DATETIME has no zone. TIME is a time of day without a date or zone: bind
+  `HH:MM:SS` with an optional fraction; results use `HH:MM:SS.ffffff`.
+  Use Rust `Type::Time` / `Value::Time`, Go `boxdb.Time`, Drizzle `time()`,
+  and ordinary strings in TypeScript. Preserve canonical strings for
+  microsecond precision. TIME supports comparison, indexing and explicit
+  casts from DATETIME/INSTANT; temporal arithmetic and functions such as
+  `extract` and `date_trunc` do not accept TIME.
+  For other temporal types, use native casts for arithmetic and calls such as
   `extract('year', value)`, `date_trunc('day', value)` and `make_interval(0,1)`.
   SQLite's `date()`, `datetime()` and `strftime()` retain their text contracts.
 - Reserve `__boxdb_` names and avoid column names ending in `?` (reserved for
