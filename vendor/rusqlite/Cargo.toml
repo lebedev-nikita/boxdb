@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "boxdb-rusqlite"
-version = "0.4.3"
+version = "0.5.0"
 authors = ["The rusqlite developers"]
 build = false
 exclude = [
@@ -229,7 +229,7 @@ default-features = false
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies.libsqlite3-sys]
 package = "boxdb-sqlite-sys"
-version = "=0.4.3"
+version = "=0.5.0"
 path = "../libsqlite3-sys"
 optional = true
 
@@ -268,7 +268,7 @@ version = "0.3.54"
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies.libsqlite3-sys]
 package = "boxdb-sqlite-sys"
-version = "=0.4.3"
+version = "=0.5.0"
 path = "../libsqlite3-sys"
 
 [lints.clippy]
