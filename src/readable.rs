@@ -140,9 +140,7 @@ pub(crate) fn salvage(bytes: &[u8]) -> Result<(Connection, Vec<Rejected>)> {
                     values,
                 } if !table.starts_with("__boxdb_") => {
                     let columns = columns(&db, table)?;
-                    if columns.len() != values.len()
-                        || columns.iter().any(|name| !values.contains_key(name))
-                    {
+                    if values.keys().any(|name| !columns.contains(name)) {
                         return Err(Error::new("row columns do not match table".into()));
                     }
                     let alias = rowid(&db, table)?;
@@ -167,12 +165,15 @@ pub(crate) fn salvage(bytes: &[u8]) -> Result<(Connection, Vec<Rejected>)> {
                         vec!["?"; columns.len() + usize::from(alias.is_some())].join(",")
                     );
                     let rowid = id.map(SqlValue::Integer).unwrap_or(SqlValue::Null);
-                    let parameters = alias
-                        .map(|_| &rowid)
-                        .into_iter()
-                        .chain(columns.iter().map(|name| &values[name].0))
-                        .cloned()
-                        .map(crate::decimal::WireValue::new);
+                    let parameters =
+                        alias
+                            .map(|_| &rowid)
+                            .into_iter()
+                            .chain(columns.iter().map(|name| {
+                                values.get(name).map_or(&SqlValue::Null, |cell| &cell.0)
+                            }))
+                            .cloned()
+                            .map(crate::decimal::WireValue::new);
                     db.prepare_cached(&sql)?
                         .execute(rusqlite::params_from_iter(parameters))?;
                 }
@@ -590,12 +591,20 @@ impl TablePlan {
         if self.rowid.is_some() {
             writeln!(writer, "rowid: {}", row.get::<_, i64>(0)?)?;
         }
-        writer.write_all(b"values:\n")?;
         let offset = usize::from(self.rowid.is_some());
+        let mut has_values = false;
         for (index, key, boolean) in &self.keys {
+            let value = row.get_ref(index + offset)?;
+            if matches!(value, ValueRef::Null) {
+                continue;
+            }
+            if !has_values {
+                writer.write_all(b"values:\n")?;
+                has_values = true;
+            }
             writer.write_all(key)?;
-            match row.get_ref(index + offset)? {
-                ValueRef::Null => writer.write_all(b" null\n")?,
+            match value {
+                ValueRef::Null => unreachable!(),
                 ValueRef::Integer(n @ (0 | 1)) if *boolean => {
                     writer.write_all(if n == 1 { b" true\n" } else { b" false\n" })?
                 }
@@ -641,6 +650,9 @@ impl TablePlan {
                     writer.write_all(b"'\n")?;
                 }
             }
+        }
+        if !has_values {
+            writer.write_all(b"values: {}\n")?;
         }
         Ok(())
     }
@@ -841,9 +853,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 );
             }
             let plan = &inserts[table.as_str()];
-            if plan.columns.len() != values.len()
-                || plan.columns.iter().any(|name| !values.contains_key(name))
-            {
+            if values.keys().any(|name| !plan.columns.contains(name)) {
                 return Err(Error::new(format!(
                     "row columns do not match table: {table}"
                 )));
@@ -856,7 +866,11 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
                 .rowid
                 .map(|_| &rowid)
                 .into_iter()
-                .chain(plan.columns.iter().map(|name| &values[name].0))
+                .chain(
+                    plan.columns
+                        .iter()
+                        .map(|name| values.get(name).map_or(&SqlValue::Null, |cell| &cell.0)),
+                )
                 .cloned()
                 .map(crate::decimal::WireValue::new);
             db.prepare_cached(&plan.sql)?

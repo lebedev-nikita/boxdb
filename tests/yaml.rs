@@ -4,6 +4,70 @@ mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
+fn yaml_omits_sql_null_columns_and_restores_them_without_defaults() {
+    let temp = tempfile::tempdir().unwrap();
+    let binary = temp.path().join("source.db");
+    let readable = temp.path().join("data.yaml");
+    let mut db = Database::open(&binary, Format::Binary).unwrap();
+    db.execute("CREATE TABLE notes(body TEXT DEFAULT 'default',active BOOLEAN DEFAULT TRUE,doc JSON); INSERT INTO notes(rowid,body,active,doc) VALUES(7,NULL,NULL,NULL),(9,'null',FALSE,'{\"nested\":null}')").unwrap();
+    let query = "SELECT rowid,* FROM notes ORDER BY rowid";
+    let expected = db.execute(query).unwrap();
+    Database::convert(&binary, &readable, Format::Readable).unwrap();
+    let bytes = std::fs::read(&readable).unwrap();
+    let documents: Vec<serde_json::Value> = serde_saphyr::from_slice_multiple(&bytes).unwrap();
+    let rows: Vec<_> = documents
+        .iter()
+        .filter(|doc| doc["kind"] == "row" && doc["table"] == "notes")
+        .map(|doc| (doc["rowid"].clone(), doc["values"].clone()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (serde_json::json!(7), serde_json::json!({})),
+            (
+                serde_json::json!(9),
+                serde_json::json!({"body": "null", "active": false, "doc": "{\"nested\":null}"}),
+            ),
+        ]
+    );
+    assert!(
+        std::str::from_utf8(&bytes)
+            .unwrap()
+            .contains("values: {}\n")
+    );
+    let mut restored = Database::open(&readable, Format::Readable).unwrap();
+    assert_eq!(restored.execute(query).unwrap(), expected);
+    restored.execute("UPDATE notes SET body=NULL,active=NULL,doc=NULL WHERE rowid=9; UPDATE notes SET body='',active=FALSE WHERE rowid=7").unwrap();
+    let expected = restored.execute(query).unwrap();
+    let bytes = std::fs::read(&readable).unwrap();
+    let documents: Vec<serde_json::Value> = serde_saphyr::from_slice_multiple(&bytes).unwrap();
+    let rows: Vec<_> = documents
+        .iter()
+        .filter(|doc| doc["kind"] == "row" && doc["table"] == "notes")
+        .map(|doc| doc["values"].clone())
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            serde_json::json!({"body": "", "active": false}),
+            serde_json::json!({})
+        ]
+    );
+    assert_eq!(
+        files::converted_bytes(&mut restored, Format::Readable).unwrap(),
+        bytes
+    );
+    drop(restored);
+    assert_eq!(
+        Database::open(&readable, Format::Readable)
+            .unwrap()
+            .execute(query)
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
 fn boolean_columns_use_yaml_booleans_and_roundtrip_through_updates() {
     let temp = tempfile::tempdir().unwrap();
     let binary = temp.path().join("source.db");
@@ -25,7 +89,7 @@ fn boolean_columns_use_yaml_booleans_and_roundtrip_through_updates() {
         vec![
             serde_json::json!({"id": 1, "active": true, "alias": false, "n": 1, "untyped": 0}),
             serde_json::json!({"id": 2, "active": false, "alias": true, "n": 0, "untyped": 1}),
-            serde_json::json!({"id": 3, "active": null, "alias": null, "n": null, "untyped": null}),
+            serde_json::json!({"id": 3}),
         ]
     );
     let mut restored = Database::open(&readable, Format::Readable).unwrap();
@@ -152,7 +216,7 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
         .find(|doc| doc["kind"] == "row" && doc["table"] == "cells")
         .unwrap();
     assert_eq!(first_row["values"]["id"], 0);
-    assert!(first_row["values"]["n"].is_null());
+    assert!(first_row["values"].get("n").is_none());
     let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(restored.execute(query).unwrap(), before);
     assert_eq!(restored.execute("SELECT * FROM keys").unwrap(), keys);
@@ -256,7 +320,9 @@ fn invalid_yaml_cannot_publish_a_database() {
         MANUAL.replace("  id: 7", "  id: 7\nversion: 3"),
         MANUAL.replace("  id: 7", "  id: 7\n  id: 8"),
         MANUAL.replace("  id: 7", "  wrong: 7"),
-        MANUAL.replace("  id: 7\n", ""),
+        MANUAL
+            .replace("body TEXT", "body TEXT NOT NULL")
+            .replace("  body: |-\n    First line\n    雪\n", ""),
         MANUAL.replace("blob: '00ff'", "blob: xyz"),
         MANUAL.replace("    blob: '00ff'", "    blob: '00ff'\n    extra: 1"),
         MANUAL.replace("weight: 1.0", "weight: .nan"),
