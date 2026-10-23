@@ -10,6 +10,11 @@ SQLite engine and optional readable YAML storage. Read the guide for the chosen
 client before writing integration code; APIs and storage contracts may change
 during version 0.
 
+Prebuilt CLI, npm client and Go libraries support 64-bit Raspberry Pi OS
+Bookworm+ (ARM64, glibc 2.35+). Choose `linux-arm64` for npm and Go binaries,
+or `aarch64-unknown-linux-gnu` for the standalone CLI archive.
+Follow the client guide for installation.
+
 ## Choose the client guide
 
 The links point to the BoxDB repository. When a BoxDB checkout is available,

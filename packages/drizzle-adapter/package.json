@@ -1,6 +1,6 @@
 {
   "name": "@boxdb/drizzle-adapter",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Asynchronous Drizzle ORM adapter for BoxDB",
   "license": "MIT",
   "repository": {
@@ -41,7 +41,7 @@
     "vitest": "5.0.4"
   },
   "peerDependencies": {
-    "@boxdb/client": "^0.5.0",
+    "@boxdb/client": "^0.5.1",
     "drizzle-orm": "^0.45.4"
   },
   "engines": {

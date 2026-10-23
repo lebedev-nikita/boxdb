@@ -10,11 +10,10 @@ import {
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { releasePackages } from "./release.js";
+import { releasePackages, requiredPlatforms } from "./release.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const output = join(root, "target/npm");
-const requiredPlatforms = ["darwin-arm64", "linux-x64"];
 const platforms = process.argv.includes("--local")
   ? [`${process.platform}-${process.arch}`]
   : requiredPlatforms;

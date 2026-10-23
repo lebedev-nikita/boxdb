@@ -9,13 +9,15 @@ and TypeScript clients. Its API follows the standard SQL interfaces used by
 ## Install a release
 
 Requires Go 1.23+, a C compiler, and `CGO_ENABLED=1`. Prebuilt native libraries
-are available for macOS ARM64 (macOS 11+) and Linux x64 (glibc 2.35+). Download
-the native library matching the Go module version, then add the driver to your
+are available for macOS ARM64 (macOS 11+) and Linux x64 and ARM64
+(glibc 2.35+), including 64-bit Raspberry Pi OS Bookworm or newer.
+Download the native library matching the Go module
+version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.5.0
-BOXDB_GO_PLATFORM=darwin-arm64 # Use linux-x64 for Linux on amd64.
+BOXDB_GO_VERSION=0.5.1
+BOXDB_GO_PLATFORM=darwin-arm64 # Linux: linux-x64 or linux-arm64 (64-bit Raspberry Pi).
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
 curl --fail --location \
@@ -24,7 +26,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.5.0
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.5.1
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The

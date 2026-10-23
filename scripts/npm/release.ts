@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 export const root = resolve(import.meta.dirname, "../..");
 export const output = join(root, "target/npm");
 export const registry = "https://registry.npmjs.org/";
+export const requiredPlatforms = ["darwin-arm64", "linux-x64", "linux-arm64"];
 
 interface ReleasePackage {
   directory: string;
@@ -35,9 +36,9 @@ export function readRelease() {
   if (!/^\d+\.\d+\.\d+$/.test(release.version) || !/^[a-f0-9]{40}$/.test(release.commit)) {
     throw new Error("Invalid release version/commit");
   }
-  if ([...release.platforms].sort().join(",") !== "darwin-arm64,linux-x64") {
+  if ([...release.platforms].sort().join(",") !== [...requiredPlatforms].sort().join(",")) {
     throw new Error(
-      "Publishing requires both macOS ARM64 and Linux x64 binaries; local bundles cannot be published",
+      "Publishing requires macOS ARM64, Linux x64 and Linux ARM64 binaries; local bundles cannot be published",
     );
   }
   if (

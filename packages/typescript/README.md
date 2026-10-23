@@ -11,10 +11,11 @@ column types and built-in SQL extensions use the same core.
 npm install @boxdb/client
 ```
 
-Requires Node.js 22.18+ or Bun on macOS ARM64 (macOS 11+) or Linux x64 with
-glibc 2.35+ (Ubuntu 22.04+). Both native addons are bundled in the npm package;
+Requires Node.js 22.18+ or Bun on macOS ARM64 (macOS 11+) or Linux x64 or ARM64
+with glibc 2.35+ (Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+).
+All three native addons are bundled in the npm package;
 installation needs no Rust compiler, install scripts or extra downloads.
-Alpine/musl, Windows, Intel macOS and Linux ARM64 are not supported by this npm
+Alpine/musl, Windows, Intel macOS and 32-bit ARM are not supported by this npm
 release. This client does not run in browsers.
 
 ## Build from source

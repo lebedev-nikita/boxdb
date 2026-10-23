@@ -8,8 +8,8 @@ The npm release contains five packages at the same version as `Cargo.toml`:
 - `@boxdb/better-auth-adapter`
 - `@boxdb/db0-adapter`
 
-The client and CLI archives bundle macOS ARM64 and Linux x64 binaries; Linux
-requires glibc 2.35+. Installations do not run scripts or download binaries.
+The client and CLI archives bundle macOS ARM64 and Linux x64 and ARM64
+binaries; Linux requires glibc 2.35+. Installations do not run scripts or download binaries.
 The CLI exposes `boxdb` through npm's `bin` mechanism. Adapters declare the client
 and their integration libraries as peer dependencies.
 
@@ -27,9 +27,10 @@ Pushing a matching `vX.Y.Z` tag also builds and publishes that version. Ordinary
 branch pushes, pull requests and manual runs without `publish=true` only build
 and verify packages.
 
-The workflow builds native code on both platforms, assembles all five archives,
-and installs those exact archives on both platforms with Node.js 22 and 24 and
-Bun. Checks cover SQL, CLI arguments/stdin/errors, adapter queries, Better Auth
+The workflow builds native code on all three platforms, assembles all five
+archives, and installs those exact archives on all three platforms with
+Node.js 22 and 24 and Bun.
+Checks cover SQL, CLI arguments/stdin/errors, adapter queries, Better Auth
 registration and sessions, and bundled licenses.
 
 After every verification job passes, the publish job downloads the same
