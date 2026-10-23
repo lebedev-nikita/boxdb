@@ -35,9 +35,9 @@ export interface NativeConnection {
   cancel(id: number): void;
 }
 const platform = `${process.platform}-${process.arch}`;
-if (platform !== "darwin-arm64" && platform !== "linux-x64") {
+if (!["darwin-arm64", "linux-x64", "linux-arm64"].includes(platform)) {
   throw new Error(
-    `BoxDB does not support ${platform}. Supported: macOS ARM64 and Linux x64 (glibc 2.35+).`,
+    `BoxDB does not support ${platform}. Supported: macOS ARM64 and Linux x64 or ARM64 (glibc 2.35+).`,
   );
 }
 const binding = createRequire(import.meta.url)(`../native/${platform}/boxdb.node`) as {

@@ -51,6 +51,8 @@ jobs:
             target: aarch64-apple-darwin
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     env:
@@ -63,10 +65,13 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
       - name: Install musl build tools
-        if: runner.os == 'Linux'
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
           sudo apt-get install --yes musl-tools libclang-dev
+      - name: Install ARM build tools
+        if: contains(matrix.target, 'linux-gnu')
+        run: sudo apt-get update && sudo apt-get install --yes libclang-dev
       - name: Build CLI
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -140,6 +145,8 @@ jobs:
             platform: darwin-arm64
           - runner: ubuntu-22.04
             platform: linux-x64
+          - runner: ubuntu-22.04-arm
+            platform: linux-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     env:
@@ -240,10 +247,12 @@ jobs:
 
           version = os.environ["BOXDB_RELEASE_VERSION"]
           directory = Path("release-assets")
-          names = [f"boxdb-{version}-aarch64-apple-darwin.tar.gz", f"boxdb-{version}-x86_64-unknown-linux-musl.tar.gz", *[f"boxdb-go-{version}-{platform}.tar.gz" for platform in ("darwin-arm64", "linux-x64")], *[f"{name}-{version}.crate" for name in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys")]]
+          cli_names = [f"boxdb-{version}-{target}.tar.gz" for target in ("aarch64-apple-darwin", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-gnu")]
+          go_names = [f"boxdb-go-{version}-{platform}.tar.gz" for platform in ("darwin-arm64", "linux-x64", "linux-arm64")]
+          names = [*cli_names, *go_names, *[f"{name}-{version}.crate" for name in ("boxdb", "boxdb-rusqlite", "boxdb-sqlite-sys")]]
           if {path.name for path in directory.iterdir()} != set(names):
-              raise SystemExit("Expected both CLI archives, both native Go archives and all three Cargo source packages")
-          for name in names[:2]:
+              raise SystemExit("Expected all three CLI archives, all three native Go archives and all three Cargo source packages")
+          for name in cli_names:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
                   if {member.name for member in members} != {"boxdb", "README.md", "LICENSE", "docs/replication.md", "docs/recovery.md", "docs/client-errors.md", "assets/icon.svg", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:
@@ -252,7 +261,7 @@ jobs:
                       raise SystemExit("Invalid CLI archive member: " + name)
                   if not archive.getmember("boxdb").mode & 0o111:
                       raise SystemExit("CLI archive does not preserve executable permissions")
-          for name in names[2:4]:
+          for name in go_names:
               with tarfile.open(directory / name, "r:gz") as archive:
                   members = archive.getmembers()
                   if {member.name for member in members} != {"lib/libboxdb_go.a", "include/boxdb.h", "README.md", "LICENSE", "licenses/sqlean.txt", "licenses/pcre2.txt", "licenses/sqlite-vec-MIT.txt", "licenses/sqlite-vec-APACHE.txt", "licenses/rusqlite.txt", "licenses/libsqlite3-sys.txt"}:

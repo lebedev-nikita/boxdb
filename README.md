@@ -11,8 +11,8 @@ BoxDB file or API compatibility.
 
 ## Get started
 
-Install the CLI with Node.js 22.18+ on macOS ARM64 or Linux x64 with glibc 2.35+
-(Ubuntu 22.04+):
+Install the CLI with Node.js 22.18+ on macOS ARM64 or Linux x64 or ARM64
+with glibc 2.35+ (Ubuntu 22.04+ or Raspberry Pi OS Bookworm+):
 
 ```sh
 npm install -g @boxdb/cli
@@ -30,6 +30,10 @@ boxdb data.db -e "
 Run `boxdb data.db` for the interactive shell; `.help` lists shell commands.
 Use `boxdb --help` for CLI options, including JSON output and format conversion.
 See the [CLI README](packages/cli/README.md) for installation and usage.
+
+For Raspberry Pi, use 64-bit Raspberry Pi OS Bookworm or newer.
+Prebuilt CLI and Go archives are also attached to
+[GitHub releases](https://github.com/lebedev-nikita/boxdb/releases).
 
 To build from this checkout, use `cargo install --path . --locked` with a current
 Rust toolchain, native build tools and libclang (Xcode Command Line Tools on

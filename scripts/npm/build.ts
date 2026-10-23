@@ -1,10 +1,11 @@
 import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { requiredPlatforms } from "./release.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const platform = `${process.platform}-${process.arch}`;
-if (!["darwin-arm64", "linux-x64"].includes(platform)) {
+if (!requiredPlatforms.includes(platform)) {
   throw new Error(`Unsupported npm build platform: ${platform}`);
 }
 const built = spawnSync(

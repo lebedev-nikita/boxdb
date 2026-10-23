@@ -28,6 +28,10 @@ and native Go libraries. After publishing the complete GitHub release, it also
 creates the corresponding `packages/go/vX.Y.Z` module tag. See the
 [Go installation instructions](../packages/go/README.md#install-a-release).
 
+The CLI release includes macOS ARM64, Linux x64 (musl) and Linux ARM64 (glibc).
+The ARM64 builds support 64-bit Raspberry Pi OS Bookworm or newer;
+native Go archives use the same ARM64 architecture.
+
 Before publication, also build a separate application outside this workspace
 with only a `boxdb` path dependency. Exercise native types and schema export
 through its public Rust API without adding any Cargo patches.
