@@ -91,7 +91,9 @@ BoxDB so logical metadata stays consistent.
   `CAST(? AS INSTANT)`. Native decimal, UUID, temporal and unsigned casts are
   supported. SQL CAST does not cover every logical column type; see the
   storage guide before adding extended casts.
-  JSON is an opaque validated document: serialize and parse in the client.
+- Use typed columns and related tables by default. Do not create JSON columns
+  unless the developer explicitly requests them. JSON is an opaque validated
+  document: serialize and parse in the client.
   JSONB, SQL JSON/JSONB functions, document operators and JSON virtual tables
   are unavailable.
 - For exact amounts, bind decimal strings and use `CAST('0.1' AS DECIMAL)` in
