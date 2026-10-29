@@ -11,3 +11,9 @@ packages/cli/native/
 *.tmp
 .tmp*
 __pycache__/
+website/.astro/
+website/dist/
+website/.impeccable/mocks/
+website/.impeccable/review/
+website/.impeccable/build-phase.json
+website/.impeccable/build/

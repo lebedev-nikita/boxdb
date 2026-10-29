@@ -2,6 +2,18 @@
   "name": "@boxdb/client",
   "version": "0.5.1",
   "description": "BoxDB queries and SQLite driver backed by the Rust core",
+  "keywords": [
+    "boxdb",
+    "bun",
+    "database",
+    "nodejs",
+    "sqlite",
+    "typescript"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

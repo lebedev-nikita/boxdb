@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem with BoxDB.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Use synthetic data. For vulnerabilities, use the private reporting link in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: BoxDB version
+      placeholder: "0.5.1 (or commit SHA)"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Platform and client
+      placeholder: "Ubuntu 22.04 ARM64, Node.js 22, @boxdb/client, binary storage"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include runnable SQL or code, installation steps and the storage format.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include error codes and relevant output without private data.
+    validations:
+      required: true

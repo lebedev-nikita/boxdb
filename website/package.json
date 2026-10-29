@@ -1,0 +1,27 @@
+{
+  "name": "boxdb-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro sync --force && tsc --noEmit --runExternalCode && astro build",
+    "check": "astro sync --force && tsc --noEmit --runExternalCode"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.0",
+    "@astrojs/sitemap": "3.7.4",
+    "@astrojs/starlight": "0.42.7",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/lexend": "5.3.0",
+    "@fontsource-variable/manrope": "5.3.0",
+    "astro": "7.4.3",
+    "simple-icons": "^16.36.0"
+  },
+  "devDependencies": {
+    "@astrojs/ts-content-mapper": "0.2.0",
+    "@types/mdast": "^4.0.4",
+    "@types/unist": "^3.0.3",
+    "typescript": "7.1.0-beta",
+    "vfile": "^6.0.3"
+  }
+}

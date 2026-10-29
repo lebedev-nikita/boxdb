@@ -20,6 +20,14 @@ count-lines:
 ts-install:
     bun install --frozen-lockfile
 
+# Serve the documentation site from the repository Markdown sources.
+docs-dev: ts-install
+    bun run --cwd website dev
+
+# Check and build the static GitHub Pages site and local search index.
+docs-build: ts-install
+    bun run --cwd website build
+
 ts-build: ts-install
     bun run build
 

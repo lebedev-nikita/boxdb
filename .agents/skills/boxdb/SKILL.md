@@ -15,6 +15,10 @@ Bookworm+ (ARM64, glibc 2.35+). Choose `linux-arm64` for npm and Go binaries,
 or `aarch64-unknown-linux-gnu` for the standalone CLI archive.
 Follow the client guide for installation.
 
+The [documentation index](https://github.com/lebedev-nikita/boxdb/blob/main/docs/index.md)
+routes first-time users to the quickstart, SQL overview and deployment guide.
+The same guides are published at https://lebedev-nikita.github.io/boxdb/.
+
 ## Choose the client guide
 
 The links point to the BoxDB repository. When a BoxDB checkout is available,
@@ -28,7 +32,7 @@ Read only the guides relevant to the task.
   Use this for the cgo build, `database/sql`, connection pooling, contexts and
   Scanner/Valuer types. Use a prebuilt native library matching the Go module
   version, or build it from a checkout.
-- Rust: [README.md](https://github.com/lebedev-nikita/boxdb/blob/main/README.md#language-clients)
+- Rust: [docs/rust.md](https://github.com/lebedev-nikita/boxdb/blob/main/docs/rust.md)
   and the example and public API in [src/lib.rs](https://github.com/lebedev-nikita/boxdb/blob/main/src/lib.rs).
   In a checkout, use `cargo doc --no-deps --open` for the API reference.
 - CLI: [packages/cli/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/cli/README.md).

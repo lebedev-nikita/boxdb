@@ -2,6 +2,16 @@
   "name": "@boxdb/db0-adapter",
   "version": "0.5.1",
   "description": "Asynchronous db0 connector for BoxDB",
+  "keywords": [
+    "boxdb",
+    "database",
+    "db0",
+    "sqlite"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
