@@ -36,6 +36,8 @@ Read only the guides relevant to the task.
   and the example and public API in [src/lib.rs](https://github.com/lebedev-nikita/boxdb/blob/main/src/lib.rs).
   In a checkout, use `cargo doc --no-deps --open` for the API reference.
 - CLI: [packages/cli/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/cli/README.md).
+  Install with `brew install lebedev-nikita/tap/boxdb` for a standalone CLI
+  without Node.js, or `npm install -g @boxdb/cli` for the npm distribution.
   Use `boxdb --help` for options and `.help` inside the interactive shell.
 - Drizzle: [packages/drizzle-adapter/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/drizzle-adapter/README.md).
   Use the BoxDB adapter, its extended column builders and its migration helper.

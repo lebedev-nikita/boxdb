@@ -5,11 +5,22 @@ Use a new directory so the example starts with an empty database.
 
 ## Install
 
-The npm CLI requires Node.js 22.18+ on macOS ARM64 or Linux x64/ARM64 with
-glibc 2.35+ (Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+).
+With [Homebrew](https://brew.sh/), install the standalone CLI without Node.js:
+
+```sh
+brew install lebedev-nikita/tap/boxdb
+```
+
+Alternatively, the npm CLI requires Node.js 22.18+ on macOS ARM64 or Linux
+x64/ARM64 with glibc 2.35+ (Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+):
 
 ```sh
 npm install -g @boxdb/cli
+```
+
+Create a working directory after installing with either method:
+
+```sh
 mkdir boxdb-quickstart
 cd boxdb-quickstart
 ```

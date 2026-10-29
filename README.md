@@ -19,11 +19,22 @@ SQLite file, or choose readable YAML for small Git-tracked datasets.
 
 ## Try it
 
-Requires Node.js 22.18+ on macOS ARM64 or Linux x64/ARM64 with glibc 2.35+
-(Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+).
+Install the standalone CLI with [Homebrew](https://brew.sh/):
+
+```sh
+brew install lebedev-nikita/tap/boxdb
+```
+
+Or use npm with Node.js 22.18+ on macOS ARM64 or Linux x64/ARM64 with glibc 2.35+
+(Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+):
 
 ```sh
 npm install -g @boxdb/cli
+```
+
+Then run:
+
+```sh
 boxdb data.db -e "
   CREATE TABLE invoices(id INT64 PRIMARY KEY, amount DECIMAL(12,2));
   INSERT INTO invoices(amount) VALUES('0.10'),('0.20');
@@ -43,7 +54,7 @@ Standalone binaries are available in [releases](https://github.com/lebedev-nikit
 | TypeScript / Node.js / Bun | `npm install @boxdb/client` | [Client guide](packages/typescript/README.md) |
 | Rust | `cargo add boxdb` | [Client guide](docs/rust.md) · [API](https://docs.rs/boxdb) |
 | Go | Go module plus matching native library | [Installation and database/sql](packages/go/README.md) |
-| CLI | `npm install -g @boxdb/cli` | [Command-line guide](packages/cli/README.md) |
+| CLI | `brew install lebedev-nikita/tap/boxdb` or `npm install -g @boxdb/cli` | [Command-line guide](packages/cli/README.md) |
 
 For TypeScript integrations, use the [Drizzle](packages/drizzle-adapter/README.md),
 [Better Auth](packages/better-auth-adapter/README.md) or [db0](packages/db0-adapter/README.md)

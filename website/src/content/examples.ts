@@ -89,9 +89,9 @@ export const clients = [
     name: "CLI",
     runtime: "Your terminal",
     language: "bash",
-    install: "npm install -g @boxdb/cli",
+    install: "brew install lebedev-nikita/tap/boxdb",
     guide: "docs/clients/cli/",
-    requirement: "Node.js 22.18+ · macOS ARM64 or Linux x64/ARM64 with glibc 2.35+",
+    requirement: "Homebrew on macOS or Linux · no Node.js required",
     filename: "terminal",
     code: [
       'boxdb app.db -e "',

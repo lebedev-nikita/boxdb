@@ -11,7 +11,7 @@ Start with the [quickstart](quickstart.md), then follow your client guide:
 | TypeScript / Node.js / Bun | `npm install @boxdb/client` | [TypeScript](../packages/typescript/README.md) |
 | Rust | `cargo add boxdb` | [Rust](rust.md) |
 | Go | Go module and matching native library | [Go](../packages/go/README.md) |
-| Command line | `npm install -g @boxdb/cli` | [CLI](../packages/cli/README.md) |
+| Command line | `brew install lebedev-nikita/tap/boxdb` or `npm install -g @boxdb/cli` | [CLI](../packages/cli/README.md) |
 
 ## Learn the model
 
