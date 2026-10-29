@@ -2,6 +2,17 @@
   "name": "@boxdb/better-auth-adapter",
   "version": "0.5.1",
   "description": "Direct Better Auth database adapter for BoxDB",
+  "keywords": [
+    "authentication",
+    "better-auth",
+    "boxdb",
+    "database",
+    "sqlite"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

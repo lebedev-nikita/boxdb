@@ -1,0 +1,54 @@
+@import "@fontsource-variable/manrope";
+
+:root {
+  --sl-font: "Manrope Variable", sans-serif;
+  --sl-content-width: 48rem;
+  --sl-color-accent-low: #113f4d;
+  --sl-color-accent: #21aac7;
+  --sl-color-accent-high: #a9e9f4;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #dff3f6;
+  --sl-color-accent: #057f9e;
+  --sl-color-accent-high: #09536a;
+  --sl-color-white: #10232d;
+  --sl-color-gray-1: #263d48;
+  --sl-color-gray-2: #3e5867;
+  --sl-color-gray-3: #526b79;
+  --sl-color-gray-4: #91a7b2;
+  --sl-color-gray-5: #d7e2e7;
+  --sl-color-gray-6: #f4f8f8;
+  --sl-color-gray-7: #fafcfc;
+}
+.site-title {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+}
+.sl-markdown-content {
+  line-height: 1.8;
+}
+.sl-markdown-content :is(h2, h3) {
+  margin-top: 2em;
+}
+.sl-markdown-content a {
+  text-underline-offset: 0.2em;
+}
+.starlight-aside {
+  border-inline-start-width: 1px;
+}
+:focus-visible {
+  outline: 3px solid var(--sl-color-accent);
+  outline-offset: 4px;
+}
+::selection {
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-accent-high);
+}
+* {
+  scrollbar-color: var(--sl-color-gray-4) transparent;
+}

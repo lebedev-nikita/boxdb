@@ -1,0 +1,195 @@
+---
+import { Code } from "astro:components";
+import { siTypescript, siRust, siGo } from "simple-icons";
+import logo from "../../../assets/icon.svg";
+import { version } from "../../../packages/cli/package.json";
+import { clients } from "../content/examples";
+import { base, repository, site } from "../content/pages";
+import "../styles/home.css";
+
+const title = "BoxDB — A database for your $5 VPS.";
+const description = "SQLite with validated types, exact decimals and optional readable YAML storage. For TypeScript, Rust, Go and the command line.";
+const canonical = `${site}${base}`;
+const url = (path: string) => `${base}${path}`;
+const icons: Record<string, string> = { typescript: siTypescript.path, rust: siRust.path, go: siGo.path };
+const sql = `CREATE TABLE invoices (
+  id INT64 PRIMARY KEY,
+  amount DECIMAL(12,2),
+  issued_at INSTANT
+);
+
+SELECT CAST('0.1' AS DECIMAL)
+     + CAST('0.2' AS DECIMAL);`;
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f4f8f8" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={url("favicon.svg")} />
+    <link rel="sitemap" href={url("sitemap-index.xml")} />
+    <link rel="alternate" type="text/plain" href={url("llms.txt")} title="Documentation for agents" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={`${canonical}social.png`} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="wordmark" href={base} aria-label="BoxDB home"><img src={logo.src} width="40" height="40" alt="" /><span>BoxDB</span></a>
+      <nav aria-label="Main navigation">
+        <a href={url("docs/")}>Documentation</a>
+        <a href={repository}>GitHub</a>
+        <a class="version" href={`${repository}/releases`}>v{version}</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="headline">
+        <div class="hero-copy">
+          <h1 id="headline"><span>A database for</span><span>your $5 VPS.</span></h1>
+          <p class="hero-description">SQLite, with types that mean something.<br class="wide-break" /> For TypeScript, Rust, Go and the command line.</p>
+          <div class="hero-actions">
+            <a class="button primary" href={url("docs/quickstart/")}>Get started</a>
+            <a class="button secondary" href={url("docs/")}>Read the docs</a>
+          </div>
+          <p class="status">Experimental <span aria-hidden="true">·</span> <a href={`${repository}/blob/main/LICENSE`}>MIT licensed</a></p>
+        </div>
+        <div class="sql-specimen" aria-label="Example of exact decimal arithmetic">
+          <pre><code>{sql}</code></pre>
+          <div class="sql-result"><span>0.1 + 0.2</span><strong>0.3</strong></div>
+          <p class="specimen-caption">Example result · exact decimal arithmetic</p>
+        </div>
+      </section>
+
+      <div class="install-strip">
+        <span class="prompt" aria-hidden="true">$</span><code id="install-command">{clients[0].install}</code>
+        <button class="copy-button" type="button" aria-label="Copy install command" data-copy>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 5V3H4v13h2" /></svg>
+          <span data-copy-label>Copy</span>
+        </button>
+        <span class="sr-only" role="status" data-copy-status></span>
+      </div>
+
+      <section class="getting-started content-width" aria-label="Choose your client">
+        <div class="client-tabs" data-tabs>
+          {clients.map((client, i) => <a href={url(client.guide)} id={`tab-${client.id}`} aria-label={`${client.name} ${client.runtime}`} data-client={client.id} data-command={client.install} data-requirement={client.requirement} class:list={["client-tab", { selected: i === 0 }]}>
+            {client.id === "cli"
+              ? <svg class="client-icon cli-icon" width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="7" fill="currentColor" /><path d="m11 13 8 8-8 8m12 0h10" fill="none" stroke="white" stroke-width="2" /></svg>
+              : <svg class:list={["client-icon", `icon-${client.id}`]} width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={icons[client.id]} /></svg>}
+            <span class="client-label"><strong>{client.name}</strong></span>
+          </a>)}
+        </div>
+        <div class="benefits">
+          <article><svg class="benefit-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M23 18h14l5 5v25H23zM37 18v7h5M28 32h9M28 37h9M28 42h6" /></svg><div><h2>Exact by design.</h2><p>Decimals, instants, UUIDs and more. Validate the meaning of your data, right where it lives.</p><a href={url("docs/sql/")}>Explore the types <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div></article>
+          <article><svg class="benefit-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><ellipse cx="32" cy="21" rx="12" ry="5" /><path d="M20 21v21c0 7 24 7 24 0V21M20 31c0 7 24 7 24 0M20 41c0 7 24 7 24 0" /></svg><div><h2>One file. Two ways.</h2><p>Binary SQLite for your application. Readable YAML for small datasets you want to keep in Git.</p><a href={url("docs/storage/")}>Choose your storage <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div></article>
+          <article><svg class="benefit-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m25 23-9 9 9 9m14-18 9 9-9 9m-4-23-6 28" /></svg><div><h2>Fits your stack.</h2><p>One Rust core, four ways in. The same types, migrations and files across every client.</p><a href={url("docs/#build-an-application")}>Find your integration <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div></article>
+        </div>
+        <div class="client-examples">
+          {clients.map((client, i) => <div id={`panel-${client.id}`} data-panel={client.id} hidden={i !== 0}>
+            <div class="example-heading"><h2>Your first query, in {client.name}.</h2><a href={url(client.guide)}>Full {client.name} guide <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div>
+            <p class="requirement" data-requirement-text>{client.requirement}</p>
+            <figure class="code-example"><figcaption>{client.filename}</figcaption><Code code={client.code} lang={client.language} theme="css-variables" /></figure>
+          </div>)}
+        </div>
+      </section>
+
+      <section class="types-section">
+        <div class="content-width types-layout">
+          <div><h2>SQL, with a little<br />more meaning.</h2><p>Declare what belongs in a column. BoxDB checks it. Exact decimal and temporal arithmetic runs in the engine.</p><a href={url("docs/sql/")}>SQL and types <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div>
+          <div class="type-ledger" aria-label="Examples of BoxDB types">
+            <div><code>DECIMAL(12,2)</code><span>Exact amounts. Explicit rounding.</span></div>
+            <div><code>INSTANT</code><span>A point in time, normalized to UTC.</span></div>
+            <div><code>ENUM('todo','done')</code><span>A known set of string values.</span></div>
+            <div><code>UUID</code><span>Identifiers with native validation.</span></div>
+            <div><code>TEXT[]</code><span>Collections with typed elements.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="integrations content-width">
+        <div class="section-heading"><h2>Bring the tools<br />you already use.</h2><p>Keep your application patterns. BoxDB adapters connect the client to your existing libraries.</p></div>
+        <div class="integration-links">
+          <a href={url("docs/integrations/drizzle/")}><strong>Drizzle</strong><span>Queries, transactions & migrations</span><svg class="link-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 18 12-12M7 6h11v11" /></svg></a>
+          <a href={url("docs/integrations/better-auth/")}><strong>Better Auth</strong><span>Authentication storage & initial schema</span><svg class="link-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 18 12-12M7 6h11v11" /></svg></a>
+          <a href={url("docs/integrations/db0/")}><strong>db0</strong><span>A connector for your client or transaction</span><svg class="link-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 18 12-12M7 6h11v11" /></svg></a>
+        </div>
+      </section>
+
+      <section class="operations content-width">
+        <div><h2>Small server.<br />Real database tools.</h2><p>SQL migrations, schema export, file diagnostics and recovery. Built-in full-text and vector search. Binary replication with Litestream.</p><a href={url("docs/deployment/")}>Deployment and backups <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div>
+        <div class="project-status"><h3>Built in the open. Still experimental.</h3><p>BoxDB is version 0. APIs and storage contracts can change. Native values and indexes require BoxDB’s patched SQLite engine. Read the tradeoffs before you adopt it.</p><a href={url("docs/why-boxdb/")}>Is BoxDB a fit? <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div>
+      </section>
+
+      <section class="closing"><div class="content-width"><h2>Start with one file.</h2><a class="button primary" href={url("docs/quickstart/")}>Create your first database <svg class="inline-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></a></div></section>
+    </main>
+    <footer class="site-footer content-width">
+      <div><a class="wordmark" href={base}><img src={logo.src} width="28" height="28" alt="" /><span>BoxDB</span></a><p>A database for your $5 VPS.</p></div>
+      <nav aria-label="Project links"><a href={url("docs/")}>Documentation</a><a href={`${repository}/releases`}>Releases</a><a href={url("docs/contributing/")}>Contribute</a><a href={url("docs/security/")}>Security</a><a href={`${repository}/issues/new/choose`}>Get help</a></nav>
+    </footer>
+    <script>
+      const tabs = Array.from(document.querySelectorAll<HTMLAnchorElement>("[data-client]"));
+      const panels = Array.from(document.querySelectorAll<HTMLElement>("[data-panel]"));
+      const command = document.querySelector<HTMLElement>("#install-command");
+      const tablist = document.querySelector("[data-tabs]");
+      tablist?.setAttribute("role", "tablist");
+      tablist?.setAttribute("aria-label", "Language client");
+      const select = (tab: HTMLAnchorElement) => {
+        for (const item of tabs) {
+          const selected = item === tab;
+          item.classList.toggle("selected", selected);
+          item.setAttribute("aria-selected", String(selected));
+          item.tabIndex = selected ? 0 : -1;
+        }
+        for (const panel of panels) panel.hidden = panel.dataset.panel !== tab.dataset.client;
+        if (command) command.textContent = tab.dataset.command ?? "";
+        if (copyLabel) copyLabel.textContent = "Copy";
+        if (copyStatus) copyStatus.textContent = "";
+      };
+      for (const [index, tab] of tabs.entries()) {
+        tab.setAttribute("role", "tab");
+        tab.setAttribute("aria-controls", `panel-${tab.dataset.client}`);
+        tab.setAttribute("aria-selected", String(index === 0));
+        tab.tabIndex = index === 0 ? 0 : -1;
+        const panel = panels.find((item) => item.dataset.panel === tab.dataset.client);
+        panel?.setAttribute("role", "tabpanel");
+        panel?.setAttribute("aria-labelledby", tab.id);
+        tab.addEventListener("click", (event) => { event.preventDefault(); select(tab); });
+        tab.addEventListener("keydown", (event) => {
+          const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+            : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+            : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+          if (next < 0) return;
+          event.preventDefault();
+          const target = tabs[next];
+          if (target) { select(target); target.focus(); }
+        });
+      }
+      const copy = document.querySelector<HTMLButtonElement>("[data-copy]");
+      const copyLabel = document.querySelector<HTMLElement>("[data-copy-label]");
+      const copyStatus = document.querySelector<HTMLElement>("[data-copy-status]");
+      copy?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(command?.textContent ?? "");
+          if (copyLabel) copyLabel.textContent = "Copied";
+          if (copyStatus) copyStatus.textContent = "Install command copied.";
+        } catch {
+          const selection = window.getSelection();
+          const range = document.createRange();
+          if (command) { range.selectNodeContents(command); selection?.removeAllRanges(); selection?.addRange(range); }
+          if (copyLabel) copyLabel.textContent = "Select & copy";
+          if (copyStatus) copyStatus.textContent = "Clipboard unavailable. Select and copy the highlighted command.";
+        }
+      });
+    </script>
+  </body>
+</html>

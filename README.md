@@ -2,129 +2,92 @@
 
 # BoxDB
 
-A database for your $5 VPS.
+**A database for your $5 VPS.**
 
-An experimental SQLite client for Rust, TypeScript, Go and the command line. BoxDB
-adds logical types and validation to ordinary SQLite databases, with an optional
-readable YAML format for storing data in Git. Version 0 does not preserve old
-BoxDB file or API compatibility.
+SQLite with validated logical types, native exact decimals and temporal values,
+for Rust, TypeScript, Go and the command line. Keep application data in a binary
+SQLite file, or choose readable YAML for small Git-tracked datasets.
 
-## Get started
+[Website & documentation](https://lebedev-nikita.github.io/boxdb/) ·
+[Quickstart](docs/quickstart.md) ·
+[Releases](https://github.com/lebedev-nikita/boxdb/releases) ·
+[API reference](https://docs.rs/boxdb)
 
-Install the CLI with Node.js 22.18+ on macOS ARM64 or Linux x64 or ARM64
-with glibc 2.35+ (Ubuntu 22.04+ or Raspberry Pi OS Bookworm+):
+> **Experimental, version 0.** APIs and BoxDB storage contracts may change.
+> Binary files keep SQLite's standard page and record encoding; native values
+> and indexes require BoxDB's patched engine.
+
+## Try it
+
+Requires Node.js 22.18+ on macOS ARM64 or Linux x64/ARM64 with glibc 2.35+
+(Ubuntu 22.04+ or 64-bit Raspberry Pi OS Bookworm+).
 
 ```sh
 npm install -g @boxdb/cli
 boxdb data.db -e "
-  CREATE TABLE accounts (
-    id INT64 PRIMARY KEY,
-    name TEXT NOT NULL,
-    balance DECIMAL(12,2)
-  );
-  INSERT INTO accounts(name,balance) VALUES('Ada','12.50');
-  SELECT * FROM accounts;
+  CREATE TABLE invoices(id INT64 PRIMARY KEY, amount DECIMAL(12,2));
+  INSERT INTO invoices(amount) VALUES('0.10'),('0.20');
+  SELECT SUM(amount) AS total FROM invoices;
 "
 ```
 
-Run `boxdb data.db` for the interactive shell; `.help` lists shell commands.
-Use `boxdb --help` for CLI options, including JSON output and format conversion.
-See the [CLI README](packages/cli/README.md) for installation and usage.
+The exact total is `0.3`. Bind decimal strings for exact input.
+Run `boxdb data.db` for the interactive shell, or follow the
+[quickstart](docs/quickstart.md) to query, inspect and back up a database.
+Standalone binaries are available in [releases](https://github.com/lebedev-nikita/boxdb/releases).
 
-For Raspberry Pi, use 64-bit Raspberry Pi OS Bookworm or newer.
-Prebuilt CLI and Go archives are also attached to
-[GitHub releases](https://github.com/lebedev-nikita/boxdb/releases).
+## Choose your client
 
-To build from this checkout, use `cargo install --path . --locked` with a current
-Rust toolchain, native build tools and libclang (Xcode Command Line Tools on
-macOS; `libclang-dev` on Debian/Ubuntu).
+| Client | Installation | Documentation |
+| --- | --- | --- |
+| TypeScript / Node.js / Bun | `npm install @boxdb/client` | [Client guide](packages/typescript/README.md) |
+| Rust | `cargo add boxdb` | [Client guide](docs/rust.md) · [API](https://docs.rs/boxdb) |
+| Go | Go module plus matching native library | [Installation and database/sql](packages/go/README.md) |
+| CLI | `npm install -g @boxdb/cli` | [Command-line guide](packages/cli/README.md) |
 
-## Migrations and schema export
+For TypeScript integrations, use the [Drizzle](packages/drizzle-adapter/README.md),
+[Better Auth](packages/better-auth-adapter/README.md) or [db0](packages/db0-adapter/README.md)
+adapter. For AI-assisted projects, use the [BoxDB usage skill](.agents/skills/boxdb/SKILL.md).
 
-```sh
-boxdb migrate new create_accounts
-# Edit the generated SQL file, then:
-boxdb migrate up data.db
-boxdb migrate status data.db --check
-boxdb migrate down data.db
-boxdb schema dump data.db > schema.sql
-boxdb schema dump data.db --format=yaml > schema.yaml
-```
+## Why BoxDB?
 
-Migrations run through BoxDB and preserve extended types. Each version commits
-atomically; applied files are checked for changes. Schema dumps include type and
-migration metadata without application rows. SQL is the default export format;
-YAML exports a logical schema with nullable columns marked as `name?`;
-it is separate from readable database storage. See [migration and restoration usage](docs/migrations.md).
+- **Types with meaning.** Bounded signed/unsigned integers, enums, exact decimals,
+  UUIDs, UTC instants, calendar values, intervals and typed arrays. Ordinary tables
+  are STRICT by default.
+- **A shared core.** The same validation, SQL migrations and storage across clients.
+  The TypeScript client executes SQL on a native worker.
+- **Built-in SQL tools.** FTS5, R*Tree, vector search, Unicode text and regular
+  expressions, without runtime extension loading.
+- **Two storage choices.** Binary SQLite for application data; readable YAML for
+  small datasets you want to review as text.
 
-## SQL and types
+BoxDB is intended for single-server applications. It has no built-in remote
+server or distributed writes. Readable storage executes in memory, has one writer
+per file and writes a complete snapshot on commit. JSON is a validated opaque
+document; SQL JSON/JSONB processing is disabled.
 
-SQLite executes queries directly. Tables created through BoxDB are STRICT by
-default; extended types include bounded integers, string enums, exact decimals,
-UUID, JSON, UTC instants, calendar dates/datetimes, times of day, intervals and typed arrays. DECIMAL,
-UUID, INSTANT, DATE, TIME, DATETIME and INTERVAL are native engine values with typed
-comparison and indexing. JSON is validated opaque text; JSON/JSONB SQL functions
-and operators are disabled.
-Table column names cannot end in `?`, which marks nullable columns in YAML schema exports.
-Bind decimal strings for exact input. See [native decimals](docs/native-decimal.md).
-See [temporal arithmetic](docs/temporal.md), [type declarations](src/types.rs) and the
-[storage and validation contract](docs/storage.md).
+Read [the fit and tradeoffs](docs/why-boxdb.md) before adoption. See
+[benchmark methodology](docs/benchmarks.md) to measure your workload.
 
-FTS5, R*Tree, exact decimal SQL functions, Unicode text functions, regular
-expressions and vector search are built in for every client. No shared-library
-loading is needed. See [extension examples and storage limits](docs/extensions.md).
+## Documentation
 
-Binary files use SQLite's standard page and record format. Native type queries
-and indexes require BoxDB's patched engine. External writers can bypass BoxDB's
-additional validation for other extended types. Readable YAML
-storage executes in memory and publishes a complete snapshot on commit, with
-one writer per file. See [storage formats](docs/storage.md) and
-[Litestream replication](docs/replication.md).
+Start at the [documentation index](docs/index.md), or go directly to:
 
-Use `boxdb check data.db --full` to diagnose an existing file. Explicit `repair`
-and `recover` commands write to new destinations; see
-[diagnostics and recovery](docs/recovery.md) for their limits and client APIs.
+- [SQL and types](docs/sql.md), [exact decimals](docs/native-decimal.md) and [temporal values](docs/temporal.md).
+- [Storage and validation](docs/storage.md) and [SQL extensions](docs/extensions.md).
+- [Migrations and schema export](docs/migrations.md).
+- [Deployment and backups](docs/deployment.md), [Litestream replication](docs/replication.md),
+  [diagnostics and recovery](docs/recovery.md) and [client errors](docs/client-errors.md).
+- [FAQ](docs/faq.md).
 
-## Language clients
+## Contribute
 
-Install the experimental Rust library from crates.io:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, checks and pull requests.
+With the development toolchain installed, run `just check`; use `just --list`
+for focused commands. Build from source with `cargo install --path . --locked`.
+See [npm releases](docs/npm-release.md) and [Rust releases](docs/rust-release.md)
+for package publication, and [website development](website/README.md) for GitHub Pages.
 
-```sh
-cargo add boxdb
-```
-
-The [library source](src/lib.rs) includes a minimal example;
-`cargo doc --no-deps --open` opens the API reference.
-The crate bundles BoxDB's SQLite engine and extensions; building requires native
-build tools and libclang. A local path dependency also works without Cargo patches.
-
-The [TypeScript client](packages/typescript/README.md) runs in Node.js and Bun
-with a nonblocking API. Follow its build and installation instructions, or
-install it with `npm install @boxdb/client`. Separate adapters have their own guides:
-
-- [Drizzle](packages/drizzle-adapter/README.md): queries, transactions, migrations and extended column types.
-- [Better Auth](packages/better-auth-adapter/README.md): authentication storage and initial schema generation.
-- [db0](packages/db0-adapter/README.md): connector setup and transaction handles.
-
-The [Go client](packages/go/README.md) implements `database/sql`, with context
-cancellation, prepared statements and transactions. It uses the Rust core through
-cgo; follow its native build and local module installation instructions.
-
-For AI agents, the [BoxDB skill](.agents/skills/boxdb/SKILL.md) routes usage tasks
-to the appropriate client guide and explains BoxDB-specific constraints.
-
-## Development
-
-With Rust, libclang, Go 1.23+, a C compiler, Node.js 22.18+, Bun, Just and Python 3.11+ installed, run:
-
-```sh
-just check
-```
-
-`just check` builds and checks all clients and runs their tests, including a
-cross-language migration and conversion scenario. Use `just client-types-test`
-to run that scenario alone, or `just --list` for individual client tasks.
-See [benchmark commands and methodology](docs/benchmarks.md) and
-[UTC instant examples](docs/temporal.md) for specialized workflows.
-See [npm releases](docs/npm-release.md) to build, verify and publish the npm packages.
-See [Rust releases](docs/rust-release.md) to package and publish the Cargo crates.
+[Report a bug or request a feature](https://github.com/lebedev-nikita/boxdb/issues/new/choose).
+Report vulnerabilities privately through the [security policy](SECURITY.md).
+BoxDB is [MIT licensed](LICENSE).

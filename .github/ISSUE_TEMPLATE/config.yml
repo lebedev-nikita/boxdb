@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://lebedev-nikita.github.io/boxdb/
+    about: Installation, client guides and operational documentation.
+  - name: Report a security vulnerability privately
+    url: https://github.com/lebedev-nikita/boxdb/security/advisories/new
+    about: Keep vulnerability details out of public issues.

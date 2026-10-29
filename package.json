@@ -4,7 +4,8 @@
   "workspaces": [
     "packages/cli",
     "packages/typescript",
-    "packages/*-adapter"
+    "packages/*-adapter",
+    "website"
   ],
   "type": "module",
   "scripts": {

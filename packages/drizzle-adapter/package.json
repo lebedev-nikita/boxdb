@@ -2,6 +2,17 @@
   "name": "@boxdb/drizzle-adapter",
   "version": "0.5.1",
   "description": "Asynchronous Drizzle ORM adapter for BoxDB",
+  "keywords": [
+    "boxdb",
+    "database",
+    "drizzle",
+    "orm",
+    "sqlite"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

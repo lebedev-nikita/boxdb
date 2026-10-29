@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T06:10:07.610591Z",
+  "title": "Design System: BoxDB",
+  "extensions": {
+    "colorMeta": {
+      "cyan": {
+        "role": "primary",
+        "displayName": "Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.1022 223.02)",
+          "oklch(26% 0.1022 223.02)",
+          "oklch(38% 0.1022 223.02)",
+          "oklch(49% 0.1022 223.02)",
+          "oklch(61% 0.1022 223.02)",
+          "oklch(72% 0.1022 223.02)",
+          "oklch(84% 0.1022 223.02)",
+          "oklch(95% 0.1022 223.02)"
+        ]
+      },
+      "cyan-hover": {
+        "role": "primary",
+        "displayName": "Cyan Hover",
+        "tonalRamp": [
+          "oklch(15% 0.0888 222.92)",
+          "oklch(26% 0.0888 222.92)",
+          "oklch(38% 0.0888 222.92)",
+          "oklch(49% 0.0888 222.92)",
+          "oklch(61% 0.0888 222.92)",
+          "oklch(72% 0.0888 222.92)",
+          "oklch(84% 0.0888 222.92)",
+          "oklch(95% 0.0888 222.92)"
+        ]
+      },
+      "pale-cyan": {
+        "role": "primary",
+        "displayName": "Pale Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.0215 207.59)",
+          "oklch(26% 0.0215 207.59)",
+          "oklch(38% 0.0215 207.59)",
+          "oklch(49% 0.0215 207.59)",
+          "oklch(61% 0.0215 207.59)",
+          "oklch(72% 0.0215 207.59)",
+          "oklch(84% 0.0215 207.59)",
+          "oklch(95% 0.0215 207.59)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0314 233.02)",
+          "oklch(26% 0.0314 233.02)",
+          "oklch(38% 0.0314 233.02)",
+          "oklch(49% 0.0314 233.02)",
+          "oklch(61% 0.0314 233.02)",
+          "oklch(72% 0.0314 233.02)",
+          "oklch(84% 0.0314 233.02)",
+          "oklch(95% 0.0314 233.02)"
+        ]
+      },
+      "muted-ink": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0366 237.09)",
+          "oklch(26% 0.0366 237.09)",
+          "oklch(38% 0.0366 237.09)",
+          "oklch(49% 0.0366 237.09)",
+          "oklch(61% 0.0366 237.09)",
+          "oklch(72% 0.0366 237.09)",
+          "oklch(84% 0.0366 237.09)",
+          "oklch(95% 0.0366 237.09)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "tonalRamp": [
+          "oklch(15% 0.0042 197.09)",
+          "oklch(26% 0.0042 197.09)",
+          "oklch(38% 0.0042 197.09)",
+          "oklch(49% 0.0042 197.09)",
+          "oklch(61% 0.0042 197.09)",
+          "oklch(72% 0.0042 197.09)",
+          "oklch(84% 0.0042 197.09)",
+          "oklch(95% 0.0042 197.09)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(26% 0.0000 89.88)",
+          "oklch(38% 0.0000 89.88)",
+          "oklch(49% 0.0000 89.88)",
+          "oklch(61% 0.0000 89.88)",
+          "oklch(72% 0.0000 89.88)",
+          "oklch(84% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "tonalRamp": [
+          "oklch(15% 0.0137 226.57)",
+          "oklch(26% 0.0137 226.57)",
+          "oklch(38% 0.0137 226.57)",
+          "oklch(49% 0.0137 226.57)",
+          "oklch(61% 0.0137 226.57)",
+          "oklch(72% 0.0137 226.57)",
+          "oklch(84% 0.0137 226.57)",
+          "oklch(95% 0.0137 226.57)"
+        ]
+      },
+      "docs-light-accent-high": {
+        "role": "primary",
+        "displayName": "Light Documentation Deep Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.0753 225.68)",
+          "oklch(26% 0.0753 225.68)",
+          "oklch(38% 0.0753 225.68)",
+          "oklch(49% 0.0753 225.68)",
+          "oklch(61% 0.0753 225.68)",
+          "oklch(72% 0.0753 225.68)",
+          "oklch(84% 0.0753 225.68)",
+          "oklch(95% 0.0753 225.68)"
+        ]
+      },
+      "docs-dark-accent": {
+        "role": "primary",
+        "displayName": "Dark Documentation Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.1154 216.72)",
+          "oklch(26% 0.1154 216.72)",
+          "oklch(38% 0.1154 216.72)",
+          "oklch(49% 0.1154 216.72)",
+          "oklch(61% 0.1154 216.72)",
+          "oklch(72% 0.1154 216.72)",
+          "oklch(84% 0.1154 216.72)",
+          "oklch(95% 0.1154 216.72)"
+        ]
+      },
+      "docs-dark-accent-low": {
+        "role": "primary",
+        "displayName": "Dark Documentation Low Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.0540 222.13)",
+          "oklch(26% 0.0540 222.13)",
+          "oklch(38% 0.0540 222.13)",
+          "oklch(49% 0.0540 222.13)",
+          "oklch(61% 0.0540 222.13)",
+          "oklch(72% 0.0540 222.13)",
+          "oklch(84% 0.0540 222.13)",
+          "oklch(95% 0.0540 222.13)"
+        ]
+      },
+      "docs-dark-accent-high": {
+        "role": "primary",
+        "displayName": "Dark Documentation Pale Cyan",
+        "tonalRamp": [
+          "oklch(15% 0.0659 209.28)",
+          "oklch(26% 0.0659 209.28)",
+          "oklch(38% 0.0659 209.28)",
+          "oklch(49% 0.0659 209.28)",
+          "oklch(61% 0.0659 209.28)",
+          "oklch(72% 0.0659 209.28)",
+          "oklch(84% 0.0659 209.28)",
+          "oklch(95% 0.0659 209.28)"
+        ]
+      },
+      "docs-dark-paper": {
+        "role": "neutral",
+        "displayName": "Dark Documentation Paper",
+        "tonalRamp": [
+          "oklch(15% 0.0080 274.53)",
+          "oklch(26% 0.0080 274.53)",
+          "oklch(38% 0.0080 274.53)",
+          "oklch(49% 0.0080 274.53)",
+          "oklch(61% 0.0080 274.53)",
+          "oklch(72% 0.0080 274.53)",
+          "oklch(84% 0.0080 274.53)",
+          "oklch(95% 0.0080 274.53)"
+        ]
+      },
+      "docs-dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Documentation Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0173 270.70)",
+          "oklch(26% 0.0173 270.70)",
+          "oklch(38% 0.0173 270.70)",
+          "oklch(49% 0.0173 270.70)",
+          "oklch(61% 0.0173 270.70)",
+          "oklch(72% 0.0173 270.70)",
+          "oklch(84% 0.0173 270.70)",
+          "oklch(95% 0.0173 270.70)"
+        ]
+      },
+      "docs-dark-rule": {
+        "role": "neutral",
+        "displayName": "Dark Documentation Rule",
+        "tonalRamp": [
+          "oklch(15% 0.0180 272.22)",
+          "oklch(26% 0.0180 272.22)",
+          "oklch(38% 0.0180 272.22)",
+          "oklch(49% 0.0180 272.22)",
+          "oklch(61% 0.0180 272.22)",
+          "oklch(72% 0.0180 272.22)",
+          "oklch(84% 0.0180 272.22)",
+          "oklch(95% 0.0180 272.22)"
+        ]
+      },
+      "docs-dark-body": {
+        "role": "neutral",
+        "displayName": "Dark Documentation Body",
+        "tonalRamp": [
+          "oklch(15% 0.0073 268.54)",
+          "oklch(26% 0.0073 268.54)",
+          "oklch(38% 0.0073 268.54)",
+          "oklch(49% 0.0073 268.54)",
+          "oklch(61% 0.0073 268.54)",
+          "oklch(72% 0.0073 268.54)",
+          "oklch(84% 0.0073 268.54)",
+          "oklch(95% 0.0073 268.54)"
+        ]
+      },
+      "docs-dark-heading": {
+        "role": "neutral",
+        "displayName": "Dark Documentation Heading",
+        "tonalRamp": [
+          "oklch(15% 0.0068 277.16)",
+          "oklch(26% 0.0068 277.16)",
+          "oklch(38% 0.0068 277.16)",
+          "oklch(49% 0.0068 277.16)",
+          "oklch(61% 0.0068 277.16)",
+          "oklch(72% 0.0068 277.16)",
+          "oklch(84% 0.0068 277.16)",
+          "oklch(95% 0.0068 277.16)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Landing Display",
+        "purpose": "The large landing headline; Lexend is the built face."
+      },
+      "headline": {
+        "displayName": "Landing Section Headline",
+        "purpose": "Major explanatory landing sections."
+      },
+      "body": {
+        "displayName": "Landing Body",
+        "purpose": "Short technical explanations."
+      },
+      "docs-body": {
+        "displayName": "Documentation Body",
+        "purpose": "Long-form reading with a 48rem content measure."
+      },
+      "specimen-code": {
+        "displayName": "SQL Specimen",
+        "purpose": "The selectable SQL shown on the cyan field."
+      }
+    },
+    "shadows": [
+      {
+        "name": "docs-pagination-light",
+        "value": "0px 8px 4px hsla(0, 0%, 0%, 0.03), 0px 5px 2px hsla(0, 0%, 0%, 0.03), 0px 3px 2px hsla(0, 0%, 0%, 0.06), 0px 1px 1px hsla(0, 0%, 0%, 0.06)",
+        "purpose": "Starlight previous/next cards in light mode."
+      },
+      {
+        "name": "docs-pagination-dark",
+        "value": "0px 8px 4px hsla(0, 0%, 0%, 0.08), 0px 5px 2px hsla(0, 0%, 0%, 0.08), 0px 3px 2px hsla(0, 0%, 0%, 0.12), 0px 1px 1px hsla(0, 0%, 0%, 0.15)",
+        "purpose": "Starlight previous/next cards in dark mode."
+      },
+      {
+        "name": "docs-search-light",
+        "value": "0px 25px 7px rgba(0, 0, 0, 0.01), 0px 16px 6px hsla(0, 0%, 0%, 0.03), 0px 9px 5px hsla(223, 13%, 10%, 0.08), 0px 4px 4px hsla(0, 0%, 0%, 0.16), 0px 4px 2px hsla(0, 0%, 0%, 0.04)",
+        "purpose": "Starlight search dialog in light mode."
+      },
+      {
+        "name": "docs-search-dark",
+        "value": "0px 25px 7px hsla(0, 0%, 0%, 0.03), 0px 16px 6px hsla(0, 0%, 0%, 0.1), 0px 9px 5px hsla(223, 13%, 10%, 0.33), 0px 4px 4px hsla(0, 0%, 0%, 0.75), 0px 4px 2px hsla(0, 0%, 0%, 0.25)",
+        "purpose": "Starlight search dialog in dark mode."
+      }
+    ],
+    "motion": [
+      {
+        "name": "landing-color-change",
+        "value": "background-color 160ms ease-out, color 160ms ease-out",
+        "purpose": "Button states; client options transition background-color only. Landing reduced-motion overrides remove transitions."
+      },
+      {
+        "name": "docs-disclosure",
+        "value": "transform 0.2s ease-in-out",
+        "purpose": "Existing Starlight disclosure carets."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "landing-wide",
+        "value": "1500px",
+        "purpose": "Minimum width; minor hero-copy vertical padding adjustment."
+      },
+      {
+        "name": "landing-compact",
+        "value": "1100px",
+        "purpose": "Maximum width; narrower gutters, buttons and gaps."
+      },
+      {
+        "name": "landing-mobile",
+        "value": "760px",
+        "purpose": "Maximum width; stacked hero/content and two-column client selector."
+      },
+      {
+        "name": "docs-sidebar",
+        "value": "50rem",
+        "purpose": "Minimum width; desktop sidebar/search and larger type."
+      },
+      {
+        "name": "docs-contents-rail",
+        "value": "72rem",
+        "purpose": "Minimum width; separate right contents rail."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ordinary landing action, as used in the closing band.",
+      "html": "<a class=\"ds-primary\" href=\"#quickstart\">Create your first database <svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M4 12h15m-6-6 6 6-6 6\"/></svg></a>",
+      "css": ".ds-primary{font-family:\"Manrope Variable\",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:20px;min-height:58px;padding:16px 26px;border-radius:8px;background:var(--cyan,#057f9e);color:#fff;font-size:18px;font-weight:700;text-decoration:none;transition:background-color 160ms ease-out,color 160ms ease-out}.ds-primary:hover{background:#076a84}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-hero-primary:focus-visible,.ds-client:focus-visible,.ds-copy:focus-visible{outline:3px solid #075c75;outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Outlined companion action.",
+      "html": "<a class=\"ds-secondary\" href=\"#docs\">Read the docs</a>",
+      "css": ".ds-secondary{font-family:\"Manrope Variable\",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:20px;min-height:58px;padding:16px 26px;border:1px solid #64b3c9;border-radius:8px;color:var(--ink,#10232d);font-size:18px;font-weight:600;text-decoration:none;transition:background-color 160ms ease-out,color 160ms ease-out}.ds-secondary:hover{background:var(--pale,#dff3f6)}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-hero-primary:focus-visible,.ds-client:focus-visible,.ds-copy:focus-visible{outline:3px solid #075c75;outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none}}"
+    },
+    {
+      "name": "Hero primary action",
+      "kind": "button",
+      "description": "The built brighter, larger hero action; keep its height aligned with its secondary companion.",
+      "html": "<a class=\"ds-hero-primary\" href=\"#quickstart\">Get started</a>",
+      "css": ".ds-hero-primary{font-family:\"Manrope Variable\",sans-serif;display:inline-flex;align-items:center;justify-content:center;min-height:62px;min-width:210px;padding:16px 26px;border-radius:8px;background:#0891b2;color:#fff;font-size:22px;font-weight:700;text-decoration:none;transition:background-color 160ms ease-out,color 160ms ease-out}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-hero-primary:focus-visible,.ds-client:focus-visible,.ds-copy:focus-visible{outline:3px solid #075c75;outline-offset:5px}@media(max-width:1100px){.ds-hero-primary{min-width:0;min-height:52px;padding:14px 20px;font-size:20px}}@media(prefers-reduced-motion:reduce){.ds-hero-primary{transition:none}}"
+    },
+    {
+      "name": "Client option",
+      "kind": "custom",
+      "refersTo": "client-option",
+      "description": "Selected state of the progressively enhanced four-client selector.",
+      "html": "<a class=\"ds-client\" role=\"tab\" aria-selected=\"true\" href=\"#typescript\"><svg width=\"44\" height=\"44\" viewBox=\"0 0 44 44\" aria-hidden=\"true\"><rect width=\"44\" height=\"44\" rx=\"7\" fill=\"currentColor\"/><path d=\"m11 13 8 8-8 8m12 0h10\" fill=\"none\" stroke=\"white\" stroke-width=\"2\"/></svg><strong>CLI</strong></a>",
+      "css": ".ds-client{font-family:\"Manrope Variable\",sans-serif;display:flex;align-items:center;justify-content:center;gap:20px;min-height:90px;padding:22px 12px;border:1px solid var(--line,#d7e2e7);border-radius:8px;color:var(--ink,#10232d);text-decoration:none;transition:background-color 160ms ease-out}.ds-client strong{font-size:20px;font-weight:800}.ds-client svg{flex-shrink:0;width:52px;height:52px}.ds-client:hover{background:#e9f3f5}.ds-client[aria-selected=true]{background:var(--pale,#dff3f6);border-color:#a6dbe8}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-hero-primary:focus-visible,.ds-client:focus-visible,.ds-copy:focus-visible{outline:3px solid #075c75;outline-offset:5px}@media(max-width:760px){.ds-client{min-height:80px;padding:14px 10px;gap:10px}.ds-client strong{font-size:18px}.ds-client svg{width:30px;height:30px}}@media(prefers-reduced-motion:reduce){.ds-client{transition:none}}"
+    },
+    {
+      "name": "Install command strip",
+      "kind": "custom",
+      "description": "A selectable command with a compact copy control. Copy behavior and announcements remain in the page script.",
+      "html": "<div class=\"ds-install\"><span aria-hidden=\"true\">$</span><code>npm install @boxdb/client</code><button class=\"ds-copy\" type=\"button\" aria-label=\"Copy install command\"><svg width=\"21\" height=\"21\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><rect x=\"8\" y=\"8\" width=\"12\" height=\"13\" rx=\"2\"/><path d=\"M16 5V3H4v13h2\"/></svg><span>Copy</span></button></div>",
+      "css": ".ds-install{font-family:\"Manrope Variable\",sans-serif;display:flex;gap:24px;align-items:center;min-height:74px;padding:14px 3.7%;background:var(--pale,#dff3f6);color:var(--ink,#10232d)}.ds-install>span{font:20px ui-monospace,SFMono-Regular,Consolas,monospace}.ds-install code{font:18px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-x:auto;white-space:nowrap;min-width:0}.ds-copy{font-family:\"Manrope Variable\",sans-serif;display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:10px 4px 10px 12px;border:0;background:transparent;color:inherit;cursor:pointer;font-size:13px;flex-shrink:0}.ds-copy:hover{color:#056b84}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-hero-primary:focus-visible,.ds-client:focus-visible,.ds-copy:focus-visible{outline:3px solid #075c75;outline-offset:5px}@media(max-width:760px){.ds-install{padding:12px 20px;gap:12px;min-height:66px}.ds-install code{font-size:12px}.ds-copy{padding-inline:4px}.ds-copy span{display:none}}"
+    },
+    {
+      "name": "Code example panel",
+      "kind": "card",
+      "refersTo": "code-panel",
+      "description": "A filename and selectable source inside a flat bordered panel.",
+      "html": "<figure class=\"ds-code\"><figcaption>example.ts</figcaption><pre tabindex=\"0\"><code>const rows = await db.query(\"SELECT 1\");</code></pre></figure>",
+      "css": ".ds-code{margin:0;border:1px solid var(--line,#d7e2e7);border-radius:12px;overflow:hidden;background:#fff;color:#243d4d}.ds-code figcaption{padding:12px 24px;border-bottom:1px solid var(--line,#d7e2e7);font:13px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted,#4d6473)}.ds-code pre{padding:24px;margin:0;font-size:14px;line-height:1.8;max-height:420px;overflow:auto}.ds-code code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.ds-code pre:focus-visible{outline:3px solid #075c75;outline-offset:-5px}@media(max-width:760px){.ds-code pre{padding:16px;font-size:12px}.ds-code figcaption{padding-inline:16px}}"
+    },
+    {
+      "name": "Documentation navigation",
+      "kind": "nav",
+      "description": "A compact sidebar link with the theme-aware current-page fill.",
+      "html": "<nav class=\"ds-doc-nav\" aria-label=\"Documentation\"><a href=\"#overview\">Documentation</a><a href=\"#quickstart\" aria-current=\"page\">Quickstart</a><a href=\"#why\">Why BoxDB?</a></nav>",
+      "css": ".ds-doc-nav{font-family:\"Manrope Variable\",sans-serif;font-size:14px}.ds-doc-nav a{display:block;border-radius:4px;text-decoration:none;color:var(--sl-color-gray-2,#3e5867);padding:.3em .5rem;line-height:1.4}.ds-doc-nav a:hover,.ds-doc-nav a:focus{color:var(--sl-color-white,#10232d)}.ds-doc-nav a[aria-current=page]{font-weight:600;color:var(--sl-color-text-invert,#fff);background:var(--sl-color-text-accent,#057f9e)}.ds-doc-nav a:focus-visible{outline:3px solid var(--sl-color-accent,#057f9e);outline-offset:4px}"
+    },
+    {
+      "name": "Documentation search field",
+      "kind": "input",
+      "description": "The existing Pagefind query field, translated from its built 0.8 scale.",
+      "html": "<label class=\"ds-search\"><span>Search documentation</span><input type=\"search\" placeholder=\"Search\" aria-label=\"Search documentation\"/><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"6\"/><path d=\"m15 15 5 5\"/></svg></label>",
+      "css": ".ds-search{font-family:\"Manrope Variable\",sans-serif;position:relative;display:block;color:var(--sl-color-gray-1,#263d48)}.ds-search>span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.ds-search input{font-family:\"Manrope Variable\",sans-serif;height:51.2px;padding:0 56px 0 43.2px;background:var(--sl-color-black,#fff);border:1px solid var(--sl-color-gray-5,#d7e2e7);border-radius:8px;font-size:16.8px;font-weight:400;width:100%;color:var(--sl-color-white,#10232d)}.ds-search input::placeholder{opacity:.2}.ds-search input:focus{border-color:var(--sl-color-accent,#057f9e)}.ds-search input:focus-visible{outline:3px solid var(--sl-color-accent,#057f9e);outline-offset:4px}.ds-search>svg{position:absolute;left:16px;top:15.6px;pointer-events:none}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Technical Field Manual",
+    "overview": "BoxDB uses cool paper, deep ink and cyan to make a developer tool feel direct and inspectable. Working SQL and readable code carry the visual interest; thin rules and generous section spacing keep the surrounding explanation quiet. Preserve the existing cyan B icon and the plain English developer voice.\n\nThe landing page is an invitation to try a client; documentation is a denser reading environment with the same Manrope voice and cyan identity. The built landing display uses Lexend, while Manrope handles supporting headings, body text and documentation. Keep experimental status visible and factual; visual confidence must not imply adoption, performance or production readiness that the project has not established.",
+    "keyCharacteristics": [
+      "Cool neutral surfaces with cyan reserved for identity, selected states and meaningful emphasis.",
+      "Large, compact landing display paired with calm, spacious technical prose.",
+      "Real code, ruled ledgers and SVG diagrams instead of decorative imagery.",
+      "Native links and controls with visible keyboard focus and narrow-screen reflow."
+    ],
+    "rules": [
+      {
+        "name": "The Cyan Field Rule",
+        "body": "Cyan may occupy a whole functional code field as well as small controls; use it to identify something worth inspecting or acting on, not as unrelated decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Code Is Content Rule",
+        "body": "Keep code as text with intentional line breaks and local overflow; do not rasterize it to preserve a composition.",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "Use tone and rules for ordinary grouping; preserve shadows for the existing documentation navigation and modal roles.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** preserve the B icon, cyan identity and self-hosted type families.",
+      "**Do** retain real selectable code, visible focus and localized horizontal overflow.",
+      "**Do** use pale fills and thin rules to organize technical content.",
+      "**Do** verify landing reflow and both documentation themes when extending shared styles.",
+      "**Do** keep experimental status and product limitations plainly readable."
+    ],
+    "donts": [
+      "**Don't** replace inline SVG arrows or client marks with text glyph icons.",
+      "**Don't** add decorative shadows to ordinary landing surfaces.",
+      "**Don't** turn every content group into a rounded card or pill.",
+      "**Don't** invent customer, performance, adoption or production-readiness claims."
+    ]
+  }
+}

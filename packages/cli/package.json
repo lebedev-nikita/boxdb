@@ -2,6 +2,17 @@
   "name": "@boxdb/cli",
   "version": "0.5.1",
   "description": "BoxDB command line database with typed SQLite columns and readable YAML storage",
+  "keywords": [
+    "boxdb",
+    "cli",
+    "database",
+    "sql",
+    "sqlite"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

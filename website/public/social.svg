@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f4f8f8"/>
+  <rect x="630" width="570" height="630" fill="#057f9e"/>
+  <rect x="54" y="48" width="52" height="52" rx="12" fill="#0891b2"/>
+  <g font-family="Arial, sans-serif" font-weight="700">
+    <text x="80" y="85" text-anchor="middle" font-size="35" fill="white">B</text>
+    <text x="120" y="86" font-size="36" fill="#10232d">BoxDB</text>
+    <text x="54" y="236" font-size="70" letter-spacing="-3" fill="#10232d">A database for</text>
+    <text x="54" y="318" font-size="70" letter-spacing="-3" fill="#10232d">your $5 VPS.</text>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#4d6473" font-size="25">
+    <text x="56" y="389">SQLite, with types that mean something.</text>
+    <text x="56" y="433">TypeScript · Rust · Go · CLI</text>
+    <text x="56" y="548" font-size="20">Experimental · MIT licensed</text>
+  </g>
+  <g font-family="Menlo, Consolas, monospace" fill="white" font-size="22">
+    <text x="682" y="146">CREATE TABLE invoices (</text>
+    <text x="708" y="187">id INT64 PRIMARY KEY,</text>
+    <text x="708" y="228">amount DECIMAL(12,2),</text>
+    <text x="708" y="269">issued_at INSTANT</text>
+    <text x="682" y="310">);</text>
+    <text x="682" y="413">Exact decimals.</text>
+    <text x="682" y="454">Meaningful types.</text>
+    <text x="682" y="495">One file to start.</text>
+  </g>
+</svg>
