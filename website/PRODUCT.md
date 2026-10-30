@@ -49,6 +49,6 @@ production-readiness claims.
 
 ## Evidence on Hand
 
-The repository contains release 0.5.1, executable clients and tests, technical
+The repository contains release 0.6.0, executable clients and tests, technical
 guides and benchmark methodology. There are no supplied customer testimonials
 or adoption statistics.

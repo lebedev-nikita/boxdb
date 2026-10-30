@@ -138,6 +138,7 @@ fn extension(input: &str) -> Result<Option<Type>> {
 }
 mod arrays;
 mod create;
+pub(crate) mod readonly;
 pub(crate) use arrays::normalize as normalize_arrays;
 pub(crate) struct Declaration {
     pub schema: String,
@@ -145,6 +146,7 @@ pub(crate) struct Declaration {
     pub sql: String,
     pub table: String,
     pub columns: Vec<(String, Type)>,
+    pub readonly: Vec<String>,
 }
 pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
     if column.data_type.to_string().trim().is_empty() {
@@ -262,6 +264,7 @@ pub(crate) struct Alteration {
     pub sql: String,
     pub table: String,
     pub columns: Vec<(String, Type)>,
+    pub readonly: Vec<String>,
     changes: Vec<AlterTableOperation>,
 }
 pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
@@ -300,6 +303,7 @@ pub(crate) fn alteration(sql: &str) -> Result<Option<Alteration>> {
         sql: sql.into(),
         table,
         columns: vec![],
+        readonly: vec![],
         changes: operations.clone(),
     }))
 }
@@ -385,6 +389,7 @@ pub(crate) fn load(db: &Connection) -> Result<Types> {
     if codec_exists {
         check_codec(db)?;
     }
+    readonly::verify(db)?;
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1 AND type='table')",
         [META],

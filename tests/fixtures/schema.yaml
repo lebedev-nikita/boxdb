@@ -35,6 +35,7 @@ tables:
       day?: DATE
       local_at?: DATETIME
       duration?: INTERVAL
+      origin: TEXT DEFAULT 'import' READONLY
       tags: TEXT[] DEFAULT '[]'
       matrix?: UINT8[][]
       amounts?: DECIMAL(8, 2)[]

@@ -25,6 +25,7 @@ pub(crate) fn dump(db: &Connection, format: SchemaFormat) -> Result<Vec<u8>> {
 
 fn sql(db: &Connection) -> Result<Vec<u8>> {
     let types = schema::load(db)?;
+    let readonly = schema::readonly::columns(db)?;
     let mut output = String::from("-- BoxDB schema.\nBEGIN;\n");
     for pragma in ["application_id", "user_version"] {
         let value: i64 = db.query_row(&format!("PRAGMA {pragma}"), [], |r| r.get(0))?;
@@ -46,8 +47,13 @@ fn sql(db: &Connection) -> Result<Vec<u8>> {
                 "schema dump of virtual tables is unsupported".into(),
             ));
         }
-        if kind == "table" && types.keys().any(|(table, _)| table == name) {
-            output.push_str(&yaml::table_sql(name, sql, &types)?);
+        if kind == "table"
+            && types
+                .keys()
+                .chain(&readonly)
+                .any(|(table, _)| table == name)
+        {
+            output.push_str(&yaml::table_sql(name, sql, &types, &readonly)?);
         } else {
             output.push_str(sql);
         }

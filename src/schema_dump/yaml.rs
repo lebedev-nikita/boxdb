@@ -257,7 +257,15 @@ fn type_sql(ty: &Type) -> String {
         Type::Array(inner) => format!("{}[]", type_sql(inner)),
     }
 }
-fn column(name: &str, definition: &[Token], ty: Option<&Type>) -> Result<String> {
+fn column(name: &str, definition: &[Token], ty: Option<&Type>, readonly: bool) -> Result<String> {
+    let definition = logical_column(name, definition, ty)?;
+    Ok(if readonly {
+        format!("{definition} READONLY")
+    } else {
+        definition
+    })
+}
+fn logical_column(name: &str, definition: &[Token], ty: Option<&Type>) -> Result<String> {
     let Some(ty) = ty else {
         return Ok(render(definition));
     };
@@ -301,7 +309,12 @@ fn column(name: &str, definition: &[Token], ty: Option<&Type>) -> Result<String>
     })
 }
 
-pub(super) fn table_sql(name: &str, sql: &str, types: &schema::Types) -> Result<String> {
+pub(super) fn table_sql(
+    name: &str,
+    sql: &str,
+    types: &schema::Types,
+    readonly: &Readonly,
+) -> Result<String> {
     let mut cursor = Sql::new(sql)?;
     cursor.expect("CREATE")?;
     cursor.expect("TABLE")?;
@@ -320,10 +333,12 @@ pub(super) fn table_sql(name: &str, sql: &str, types: &schema::Types) -> Result<
             }
             let column_name =
                 identifier(definition.first().ok_or_else(|| invalid("empty column"))?)?;
+            let key = (name.to_owned(), column_name.clone());
             let declaration = column(
                 &column_name,
                 &definition[1..],
-                types.get(&(name.to_owned(), column_name.clone())),
+                types.get(&key),
+                readonly.contains(&key),
             )?;
             Ok(format!("{} {declaration}", schema::quote(&column_name)))
         })
@@ -374,8 +389,10 @@ fn omit_nullability(tokens: &[Token]) -> Vec<Token> {
     output
 }
 
+pub(super) type Readonly = std::collections::BTreeSet<(String, String)>;
 pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
     let types = schema::load(db)?;
+    let readonly = schema::readonly::columns(db)?;
     let mut document = Document {
         format: "boxdb-schema".into(),
         version: 1,
@@ -468,10 +485,12 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
             let column_name =
                 identifier(definition.first().ok_or_else(|| invalid("empty column"))?)?;
             schema::validate_column_name(&column_name)?;
+            let key = (name.clone(), column_name.clone());
             let definition = column(
                 &column_name,
                 &omit_nullability(&definition[1..]),
-                types.get(&(name.clone(), column_name.clone())),
+                types.get(&key),
+                readonly.contains(&key),
             )?;
             let key = if required[&column_name] {
                 column_name

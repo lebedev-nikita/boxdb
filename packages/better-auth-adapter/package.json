@@ -1,6 +1,6 @@
 {
   "name": "@boxdb/better-auth-adapter",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Direct Better Auth database adapter for BoxDB",
   "keywords": [
     "authentication",
@@ -52,7 +52,7 @@
     "vitest": "5.0.4"
   },
   "peerDependencies": {
-    "@boxdb/client": "^0.5.1",
+    "@boxdb/client": "^0.6.0",
     "better-auth": "^1.7.7"
   },
   "engines": {

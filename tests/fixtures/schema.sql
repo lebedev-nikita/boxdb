@@ -29,6 +29,7 @@ CREATE TABLE samples(
     day DATE,
     local_at DATETIME,
     duration INTERVAL,
+    origin TEXT NOT NULL DEFAULT 'import' READONLY,
     tags TEXT[] NOT NULL DEFAULT '[]',
     matrix UINT8[][],
     amounts DECIMAL(8,2)[],

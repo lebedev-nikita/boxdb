@@ -17,6 +17,8 @@ error object used by the [Go bridge](../packages/go/native/src/lib.rs).
 exception. A UNIQUE violation has code `BOXDB_CONSTRAINT_UNIQUE`, primary code
 `19`, and extended code `2067`. Numeric codes are absent when the engine did not
 report the failure; zero is not a placeholder for missing information.
+Updating a [read-only column](sql.md#read-only-columns) has code
+`BOXDB_CONSTRAINT_READONLY`, primary code `19`, and extended code `1811`.
 
 Validation, filesystem I/O, closed connections, unusable connections after
 publication failure, and internal infrastructure failures have separate

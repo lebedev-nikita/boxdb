@@ -191,7 +191,8 @@ an unmarked key is required, including primary-key columns. Real table column
 names cannot end in `?`. Ordinary SQL `NULL` and `NOT NULL` clauses are omitted;
 named constraints and null constraints with `ON CONFLICT` remain explicit to
 preserve their additional semantics. Defaults, checks and references retain
-their SQL expressions and use the real column names.
+their SQL expressions and use the real column names. Read-only columns end
+with `READONLY`, for example `created_at: INSTANT READONLY`.
 Index `type` is `regular` or `unique`;
 `expressions` can include `COLLATE`, `ASC` and `DESC`.
 Views contain a SQL `query`; triggers contain `table`, `timing`, `event`, optional
