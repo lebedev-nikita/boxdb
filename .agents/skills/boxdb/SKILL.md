@@ -93,6 +93,11 @@ BoxDB so logical metadata stays consistent.
   to change labels. Typed arrays use declarations such as `TEXT[]`, `INT64[][]`
   and `ENUM('todo','done')[]`; serialize complete arrays as JSON in clients that
   bind strings. `DOUBLE[]` is distinct from sqlite-vec's packed vectors.
+- Mark columns that are set on insert and never updated with `READONLY`, for
+  example `tenant_id UUID NOT NULL READONLY`. Any UPDATE assigning one fails
+  with `BOXDB_CONSTRAINT_READONLY`, even with an unchanged value; INSERT OR
+  REPLACE still replaces the row. Leave columns writable when an ORM updates
+  complete rows. See [read-only columns](https://github.com/lebedev-nikita/boxdb/blob/main/docs/sql.md#read-only-columns).
 - Cast expressions explicitly, for example `CAST(? AS DECIMAL)` or
   `CAST(? AS INSTANT)`. Native decimal, UUID, temporal and unsigned casts are
   supported. SQL CAST does not cover every logical column type; see the

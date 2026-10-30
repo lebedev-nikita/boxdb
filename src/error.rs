@@ -67,6 +67,15 @@ impl Error {
 
     /// The symbolic BoxDB failure code.
     pub fn code(&self) -> &'static str {
+        if self.extended_code() == Some(ffi::SQLITE_CONSTRAINT_TRIGGER)
+            && let Some(rusqlite::Error::SqliteFailure(_, Some(message))) = self
+                .source
+                .as_ref()
+                .and_then(|source| source.downcast_ref::<rusqlite::Error>())
+            && message.starts_with(crate::schema::readonly::MESSAGE)
+        {
+            return "BOXDB_CONSTRAINT_READONLY";
+        }
         self.extended_code()
             .map(result_code_name)
             .unwrap_or(self.code)

@@ -28,6 +28,10 @@ validates its metadata against the current schema and installs TEMP validators
 for other logical types and native elements in typed arrays. Those
 triggers also validate writes caused by SQL expressions, INSERT SELECT and user
 triggers. Their errors abort the statement. BoxDB reserves `__boxdb_` names.
+READONLY columns are enforced by ordinary schema triggers named `__boxdb_readonly_*`,
+so every SQLite connection rejects their updates. BoxDB recreates them after its
+DDL and rejects databases whose READONLY triggers changed outside BoxDB with
+`BOXDB_METADATA`. Schema dumps show `READONLY` on the column instead.
 The `__boxdb_codec` table stores the database-wide BLOB codec version. Unknown
 versions are rejected when opening or restoring a database.
 

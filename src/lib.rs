@@ -787,6 +787,9 @@ impl Database {
                 .execute_batch("SAVEPOINT __boxdb_declaration")?;
             let result = (|| {
                 declaration.execute(&self.connection)?;
+                for column in &declaration.readonly {
+                    schema::readonly::declare(&self.connection, &declaration.table, column)?;
+                }
                 schema::save(&self.connection, &declaration)?;
                 self.refresh(true)?;
                 self.connection
@@ -842,6 +845,9 @@ impl Database {
         if ddl {
             let _guard = InternalGuard::enter(&self.internal);
             schema::uninstall(&self.connection)?;
+            if keyword == "DROP" {
+                schema::readonly::before_drop(&self.connection, sql)?;
+            }
         }
         // VACUUM rebuilds the complete database, including reserved metadata.
         let _vacuum_guard = (keyword == "VACUUM").then(|| InternalGuard::enter(&self.internal));
@@ -875,7 +881,11 @@ impl Database {
                 {
                     return Err(Error::new("virtual tables require binary storage; readable storage does not support them".into()));
                 }
+                schema::readonly::normalize(&self.connection)?;
                 if let Some(change) = &alteration {
+                    for column in &change.readonly {
+                        schema::readonly::declare(&self.connection, &change.table, column)?;
+                    }
                     schema::save_alteration(&self.connection, change)?;
                     if !change.columns.is_empty() {
                         let types = schema::load(&self.connection)?;

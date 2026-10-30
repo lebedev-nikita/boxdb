@@ -46,6 +46,31 @@ For declaration details and physical representations, see
 [storage and extended types](storage.md). For arithmetic, read
 [decimals](native-decimal.md) and [temporal values](temporal.md).
 
+## Read-only columns
+
+Add `READONLY` to a column that is set on insert and never changed:
+
+```sql
+CREATE TABLE invoices (
+    id INT64 PRIMARY KEY READONLY,
+    tenant_id UUID NOT NULL READONLY,
+    amount DECIMAL(12,2)
+);
+```
+
+INSERT and DELETE stay available. Every UPDATE that assigns the column fails
+with `BOXDB_CONSTRAINT_READONLY`, including `SET tenant_id = tenant_id`, UPSERT
+`DO UPDATE` and `UPDATE OR REPLACE`. A read-only rowid alias also rejects
+assignments through `rowid`, `oid` and `_rowid_`. `INSERT OR REPLACE` and
+`ON CONFLICT REPLACE` delete the conflicting row and insert a new one, so they
+can store a different value; use UPSERT when a row must keep its value.
+
+`READONLY` works in CREATE TABLE and ALTER TABLE ADD COLUMN on main-database
+tables. Generated columns and foreign keys with `ON UPDATE CASCADE`, `SET NULL`
+or `SET DEFAULT` cannot be read-only. Renaming keeps the protection; dropping the
+column or table removes it. To make an existing column writable, rebuild the
+table in a migration. Leave a column writable when an ORM writes complete rows.
+
 ## Bind values
 
 SQL literals are useful for a first example. Application data must use bound

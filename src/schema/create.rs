@@ -47,11 +47,42 @@ fn constraint(token: &Token) -> bool {
         "REFERENCES",
         "GENERATED",
         "AS",
+        "READONLY",
     ]
     .iter()
     .any(|s| word(token, s))
 }
-fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
+// READONLY is a BoxDB column option. Words naming a collation, constraint,
+// referenced table, MATCH name or identifier default are ordinary SQL.
+fn readonly(tokens: &[Token]) -> (Vec<Token>, bool) {
+    let mut output = vec![];
+    let mut found = false;
+    let mut depth = 0usize;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            _ => (),
+        }
+        let named = i > 0
+            && ["COLLATE", "CONSTRAINT", "REFERENCES", "MATCH", "DEFAULT"]
+                .iter()
+                .any(|s| word(&tokens[i - 1], s));
+        // The first token is the column name.
+        if i > 0 && depth == 0 && word(token, "READONLY") && !named {
+            found = true;
+        } else {
+            output.push(token.clone());
+        }
+    }
+    (output, found)
+}
+pub(super) struct Column {
+    pub sql: String,
+    pub logical: Option<(String, Type)>,
+    pub readonly: Option<String>,
+}
+fn column(tokens: &[Token]) -> Result<Column> {
     let Some(first) = tokens.first() else {
         return Err(Error::new("empty column definition".into()));
     };
@@ -59,8 +90,14 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         .iter()
         .any(|s| word(first, s))
     {
-        return Ok((render(tokens), None));
+        return Ok(Column {
+            sql: render(tokens),
+            logical: None,
+            readonly: None,
+        });
     }
+    let (tokens, readonly) = readonly(tokens);
+    let tokens = tokens.as_slice();
     let name = identifier(first)?;
     super::validate_column_name(&name)?;
     let mut end = 1;
@@ -146,7 +183,11 @@ fn column(tokens: &[Token]) -> Result<(String, Option<(String, Type)>)> {
         output.push(' ');
         output.push_str(&option.to_string());
     }
-    Ok((output, logical.map(|ty| (name, ty))))
+    Ok(Column {
+        sql: output,
+        logical: logical.map(|ty| (name.clone(), ty)),
+        readonly: readonly.then_some(name),
+    })
 }
 fn tokens(sql: &str) -> Result<Vec<Token>> {
     Ok(Tokenizer::new(&SQLiteDialect {}, sql)
@@ -184,8 +225,17 @@ pub(super) fn addition(sql: &str) -> Result<Option<Alteration>> {
     if tokens.get(position).is_some_and(|t| word(t, "COLUMN")) {
         position += 1;
     }
-    let (definition, logical) = column(&tokens[position..])?;
+    let Column {
+        sql: definition,
+        logical,
+        readonly,
+    } = column(&tokens[position..])?;
     let main = schema.eq_ignore_ascii_case("main");
+    if !main && readonly.is_some() {
+        return Err(Error::new(
+            "READONLY columns require main database tables".into(),
+        ));
+    }
     if !main
         && logical
             .as_ref()
@@ -204,6 +254,7 @@ pub(super) fn addition(sql: &str) -> Result<Option<Alteration>> {
         } else {
             vec![]
         },
+        readonly: readonly.into_iter().collect(),
         changes: vec![],
     }))
 }
@@ -266,6 +317,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
             schema,
             table,
             columns: vec![],
+            readonly: vec![],
             select: true,
         }));
     }
@@ -277,16 +329,16 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
     let mut depth = 0usize;
     let mut definitions = vec![];
     let mut columns = vec![];
+    let mut readonly = vec![];
     loop {
         let token = tokens
             .get(position)
             .ok_or_else(|| Error::new("unclosed table definition".into()))?;
         if depth == 0 && matches!(token, Token::Comma | Token::RParen) {
-            let (definition, logical) = column(&tokens[start..position])?;
-            definitions.push(definition);
-            if let Some(logical) = logical {
-                columns.push(logical);
-            }
+            let column = column(&tokens[start..position])?;
+            definitions.push(column.sql);
+            columns.extend(column.logical);
+            readonly.extend(column.readonly);
             if token == &Token::RParen {
                 position += 1;
                 break;
@@ -300,6 +352,11 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
             }
         }
         position += 1;
+    }
+    if !schema.eq_ignore_ascii_case("main") && !readonly.is_empty() {
+        return Err(Error::new(
+            "READONLY columns require main database tables".into(),
+        ));
     }
     if !schema.eq_ignore_ascii_case("main") {
         // Native decimals carry their identity and constraints in SQLite.
@@ -341,6 +398,7 @@ pub(super) fn declaration(sql: &str) -> Result<Option<Declaration>> {
         schema,
         table,
         columns,
+        readonly,
         select: false,
     }))
 }
