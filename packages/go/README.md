@@ -16,7 +16,7 @@ version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.6.0
+BOXDB_GO_VERSION=0.7.0
 BOXDB_GO_PLATFORM=darwin-arm64 # Linux: linux-x64 or linux-arm64 (64-bit Raspberry Pi).
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
@@ -26,7 +26,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.6.0
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.7.0
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The
