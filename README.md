@@ -85,7 +85,8 @@ Read [the fit and tradeoffs](docs/why-boxdb.md) before adoption. See
 Start at the [documentation index](docs/index.md), or go directly to:
 
 - [SQL and types](docs/sql.md), [exact decimals](docs/native-decimal.md) and [temporal values](docs/temporal.md).
-- [Storage and validation](docs/storage.md) and [SQL extensions](docs/extensions.md).
+- [Storage and validation](docs/storage.md), [change history](docs/history.md)
+  and [SQL extensions](docs/extensions.md).
 - [Migrations and schema export](docs/migrations.md).
 - [Deployment and backups](docs/deployment.md), [Litestream replication](docs/replication.md),
   [diagnostics and recovery](docs/recovery.md) and [client errors](docs/client-errors.md).

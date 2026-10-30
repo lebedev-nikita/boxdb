@@ -45,7 +45,7 @@ npm install zod
 ```
 
 ```ts
-import { BoxDB } from "@boxdb/client";
+import { BoxDB, Changeset } from "@boxdb/client";
 import { z } from "zod";
 
 const User = z.object({ id: z.bigint(), name: z.string() });
@@ -181,6 +181,31 @@ transactions to finish. Their handles can still commit or roll back.
 `close({ mode: "abort" })` cancels pending and running work, rolls back active
 transactions and waits for cleanup. An existing draining close can be escalated
 to abort. `await using db` performs a draining close.
+
+## Change history
+
+Transactions can record their row changes and run commit triggers; see
+[change history](../../docs/history.md) for the SQL side.
+
+```ts
+await using tx = await db.begin({ context: { label: "Rename task" } });
+await tx.query`UPDATE tasks SET title = ${"New title"} WHERE id = ${3n}`;
+await tx.commit(); // A BEFORE COMMIT trigger can store boxdb_changeset().
+
+const row = z.object({ changes: z.instanceof(Changeset) }).parse(
+  await db.query`SELECT changes FROM history ORDER BY id DESC LIMIT 1`.get(),
+);
+const report = await db.apply(row.changes, { invert: true }); // Undo in its own transaction.
+```
+
+`begin({ context })` stores values readable through `boxdb_context(key)` for
+the transaction's lifetime; `begin({ record: true })` records changes so
+`tx.changeset()` returns a `Changeset` or `null` before commit. `tx.apply()`
+applies a changeset inside the transaction and `db.apply()` in a new immediate
+transaction; both accept `invert` and `onConflict` (`abort`, `skip` or
+`replace`) and return `{ applied, skipped, conflicts }`. CHANGESET columns
+return `Changeset` instances, which also bind as parameters; `changeset.bytes`
+holds the encoded changeset.
 
 ## Options, values and diagnostics
 

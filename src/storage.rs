@@ -70,8 +70,8 @@ impl ReadableFile {
             cache: readable::SnapshotCache::default(),
         })
     }
-    pub fn watch(&self, db: &Connection) -> Result<()> {
-        self.cache.watch(db)
+    pub fn watch(&self, hooks: &crate::history::Shared) {
+        *crate::history::lock(&hooks.readable) = Some(self.cache.tracker());
     }
     pub fn publish(&self, db: &Connection, types: &crate::schema::Types) -> Result<()> {
         let mut replaced = false;

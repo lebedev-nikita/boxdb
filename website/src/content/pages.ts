@@ -96,6 +96,13 @@ export const pages = [
       "Understand binary SQLite, readable YAML, extended types and validation boundaries.",
   },
   {
+    source: "docs/history.md",
+    slug: "docs/history",
+    title: "Change history",
+    description:
+      "Record row changes as changesets, run commit triggers and undo or apply recorded changes.",
+  },
+  {
     source: "docs/extensions.md",
     slug: "docs/extensions",
     title: "SQL extensions",

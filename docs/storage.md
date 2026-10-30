@@ -69,6 +69,7 @@ are translated into physical types and, where applicable, portable CHECKs:
 | BYTEA | BLOB with a storage-class CHECK |
 | DECIMAL, UUID, INSTANT, DATE, TIME, DATETIME, INTERVAL | Single-byte type tag plus BLOB payload interpreted by the patched engine |
 | JSON and typed arrays | JSON text; decimal array elements use strings |
+| CHANGESET | BLOB with a storage-class CHECK; bytes are validated as a changeset |
 
 TIME uses the `h` tag followed by eight unsigned big-endian bytes counting
 microseconds since midnight, from 0 through 86,399,999,999.
@@ -145,7 +146,14 @@ See [native decimals](native-decimal.md) and [temporal types](temporal.md).
 
 `CAST` supports the native types and explicit text views. Other extended logical
 casts remain unsupported. JSON is opaque validated text; SQL JSON/JSONB
-processing functions and operators are disabled.
+processing functions and operators are disabled. CHANGESET values are validated
+changeset bytes that `changeset_rows` and `boxdb_apply` interpret; see
+[change history](history.md).
+
+Commit triggers are stored in `__boxdb_commit_triggers`, next to column
+metadata, and never in `sqlite_schema`. Readable YAML storage writes CHANGESET
+cells as structured documents and carries the trigger metadata table like any
+other table.
 
 TEMP validators are specific to the BoxDB connection. An external SQLite writer
 can bypass additional Rust validators for other extended types. Native schemas

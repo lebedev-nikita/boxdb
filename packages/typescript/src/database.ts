@@ -1,17 +1,24 @@
 import { Query, fragment, identifier, type Interpolation } from "./sql.js";
 import { BoxDBError, fromNativeError } from "./error.js";
 import { checkFile, repairFile, recoverFile } from "./maintenance.js";
-import type { BoxDBOptions, Parameters, QueryResult } from "./types.js";
+import type {
+  ApplyOptions,
+  ApplyReport,
+  BoxDBOptions,
+  Parameters,
+  QueryResult,
+  SQLParameter,
+} from "./types.js";
 import {
   NativeDatabase,
+  type ClientResult,
   type NativeConnection,
   type NativeResponse,
-  type NativeResult,
   type NativeValue,
   type NativeMigrationSet,
   runMigrations,
 } from "./native.js";
-import { bindParameters, queryResult } from "./values.js";
+import { Changeset, bindParameters, clientResult, parseReport, queryResult } from "./values.js";
 
 export interface QueryOptions {
   signal?: AbortSignal;
@@ -23,6 +30,10 @@ export interface TransactionOptions extends QueryOptions {
   readOnly?: boolean;
   /** Overrides the client's transaction timeout, in milliseconds. */
   timeoutMs?: number;
+  /** Values commit triggers and SQL can read through boxdb_context(key). */
+  context?: Readonly<Record<string, SQLParameter>>;
+  /** Record row changes so changeset() can return them before commit. */
+  record?: boolean;
 }
 
 const DEFAULT_TRANSACTION_TIMEOUT_MS = 5000;
@@ -208,7 +219,7 @@ class Connection {
     parameters: Parameters,
     signal?: AbortSignal,
     writeOnly = false,
-  ): Promise<NativeResult> {
+  ): Promise<ClientResult> {
     if (typeof sql !== "string") throw new TypeError("SQL must be a string");
     const { info } = await this.request("prepare", sql, [], signal);
     if (writeOnly && info!.columns.length > 0)
@@ -217,7 +228,7 @@ class Connection {
       );
     const bound = bindParameters(info!, [parameters]);
     const { result } = await this.request("execute", sql, bound, signal);
-    return result!;
+    return clientResult(result!);
   }
 }
 
@@ -300,7 +311,26 @@ export interface TransactionHandle extends TransactionClient {
   readonly active: boolean;
   commit(): Promise<void>;
   rollback(): Promise<void>;
+  /** The changes recorded so far, or null when nothing changed. Requires recording. */
+  changeset(options?: QueryOptions): Promise<Changeset | null>;
+  /** Apply a changeset, or its inverse, inside this transaction. */
+  apply(changeset: Changeset | Uint8Array, options?: ApplyOptions): Promise<ApplyReport>;
   [Symbol.asyncDispose](): Promise<void>;
+}
+function applyArguments(
+  changeset: Changeset | Uint8Array,
+  options: ApplyOptions,
+): [Changeset, string] {
+  const bytes = changeset instanceof Changeset ? changeset : new Changeset(changeset);
+  if (
+    options.onConflict !== undefined &&
+    !["abort", "skip", "replace"].includes(options.onConflict)
+  )
+    throw new TypeError("onConflict must be abort, skip or replace");
+  return [
+    bytes,
+    JSON.stringify({ invert: options.invert ?? false, on_conflict: options.onConflict ?? "abort" }),
+  ];
 }
 let savepoint = 0;
 class TransactionSession extends Queries implements TransactionHandle {
@@ -344,6 +374,21 @@ class TransactionSession extends Queries implements TransactionHandle {
   }
   get active(): boolean {
     return this.#active && this.connection.inTransaction;
+  }
+  async changeset(options: QueryOptions = {}): Promise<Changeset | null> {
+    const result = await this.execute("SELECT boxdb_changeset()", [], { ...options, raw: true });
+    const cell = (result.rows[0] as unknown[])[0];
+    if (cell === null || cell === undefined) return null;
+    if (cell instanceof Changeset) return cell;
+    return new Changeset(cell as Uint8Array);
+  }
+  async apply(changeset: Changeset | Uint8Array, options: ApplyOptions = {}): Promise<ApplyReport> {
+    const [bytes, json] = applyArguments(changeset, options);
+    const result = await this.execute("SELECT boxdb_apply(?, ?)", [bytes, json], {
+      ...(options.signal ? { signal: options.signal } : {}),
+      raw: true,
+    });
+    return parseReport((result.rows[0] as unknown[])[0]);
   }
   begin(options: QueryOptions = {}): Promise<TransactionHandle> {
     const signal =
@@ -523,8 +568,19 @@ export class BoxDB extends Queries {
     const mode = options.mode ?? (readOnly ? "deferred" : "immediate");
     if (readOnly && mode !== "deferred")
       throw new TypeError("readOnly transactions must use deferred mode");
+    const context = Object.entries(options.context ?? {});
+    if (options.record !== undefined && typeof options.record !== "boolean")
+      throw new TypeError("record must be a boolean");
     return this.schedule(async (signal) => {
       await this.connection.begin(mode, signal);
+      try {
+        for (const [key, value] of context)
+          await this.connection.query("SELECT boxdb_set_context(?, ?)", [key, value], signal);
+        if (options.record) await this.connection.query("SELECT boxdb_record(1)", [], signal);
+      } catch (error) {
+        await this.connection.request("rollback").catch(() => {});
+        throw error;
+      }
       return new TransactionSession(
         this.connection,
         this.queue,
@@ -535,6 +591,20 @@ export class BoxDB extends Queries {
         readOnly,
       );
     }, options);
+  }
+
+  /** Apply a changeset in its own immediate transaction. */
+  async apply(changeset: Changeset | Uint8Array, options: ApplyOptions = {}): Promise<ApplyReport> {
+    applyArguments(changeset, options);
+    const tx = await this.begin(options.signal ? { signal: options.signal } : {});
+    try {
+      const report = await tx.apply(changeset, options);
+      await tx.commit();
+      return report;
+    } catch (error) {
+      await tx.rollback().catch(() => {});
+      throw error;
+    }
   }
 
   #closing: Promise<void> | undefined;

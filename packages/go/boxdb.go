@@ -462,7 +462,7 @@ func (r *rows) Next(dest []driver.Value) error {
 					return err
 				}
 				dest[i] = v
-			case "Bytea":
+			case "Bytea", "Changeset":
 				var v []byte
 				if err := json.Unmarshal(data, &v); err != nil {
 					return err

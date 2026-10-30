@@ -181,7 +181,7 @@ pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
             Type::Time => "TIME",
             Type::DateTime => "DATETIME",
             Type::Interval => "INTERVAL",
-            Type::Bytea => "BLOB",
+            Type::Bytea | Type::Changeset => "BLOB",
             _ => "TEXT",
         };
         column.data_type = DataType::Custom(ObjectName(vec![Ident::new(storage)]), vec![]);
@@ -222,7 +222,7 @@ pub(crate) fn translate_column(column: &mut ColumnDef) -> Result<Option<Type>> {
                     "{column} IS NULL OR (typeof({column})='text' AND {column} COLLATE BINARY IN ({labels}))"
                 ))
             }
-            Type::Bytea => Some(format!(
+            Type::Bytea | Type::Changeset => Some(format!(
                 "{} IS NULL OR typeof({})='blob'",
                 quote(&column.name.value),
                 quote(&column.name.value)
@@ -329,6 +329,7 @@ pub(crate) fn save_alteration(db: &Connection, change: &Alteration) -> Result<()
                     "UPDATE __boxdb_columns SET table_name=?1 WHERE table_name=?2 COLLATE NOCASE",
                     rusqlite::params![new, table],
                 )?;
+                crate::history::triggers::rename_table(db, &table, &new)?;
                 table = new;
             }
             AlterTableOperation::RenameColumn {
@@ -580,7 +581,7 @@ pub(crate) fn encode(value: &Value) -> Result<SqlValue> {
         Value::Real(n) if n.is_finite() => SqlValue::Real(*n),
         Value::Real(_) => return Err(Error::new("non-finite floating point value".into())),
         Value::Boolean(b) => SqlValue::Integer(i64::from(*b)),
-        Value::Bytea(b) => SqlValue::Blob(decimal::encode_blob(b)),
+        Value::Bytea(b) | Value::Changeset(b) => SqlValue::Blob(decimal::encode_blob(b)),
         Value::Json(j) => SqlValue::Text(j.to_string()),
         Value::Array(a) => SqlValue::Text(array_json(a, 0)?.to_string()),
         _ => SqlValue::Text(value.to_string()),
@@ -604,7 +605,7 @@ fn array_json(values: &[Value], depth: usize) -> Result<serde_json::Value> {
                     Value::Boolean(b) => J::from(*b),
                     Value::Array(a) => array_json(a, depth + 1)?,
                     Value::Json(j) => j.clone(),
-                    Value::Bytea(bytes) => J::String(hex::encode(bytes)),
+                    Value::Bytea(bytes) | Value::Changeset(bytes) => J::String(hex::encode(bytes)),
                     Value::Decimal(text) => {
                         J::String(decimal::parse(text)?.normalized().to_plain_string())
                     }
@@ -661,8 +662,9 @@ fn array_value(ty: &Type, json: serde_json::Value) -> Result<Value> {
             .or_else(|| n.as_u64().map(Value::UnsignedInteger))
             .or_else(|| n.as_f64().map(Value::Real))
             .ok_or_else(|| Error::new("invalid array number".into()))?,
-        J::String(s) if matches!(ty, Type::Bytea) => {
-            return Ok(Value::Bytea(hex::decode(s).map_err(Error::validation)?));
+        J::String(s) if matches!(ty, Type::Bytea | Type::Changeset) => {
+            let bytes = hex::decode(s).map_err(Error::validation)?;
+            return ty.validate(&Value::Bytea(bytes));
         }
         J::String(s) if ty.native_kind().is_some() => return ty.cast(Value::Text(s)),
         J::String(s) => return decode(ty, SqlValue::Text(s)),
@@ -686,6 +688,9 @@ pub(crate) fn decode(ty: &Type, value: SqlValue) -> Result<Value> {
             ty.validate(&Value::Decimal(text.into()))
         }
         (Type::Bytea, SqlValue::Blob(bytes)) => Ok(Value::Bytea(decimal::decode_blob(bytes))),
+        (Type::Changeset, SqlValue::Blob(bytes)) => {
+            ty.validate(&Value::Bytea(decimal::decode_blob(bytes)))
+        }
         (Type::Varchar(limit), SqlValue::Text(text)) => {
             if limit.is_some_and(|n| text.chars().count() > n) {
                 return Err(Error::new("VARCHAR length exceeded".into()));

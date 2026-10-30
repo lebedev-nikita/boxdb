@@ -30,11 +30,13 @@ mod recovery;
 pub use error::{Error, ErrorOperation, OperationOutcome};
 pub use recovery::{RecoveryReport, RejectedDocument};
 pub type Result<T> = std::result::Result<T, Error>;
+pub mod changeset;
 pub mod migrations;
 pub mod types;
 pub use types::{Type, Value};
 mod decimal;
 mod extensions;
+mod history;
 mod readable;
 mod schema;
 mod schema_dump;
@@ -98,6 +100,10 @@ pub struct Database {
     internal: Arc<AtomicBool>,
     interrupt_cleanup: Arc<Mutex<()>>,
     cleanup_active: Cell<bool>,
+    history: Arc<history::Shared>,
+    commit_triggers: RefCell<Vec<history::triggers::CommitTrigger>>,
+    savepoints: RefCell<Vec<String>>,
+    savepoint_transaction: Cell<bool>,
 }
 struct CleanupGuard<'a> {
     active: &'a Cell<bool>,
@@ -196,17 +202,24 @@ impl Database {
         options: OpenOptions,
     ) -> Result<Self> {
         configure(&connection, binary, options)?;
+        let history = Arc::new(history::Shared::default());
         // Load the schema, validators and version markers from one snapshot.
         // A concurrent commit after this snapshot will invalidate its markers.
         let snapshot = connection.unchecked_transaction()?;
         let types = schema::load(&connection)?;
         schema::install(&connection, &types)?;
+        let commit_triggers = history::triggers::load(&connection)?;
+        history
+            .triggered
+            .store(!commit_triggers.is_empty(), Ordering::Relaxed);
         let schema_version =
             connection.query_row("PRAGMA main.schema_version", [], |r| r.get(0))?;
         let pager_version = storage::data_version(&connection)?;
         snapshot.commit()?;
         let internal = Arc::new(AtomicBool::new(false));
         authorizer(&connection, internal.clone())?;
+        history::register(&connection, history.clone())?;
+        history::install_hook(&connection, history.clone())?;
         Ok(Self {
             connection,
             format: None,
@@ -223,6 +236,10 @@ impl Database {
             internal,
             interrupt_cleanup: Arc::new(Mutex::new(())),
             cleanup_active: Cell::new(false),
+            history,
+            commit_triggers: RefCell::new(commit_triggers),
+            savepoints: RefCell::new(vec![]),
+            savepoint_transaction: Cell::new(false),
         })
     }
     pub fn memory() -> Self {
@@ -301,7 +318,7 @@ impl Database {
                     Connection::open_in_memory()?
                 };
                 let mut db = Self::new_with_options(connection, false, options)?;
-                file.watch(&db.connection)?;
+                file.watch(&db.history);
                 if !path.exists() || path.metadata()?.len() == 0 {
                     file.publish(&db.connection, &db.types.borrow())?;
                 }
@@ -451,7 +468,13 @@ impl Database {
                     self.validation_dirty.set(false);
                 }
             }
-            storage::data_version(&self.connection)
+            let version = storage::data_version(&self.connection)?;
+            if force || version != self.pager_version.get() {
+                // Commit triggers live in metadata rows, so other connections'
+                // declarations arrive with the pager version, not the schema.
+                self.set_commit_triggers(history::triggers::load(&self.connection)?);
+            }
+            Ok(version)
         })?;
         self.pager_version.set(pager_version);
         Ok(())
@@ -558,6 +581,41 @@ impl Database {
     pub fn execute_native(&mut self, sql: &str, params: &[Value]) -> Result<QueryResult> {
         self.execute_bound(sql, params, false)
     }
+    /// Apply a changeset, or its inverse, through `boxdb_apply`. Outside a
+    /// transaction the changes commit on their own, running commit triggers.
+    pub fn apply_changeset(
+        &mut self,
+        bytes: &[u8],
+        options: changeset::ApplyOptions,
+    ) -> Result<changeset::ApplyReport> {
+        let options = Value::Text(serde_json::to_string(&options)?);
+        let sql = "SELECT boxdb_apply(?1, ?2)";
+        let parameters = [Value::Changeset(bytes.to_vec()), options];
+        let result = if self.in_transaction() {
+            self.execute_params(sql, &parameters)
+        } else {
+            self.execute("BEGIN IMMEDIATE")?;
+            match self.execute_params(sql, &parameters) {
+                Ok(result) => self.execute("COMMIT").map(|_| result),
+                Err(error) => {
+                    if self.in_transaction()
+                        && let Err(rollback) = self.execute("ROLLBACK")
+                    {
+                        return Err(error.cleanup(rollback));
+                    }
+                    Err(error)
+                }
+            }
+        }?;
+        match result
+            .first()
+            .and_then(|r| r.rows.first())
+            .and_then(|r| r.first())
+        {
+            Some(Value::Text(json)) => Ok(serde_json::from_str(json)?),
+            _ => Err(Error::internal("boxdb_apply returned no report")),
+        }
+    }
     /// The rowid of the last successful INSERT on this connection.
     pub fn last_insert_rowid(&self) -> i64 {
         self.connection.last_insert_rowid()
@@ -583,6 +641,13 @@ impl Database {
             return Err(Error::new("preparation requires one statement".into()));
         };
         self.refresh(false)?;
+        if history::triggers::parse(sql)?.is_some() {
+            return Ok(StatementInfo {
+                columns: vec![],
+                parameters: vec![],
+                readonly: false,
+            });
+        }
         let declaration = schema::declaration(sql)?;
         let alteration = if schema::keyword(sql).eq_ignore_ascii_case("ALTER") {
             schema::alteration(sql)?
@@ -682,6 +747,10 @@ impl Database {
             )
             .with_code("BOXDB_UNAVAILABLE"));
         }
+        if self.connection.is_autocommit() {
+            // Recording, context and trigger state belong to one transaction.
+            self.history.reset();
+        }
         let keyword = schema::keyword(sql);
         if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("VALUES") {
             return self.run(sql, params, typed);
@@ -733,9 +802,11 @@ impl Database {
             result => result,
         };
         if !self.connection.is_autocommit()
-            && let Err(commit) = self.connection.execute_batch("COMMIT")
+            && let Err(commit) = result
+                .as_ref()
+                .map_or(Ok(()), |_| self.before_commit())
+                .and_then(|()| self.connection.execute_batch("COMMIT").map_err(Error::from))
         {
-            let commit = Error::from(commit);
             let error = match result {
                 Ok(_) => commit,
                 Err(error) => error.cleanup(commit),
@@ -808,6 +879,19 @@ impl Database {
             }
             return result;
         }
+        if let Some(trigger) = history::triggers::parse(sql)? {
+            if !params.is_empty() {
+                return Err(Error::new("DDL parameters are unsupported".into()));
+            }
+            return self.create_commit_trigger(trigger);
+        }
+        if keyword == "DROP"
+            && let Some((name, if_exists)) = history::triggers::drop_statement(sql)?
+            && let Some(existing) = history::triggers::find(&self.connection, &name)?
+        {
+            let _ = if_exists;
+            return self.drop_commit_trigger(&existing);
+        }
         let control = matches!(
             keyword.as_str(),
             "BEGIN" | "SAVEPOINT" | "COMMIT" | "END" | "RELEASE" | "ROLLBACK"
@@ -832,15 +916,39 @@ impl Database {
         } else {
             self.connection.prepare_cached(sql)?.readonly()
         };
+        let triggered = !self.commit_triggers.borrow().is_empty();
         let guarded = ddl
-            || (self.readable.is_some()
+            || ((self.readable.is_some() || triggered)
                 && self.connection.is_autocommit()
                 && !readonly
                 && !control
-                && !matches!(keyword.as_str(), "PRAGMA" | "VACUUM"));
+                && !matches!(keyword.as_str(), "PRAGMA" | "VACUUM" | "ATTACH" | "DETACH"));
         let outer_autocommit = self.connection.is_autocommit();
         if guarded {
             self.connection.execute_batch("SAVEPOINT __boxdb_write")?;
+        }
+        if triggered && !readonly && !control {
+            history::ensure_recording(&self.history, &self.connection)?;
+        }
+        let savepoint = if control {
+            history::triggers::control(sql)?
+        } else {
+            None
+        };
+        let committing = matches!(keyword.as_str(), "COMMIT" | "END")
+            || matches!(&savepoint, Some(history::triggers::Control::Release(name))
+                if self.savepoint_transaction.get()
+                    && self.savepoints.borrow().first().is_some_and(|first| first.eq_ignore_ascii_case(name)));
+        if committing && let Err(error) = self.before_commit() {
+            return Err(if guarded {
+                self.cleanup_failure(
+                    error,
+                    "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
+                    ddl,
+                )
+            } else {
+                error
+            });
         }
         if ddl {
             let _guard = InternalGuard::enter(&self.internal);
@@ -895,11 +1003,19 @@ impl Database {
                 schema::cleanup(&self.connection)?;
                 schema::configure_codec(&self.connection, false)?;
                 self.refresh(true)?;
+                let mut recorder = history::lock(&self.history.recorder);
+                if recorder.active {
+                    recorder.load_tables(&self.connection)?;
+                }
+                drop(recorder);
                 if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
                     schema::normalize_arrays(&self.connection, &self.types.borrow())?;
                 }
             }
             if guarded {
+                if outer_autocommit && !ddl {
+                    self.before_commit()?;
+                }
                 // An internal savepoint nested inside a user transaction must
                 // not publish that transaction's pending readable data.
                 if outer_autocommit && let Some(file) = &self.readable {
@@ -923,10 +1039,188 @@ impl Database {
             });
         }
         if control {
+            self.track_savepoint(&keyword, savepoint, outer_autocommit);
             self.write_transaction_ready = false;
             self.refresh(keyword == "ROLLBACK")?;
         } else if !readonly {
             self.write_transaction_ready = true;
+        }
+        result
+    }
+    fn track_savepoint(
+        &self,
+        keyword: &str,
+        control: Option<history::triggers::Control>,
+        outer_autocommit: bool,
+    ) {
+        use history::triggers::Control;
+        let mut savepoints = self.savepoints.borrow_mut();
+        match control {
+            Some(Control::Savepoint(name)) => {
+                if outer_autocommit {
+                    savepoints.clear();
+                    self.savepoint_transaction.set(true);
+                }
+                savepoints.push(name);
+            }
+            Some(Control::Release(name)) => {
+                if let Some(index) = savepoints
+                    .iter()
+                    .rposition(|s| s.eq_ignore_ascii_case(&name))
+                {
+                    savepoints.truncate(index);
+                }
+            }
+            Some(Control::RollbackTo(name)) => {
+                if let Some(index) = savepoints
+                    .iter()
+                    .rposition(|s| s.eq_ignore_ascii_case(&name))
+                {
+                    savepoints.truncate(index + 1);
+                }
+            }
+            None => {
+                if matches!(keyword, "BEGIN" | "COMMIT" | "END" | "ROLLBACK") {
+                    savepoints.clear();
+                    self.savepoint_transaction.set(false);
+                }
+            }
+        }
+        if self.connection.is_autocommit() {
+            savepoints.clear();
+            self.savepoint_transaction.set(false);
+        }
+    }
+    fn set_commit_triggers(&self, triggers: Vec<history::triggers::CommitTrigger>) {
+        self.history
+            .triggered
+            .store(!triggers.is_empty(), Ordering::Relaxed);
+        self.commit_triggers.replace(triggers);
+    }
+    /// Run commit triggers inside the transaction that is about to commit.
+    fn before_commit(&self) -> Result<()> {
+        let triggers = self.commit_triggers.borrow().clone();
+        if triggers.is_empty() || self.connection.is_autocommit() {
+            return Ok(());
+        }
+        let mut recorder = history::lock(&self.history.recorder);
+        if !recorder.active || recorder.skip_triggers || recorder.paused {
+            return Ok(());
+        }
+        let changes = recorder.changeset(&self.connection, true)?;
+        recorder.paused = true;
+        drop(recorder);
+        let result = (|| {
+            for trigger in &triggers {
+                let subset: Vec<changeset::RawChange> = changes
+                    .iter()
+                    .filter(|change| trigger.covers(&change.table))
+                    .cloned()
+                    .collect();
+                if subset.is_empty() {
+                    continue;
+                }
+                *history::lock(&self.history.stash) = Some(changeset::encode_raw(&subset, false));
+                for statement in &trigger.body {
+                    self.connection.execute_batch(statement).map_err(|error| {
+                        Error::from(error)
+                            .with_context(format!("commit trigger {} failed", trigger.name))
+                    })?;
+                }
+            }
+            Ok(())
+        })();
+        *history::lock(&self.history.stash) = None;
+        history::lock(&self.history.recorder).paused = false;
+        result
+    }
+    fn create_commit_trigger(
+        &mut self,
+        declaration: history::triggers::Declaration,
+    ) -> Result<QueryResult> {
+        let trigger = declaration.trigger;
+        if trigger.name.to_ascii_lowercase().starts_with("__boxdb_") {
+            return Err(Error::new("__boxdb_ names are reserved".into()));
+        }
+        self.refresh(false)?;
+        let _guard = InternalGuard::enter(&self.internal);
+        self.connection
+            .execute_batch("SAVEPOINT __boxdb_declaration")?;
+        let result = (|| {
+            if history::triggers::find(&self.connection, &trigger.name)?.is_some() {
+                if declaration.if_not_exists {
+                    return Ok(());
+                }
+                return Err(Error::new(format!(
+                    "commit trigger {} already exists",
+                    trigger.name
+                )));
+            }
+            if self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='trigger' AND name=?1 COLLATE NOCASE)",
+                [&trigger.name],
+                |row| row.get::<_, bool>(0),
+            )? {
+                return Err(Error::new(format!(
+                    "trigger {} already exists",
+                    trigger.name
+                )));
+            }
+            for table in trigger.tables.iter().flatten() {
+                if !self.connection.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM pragma_table_list WHERE schema='main' AND type='table' AND name=?1 COLLATE NOCASE)",
+                    [table],
+                    |row| row.get::<_, bool>(0),
+                )? {
+                    return Err(Error::new(format!("no such main table: {table}")));
+                }
+            }
+            for statement in &trigger.body {
+                self.connection
+                    .prepare(statement)
+                    .map_err(|error| Error::from(error).with_context("commit trigger body"))?;
+            }
+            history::triggers::save(&self.connection, &trigger)?;
+            Ok(())
+        })();
+        let result = result.and_then(|()| {
+            self.set_commit_triggers(history::triggers::load(&self.connection)?);
+            self.connection
+                .execute_batch("RELEASE __boxdb_declaration")?;
+            Ok(empty())
+        });
+        let result = result.map_err(|error| {
+            self.cleanup_failure(
+                error,
+                "ROLLBACK TO __boxdb_declaration; RELEASE __boxdb_declaration",
+                true,
+            )
+        });
+        if result.is_ok() {
+            self.publish_readable()?;
+        }
+        result
+    }
+    fn drop_commit_trigger(&mut self, name: &str) -> Result<QueryResult> {
+        let _guard = InternalGuard::enter(&self.internal);
+        self.connection
+            .execute_batch("SAVEPOINT __boxdb_declaration")?;
+        let result = (|| {
+            history::triggers::remove(&self.connection, name)?;
+            self.set_commit_triggers(history::triggers::load(&self.connection)?);
+            self.connection
+                .execute_batch("RELEASE __boxdb_declaration")?;
+            Ok(empty())
+        })();
+        let result = result.map_err(|error| {
+            self.cleanup_failure(
+                error,
+                "ROLLBACK TO __boxdb_declaration; RELEASE __boxdb_declaration",
+                true,
+            )
+        });
+        if result.is_ok() {
+            self.publish_readable()?;
         }
         result
     }
@@ -1025,9 +1319,15 @@ impl Database {
                                 schema::decode(ty, value)
                                     .map_err(|error| error.with_code("BOXDB_INVALID_VALUE"))?
                             } else {
-                                schema::decode(ty, value.clone())
+                                let decoded = schema::decode(ty, value.clone())
                                     .map_err(|error| error.with_code("BOXDB_INVALID_VALUE"))?;
-                                schema::native(value)
+                                // Storage-class results still distinguish
+                                // changesets from ordinary BLOB bytes.
+                                if matches!(ty, Type::Changeset) {
+                                    decoded
+                                } else {
+                                    schema::native(value)
+                                }
                             }
                         } else {
                             schema::native(value)

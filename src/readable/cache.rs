@@ -11,11 +11,11 @@ use std::{
 };
 
 #[derive(Default)]
-struct ChangedRows {
+pub(crate) struct ChangedRows {
     ids: BTreeSet<i64>,
     whole_table: bool,
 }
-type Changes = BTreeMap<String, ChangedRows>;
+pub(crate) type Changes = BTreeMap<String, ChangedRows>;
 enum Rows {
     Indexed(BTreeMap<i64, Vec<u8>>),
     Ordered(Vec<u8>),
@@ -173,35 +173,33 @@ pub(crate) struct SnapshotCache {
     snapshot: RefCell<Option<Snapshot>>,
     changes: Arc<Mutex<Changes>>,
 }
+/// Note a row identity from the connection's shared preupdate hook.
+pub(crate) fn record(changes: &Mutex<Changes>, database: &str, table: &str, case: &PreUpdateCase) {
+    if database != "main" {
+        return;
+    }
+    let mut changes = changes.lock().unwrap_or_else(|e| e.into_inner());
+    let table = changes.entry(table.into()).or_default();
+    match case {
+        PreUpdateCase::Insert(row) => {
+            table.ids.insert(row.get_new_row_id());
+        }
+        PreUpdateCase::Delete(row) => {
+            table.ids.insert(row.get_old_row_id());
+        }
+        PreUpdateCase::Update {
+            old_value_accessor,
+            new_value_accessor,
+        } => {
+            table.ids.insert(old_value_accessor.get_old_row_id());
+            table.ids.insert(new_value_accessor.get_new_row_id());
+        }
+        PreUpdateCase::Unknown => table.whole_table = true,
+    }
+}
 impl SnapshotCache {
-    pub fn watch(&self, db: &Connection) -> Result<()> {
-        let changes = self.changes.clone();
-        db.preupdate_hook(Some(
-            move |_, database: &str, table: &str, case: &PreUpdateCase| {
-                if database != "main" {
-                    return;
-                }
-                let mut changes = changes.lock().unwrap_or_else(|e| e.into_inner());
-                let table = changes.entry(table.into()).or_default();
-                match case {
-                    PreUpdateCase::Insert(row) => {
-                        table.ids.insert(row.get_new_row_id());
-                    }
-                    PreUpdateCase::Delete(row) => {
-                        table.ids.insert(row.get_old_row_id());
-                    }
-                    PreUpdateCase::Update {
-                        old_value_accessor,
-                        new_value_accessor,
-                    } => {
-                        table.ids.insert(old_value_accessor.get_old_row_id());
-                        table.ids.insert(new_value_accessor.get_new_row_id());
-                    }
-                    PreUpdateCase::Unknown => table.whole_table = true,
-                }
-            },
-        ))?;
-        Ok(())
+    pub fn tracker(&self) -> Arc<Mutex<Changes>> {
+        self.changes.clone()
     }
     fn refresh(&self, db: &Connection, types: &schema::Types) -> Result<bool> {
         let result = self.refresh_inner(db, types);

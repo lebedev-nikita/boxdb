@@ -82,6 +82,10 @@ The [API reference](https://docs.rs/boxdb) documents the released crate.
 In a checkout, run `cargo doc --no-deps --open` for the exact local version.
 
 - [SQL migrations](migrations.md#migrations-from-application-code).
+- [Change history](history.md): `Database::apply_changeset` applies a changeset
+  or its inverse and returns an `ApplyReport`; `boxdb::changeset` decodes,
+  inverts and concatenates changesets. `Value::Changeset` carries CHANGESET
+  cells.
 - [Storage and conversion](storage.md).
 - [Diagnostics and recovery](recovery.md).
 - [Built-in SQL extensions](extensions.md).

@@ -23,13 +23,18 @@ export type {
   RecoveryReport,
 } from "./maintenance.js";
 export type {
+  ApplyOptions,
+  ApplyReport,
   BoxDBOptions,
+  ChangesetConflict,
+  ConflictPolicy,
   Parameters,
   QueryResult,
   RunResult,
   SQLParameter,
   SQLValue,
 } from "./types.js";
+export { Changeset } from "./values.js";
 export type { Query, Fragment, CompiledQuery, Interpolation } from "./sql.js";
 export {
   MigrationSet,

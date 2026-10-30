@@ -22,7 +22,9 @@ Updating a [read-only column](sql.md#read-only-columns) has code
 
 Validation, filesystem I/O, closed connections, unusable connections after
 publication failure, and internal infrastructure failures have separate
-`BOXDB_*` categories. Readable-file lock contention retains its OS cause without
+`BOXDB_*` categories. Failures raised by BoxDB SQL functions such as
+`boxdb_apply` or `boxdb_changeset` use `BOXDB_CONSTRAINT_FUNCTION` unless an
+engine code applies. Readable-file lock contention retains its OS cause without
 inventing numeric engine codes. Rust retains I/O, parser, JSON and YAML sources;
 `with_context()` retains codes and sources. `Database::try_memory()` provides
 fallible initialization and is used by both native clients.

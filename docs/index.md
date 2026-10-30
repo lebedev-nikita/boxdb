@@ -19,6 +19,7 @@ Start with the [quickstart](quickstart.md), then follow your client guide:
 - [SQL and types](sql.md): practical declarations, bindings and SQLite differences.
 - [Exact decimals](native-decimal.md) and [temporal values](temporal.md).
 - [Storage](storage.md): binary SQLite, readable YAML and validation boundaries.
+- [Change history](history.md): recorded changesets, commit triggers, undo and apply.
 - [Built-in extensions](extensions.md): full-text, vector, Unicode and regexp queries.
 
 ## Build an application

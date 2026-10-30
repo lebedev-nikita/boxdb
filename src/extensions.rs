@@ -29,6 +29,7 @@ pub(crate) fn register(db: &Connection) -> Result<()> {
         }
     }
     crate::decimal::register(db)?;
+    crate::history::register(db, std::sync::Arc::default())?;
     // SAFETY: sqlite-vec's C entry point has ExtensionInit's signature; its
     // Rust crate declares an untyped entry point for callers to cast.
     let vector_init = unsafe {
