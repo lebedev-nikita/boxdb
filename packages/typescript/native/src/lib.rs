@@ -1,6 +1,6 @@
 use boxdb::Value;
 use napi::Env;
-use napi::bindgen_prelude::{BigInt, Buffer, Either5, JsObjectValue, Null, ToNapiValue};
+use napi::bindgen_prelude::{BigInt, Buffer, Either6, JsObjectValue, Null, ToNapiValue};
 use napi_derive::napi;
 use std::sync::Arc;
 
@@ -48,7 +48,13 @@ pub struct NativeMigrationStatus {
     pub state: String,
 }
 
-type Cell = Either5<Null, f64, BigInt, String, Buffer>;
+/// A CHANGESET value, distinguished from ordinary BLOB bytes.
+#[napi(object)]
+pub struct NativeChangeset {
+    pub changeset: Buffer,
+}
+
+type Cell = Either6<Null, f64, BigInt, String, Buffer, NativeChangeset>;
 
 fn failure(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
@@ -146,9 +152,9 @@ pub fn maintain_file(
 
 fn input(value: Cell) -> napi::Result<Value> {
     Ok(match value {
-        Either5::A(_) => Value::Null,
-        Either5::B(value) => Value::Real(value),
-        Either5::C(value) => {
+        Either6::A(_) => Value::Null,
+        Either6::B(value) => Value::Real(value),
+        Either6::C(value) => {
             let (signed, lossless) = value.get_i64();
             if lossless {
                 Value::Integer(signed)
@@ -160,17 +166,18 @@ fn input(value: Cell) -> napi::Result<Value> {
                 Value::UnsignedInteger(unsigned)
             }
         }
-        Either5::D(value) => Value::Text(value),
-        Either5::E(value) => Value::Bytea(value.to_vec()),
+        Either6::D(value) => Value::Text(value),
+        Either6::E(value) => Value::Bytea(value.to_vec()),
+        Either6::F(value) => Value::Changeset(value.changeset.to_vec()),
     })
 }
 
 fn output(value: Value) -> napi::Result<Cell> {
     Ok(match value {
-        Value::Null => Either5::A(Null),
-        Value::Integer(value) => Either5::C(value.into()),
-        Value::UnsignedInteger(value) => Either5::C(value.into()),
-        Value::Real(value) => Either5::B(value),
+        Value::Null => Either6::A(Null),
+        Value::Integer(value) => Either6::C(value.into()),
+        Value::UnsignedInteger(value) => Either6::C(value.into()),
+        Value::Real(value) => Either6::B(value),
         Value::Text(value)
         | Value::Decimal(value)
         | Value::Uuid(value)
@@ -178,8 +185,11 @@ fn output(value: Value) -> napi::Result<Cell> {
         | Value::Date(value)
         | Value::Time(value)
         | Value::DateTime(value)
-        | Value::Interval(value) => Either5::D(value),
-        Value::Bytea(value) => Either5::E(value.into()),
+        | Value::Interval(value) => Either6::D(value),
+        Value::Bytea(value) => Either6::E(value.into()),
+        Value::Changeset(value) => Either6::F(NativeChangeset {
+            changeset: value.into(),
+        }),
         _ => return Err(failure("expected a SQLite storage value")),
     })
 }

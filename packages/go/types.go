@@ -67,6 +67,25 @@ func scanText(source any) (string, error) {
 	}
 }
 
+// Changeset holds recorded row changes in SQLite's changeset format, as read
+// from a CHANGESET column or returned by boxdb_changeset(). Apply it with
+// SELECT boxdb_apply(?, ?) inside a transaction.
+type Changeset []byte
+
+func (value Changeset) Value() (driver.Value, error) { return []byte(value), nil }
+
+func (value *Changeset) Scan(source any) error {
+	switch source := source.(type) {
+	case []byte:
+		*value = append(Changeset(nil), source...)
+		return nil
+	case nil:
+		return validationError("cannot scan SQL NULL into a changeset; use sql.Null[Changeset]")
+	default:
+		return validationError("cannot scan %T into a changeset", source)
+	}
+}
+
 // JSON encodes and decodes a complete document in the client. Use sql.Null[JSON[T]]
 // for SQL NULL; a nil Data value represents the JSON document null.
 // Decoding into interface values preserves numbers as json.Number.

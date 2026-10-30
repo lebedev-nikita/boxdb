@@ -28,6 +28,8 @@ pub enum Value {
     DateTime(String),
     /// Separate signed months, days and microseconds.
     Interval(String),
+    /// A validated SQLite changeset or patchset.
+    Changeset(Vec<u8>),
     Array(Vec<Value>),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -57,6 +59,7 @@ pub enum Type {
     Time,
     DateTime,
     Interval,
+    Changeset,
     Array(Box<Type>),
 }
 
@@ -187,6 +190,7 @@ impl Type {
             "TIME" => Self::Time,
             "DATETIME" => Self::DateTime,
             "INTERVAL" => Self::Interval,
+            "CHANGESET" => Self::Changeset,
             _ => return Err(Error::new(format!("unsupported or missing type: {input}"))),
         };
         if !args.is_empty() && !matches!(result, Self::Decimal(_) | Self::Varchar(_)) {
@@ -278,6 +282,10 @@ impl Type {
             }
             (Self::Enum(labels), Value::Text(s)) if labels.contains(s) => Ok(value.clone()),
             (Self::Json, Value::Json(_)) => Ok(value.clone()),
+            (Self::Changeset, Value::Changeset(bytes) | Value::Bytea(bytes)) => {
+                crate::changeset::validate(bytes)?;
+                Ok(Value::Changeset(bytes.clone()))
+            }
             (Self::Uuid, Value::Uuid(s))
             | (Self::Instant, Value::Instant(s))
             | (Self::Date, Value::Date(s))
@@ -367,7 +375,7 @@ impl Type {
             Self::DateTime => Value::DateTime(text),
             Self::Interval => Value::Interval(text),
             Self::Json => Value::Json(serde_json::from_str(&text).map_err(Error::validation)?),
-            Self::Bytea | Self::Array(_) => value,
+            Self::Bytea | Self::Array(_) | Self::Changeset => value,
         };
         self.validate(&parsed)
     }
@@ -380,7 +388,7 @@ impl std::fmt::Display for Value {
             Self::UnsignedInteger(n) => write!(f, "{n}"),
             Self::Real(n) => write!(f, "{n}"),
             Self::Boolean(b) => write!(f, "{b}"),
-            Self::Bytea(bytes) => write!(f, "{}", hex::encode(bytes)),
+            Self::Bytea(bytes) | Self::Changeset(bytes) => write!(f, "{}", hex::encode(bytes)),
             Self::Decimal(s)
             | Self::Text(s)
             | Self::Uuid(s)

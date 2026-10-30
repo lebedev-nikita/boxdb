@@ -1,6 +1,31 @@
 import { Buffer } from "node:buffer";
-import type { NativeInfo, NativeResult, NativeValue } from "./native.js";
-import type { QueryResult } from "./types.js";
+import type {
+  ClientResult,
+  NativeChangeset,
+  NativeInfo,
+  NativeResult,
+  NativeValue,
+} from "./native.js";
+import type { ApplyReport, QueryResult } from "./types.js";
+
+/** Recorded row changes in SQLite's changeset format, as stored in CHANGESET columns. */
+export class Changeset {
+  readonly bytes: Buffer;
+  constructor(bytes: Uint8Array) {
+    if (!(bytes instanceof Uint8Array)) throw new TypeError("Changeset requires bytes");
+    this.bytes = Buffer.from(bytes);
+  }
+}
+function isNativeChangeset(value: NativeValue): value is NativeChangeset {
+  return typeof value === "object" && value !== null && !(value instanceof Uint8Array);
+}
+export function fromNative(value: NativeValue): unknown {
+  return isNativeChangeset(value) ? new Changeset(value.changeset) : value;
+}
+export function parseReport(value: unknown): ApplyReport {
+  if (typeof value !== "string") throw new TypeError("boxdb_apply returned no report");
+  return JSON.parse(value) as ApplyReport;
+}
 
 export function value(parameter: unknown): NativeValue {
   if (typeof parameter === "bigint") {
@@ -17,9 +42,10 @@ export function value(parameter: unknown): NativeValue {
     return Number.isInteger(parameter) ? BigInt(parameter) : parameter;
   }
   if (typeof parameter === "boolean") return parameter ? 1n : 0n;
+  if (parameter instanceof Changeset) return { changeset: parameter.bytes };
   if (parameter instanceof Uint8Array) return Buffer.from(parameter);
   throw new TypeError(
-    "SQL parameters must be null, string, number, bigint, boolean, or Uint8Array",
+    "SQL parameters must be null, string, number, bigint, boolean, Uint8Array, or Changeset",
   );
 }
 
@@ -28,7 +54,8 @@ export function record(value: unknown): value is Record<string, unknown> {
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    !(value instanceof Uint8Array)
+    !(value instanceof Uint8Array) &&
+    !(value instanceof Changeset)
   );
 }
 
@@ -57,7 +84,10 @@ export function bindParameters(info: NativeInfo, args: unknown[]): NativeValue[]
   return result;
 }
 
-export function queryResult(result: NativeResult, raw = false): QueryResult {
+export function clientResult(result: NativeResult): ClientResult {
+  return { ...result, rows: result.rows.map((row) => row.map(fromNative)) };
+}
+export function queryResult(result: ClientResult, raw = false): QueryResult {
   const rows = result.rows;
   return {
     columns: result.columns,

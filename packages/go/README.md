@@ -16,7 +16,7 @@ version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.6.0
+BOXDB_GO_VERSION=0.7.0
 BOXDB_GO_PLATFORM=darwin-arm64 # Linux: linux-x64 or linux-arm64 (64-bit Raspberry Pi).
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
@@ -26,7 +26,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.6.0
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.7.0
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The
@@ -159,6 +159,27 @@ The reader accepts `fs.FS`, including `embed.FS`. Use
 documents held in memory. `Up`, `Down` and `Status` take a context and a BoxDB
 `*sql.DB`, retaining one connection for the whole call. These methods share the
 CLI's format and history. See [migration sources, cancellation and rollback](../../docs/migrations.md#migrations-from-application-code).
+
+## Change history
+
+CHANGESET columns scan into `boxdb.Changeset`, which also binds as a parameter.
+Recording, context and apply use the SQL functions described in
+[change history](../../docs/history.md):
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+if err != nil { return err }
+if _, err := tx.ExecContext(ctx, "SELECT boxdb_set_context('label', ?)", "Rename task"); err != nil { return err }
+if _, err := tx.ExecContext(ctx, "UPDATE tasks SET title=? WHERE id=?", "New title", 3); err != nil { return err }
+if err := tx.Commit(); err != nil { return err }
+
+var changes boxdb.Changeset
+err = db.QueryRowContext(ctx, "SELECT changes FROM history ORDER BY id DESC LIMIT 1").Scan(&changes)
+var report string // {"applied":1,"skipped":0,"conflicts":[]}
+err = tx.QueryRowContext(ctx, "SELECT boxdb_apply(?, ?)", changes, `{"invert":true}`).Scan(&report)
+```
+
+`boxdb_apply` requires a transaction; run it through `*sql.Tx` and commit.
 
 ## Values and errors
 

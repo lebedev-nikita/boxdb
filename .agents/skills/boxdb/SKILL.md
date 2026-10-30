@@ -142,6 +142,17 @@ CREATE TABLE tasks (
 );
 ```
 
+## Record and undo changes
+
+When the task needs undo, audit history or a record of what a transaction
+changed, read [change history](https://github.com/lebedev-nikita/boxdb/blob/main/docs/history.md)
+before designing tables. Declare a `CHANGESET` column and a `BEFORE COMMIT`
+trigger that stores `boxdb_changeset()`; keep the history table out of the
+trigger's `ON` list. Undo with `boxdb_apply(changes, '{"invert":true}')` inside
+a transaction, choosing an `on_conflict` policy explicitly. Recorded tables need
+a PRIMARY KEY. Set per-transaction labels with `boxdb_set_context` rather than
+extra columns the trigger cannot see.
+
 ## Migrations and schema export
 
 Use `db/migrations` for SQL migrations and `db/schema.yaml` for the YAML schema

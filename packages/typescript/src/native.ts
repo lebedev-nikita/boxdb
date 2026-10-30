@@ -4,7 +4,10 @@ import type { MigrationFile, MigrationInfo, MigrationStatus } from "./migrations
 export const runMigrations = Symbol("runMigrations");
 export type NativeMigrationSet = object;
 
-export type NativeValue = null | number | bigint | string | Buffer;
+export interface NativeChangeset {
+  changeset: Buffer;
+}
+export type NativeValue = null | number | bigint | string | Buffer | NativeChangeset;
 export interface NativeInfo {
   columns: string[];
   parameters: (string | null | undefined)[];
@@ -13,6 +16,13 @@ export interface NativeInfo {
 export interface NativeResult {
   columns: string[];
   rows: NativeValue[][];
+  changes: bigint;
+  lastInsertRowid: bigint;
+}
+/** A native result whose cells use client value classes such as Changeset. */
+export interface ClientResult {
+  columns: string[];
+  rows: unknown[][];
   changes: bigint;
   lastInsertRowid: bigint;
 }

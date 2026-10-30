@@ -53,6 +53,8 @@ arithmetic and logical shifts. The database codec version is stored
 in `__boxdb_codec`, and readable headers also record it. Stock SQLite does not have
 compatible query or index semantics. See [the decimal contract](../../docs/native-decimal.md).
 
+`sqlite3_boxdb_value_blob` and `sqlite3_boxdb_value_bytes` expose the wire cell
+of a `sqlite3_value`, which BoxDB's preupdate hook uses to record changesets.
 Normal BLOB bind/result APIs add the BYTEA tag. BoxDB transports already
 encoded cells through the pointer API with the private type `boxdb.wire-blob.v1`
 and a borrowed C descriptor `{ const char *data; int length; }`. The patched API

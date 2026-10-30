@@ -1,10 +1,16 @@
 use super::*;
 use serde_saphyr::{FlowSeq, LitStr};
 
-fn literal<S: Serializer>(sql: &str, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+pub(super) fn literal<S: Serializer>(
+    sql: &str,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
     LitStr(sql).serialize(serializer)
 }
-fn flow<S: Serializer>(names: &[String], serializer: S) -> std::result::Result<S::Ok, S::Error> {
+pub(super) fn flow<S: Serializer>(
+    names: &[String],
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
     FlowSeq(names).serialize(serializer)
 }
 fn name_list(sql: &mut Sql) -> Result<Vec<String>> {

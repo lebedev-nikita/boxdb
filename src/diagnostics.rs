@@ -240,6 +240,7 @@ pub(crate) fn check_connection(db: &Connection, report: &mut CheckReport) {
     let mut types = None;
     report.step("metadata", |_| {
         types = Some(schema::load(db)?);
+        crate::history::triggers::load(db)?;
         Ok(())
     });
     if report.mode == CheckMode::Full {

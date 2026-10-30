@@ -11,7 +11,7 @@ use serde::{
     ser::SerializeMap,
 };
 use std::{collections::BTreeMap, fmt};
-mod cache;
+pub(crate) mod cache;
 pub(crate) use cache::SnapshotCache;
 
 /// Top-level YAML document markers cannot occur inside indented scalar content.
@@ -249,6 +249,109 @@ pub(crate) fn salvage(bytes: &[u8]) -> Result<(Connection, Vec<Rejected>)> {
     Ok((db, rejected))
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Render {
+    Plain,
+    Boolean,
+    Changeset,
+}
+/// One change of a CHANGESET cell. Fields are keyed by column position,
+/// because the wire format records positions rather than names.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChangeDocument {
+    table: String,
+    columns: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    key: Vec<usize>,
+    op: crate::changeset::Operation,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    indirect: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    old: Option<BTreeMap<usize, Cell>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    new: Option<BTreeMap<usize, Cell>>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ChangesetCell {
+    Changeset(Vec<ChangeDocument>),
+    Patchset(Vec<ChangeDocument>),
+}
+impl ChangesetCell {
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        let decoded = crate::changeset::decode_raw(bytes)?;
+        let documents = decoded
+            .changes
+            .into_iter()
+            .map(|change| {
+                let fields = |record: Option<Vec<Option<SqlValue>>>| {
+                    record.map(|record| {
+                        record
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(i, value)| value.map(|value| (i, Cell(value))))
+                            .collect()
+                    })
+                };
+                ChangeDocument {
+                    table: change.table,
+                    columns: change.primary_key.len(),
+                    key: change
+                        .primary_key
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, pk)| **pk)
+                        .map(|(i, _)| i)
+                        .collect(),
+                    op: change.operation,
+                    indirect: change.indirect,
+                    old: fields(change.old),
+                    new: fields(change.new),
+                }
+            })
+            .collect();
+        Ok(if decoded.patchset {
+            Self::Patchset(documents)
+        } else {
+            Self::Changeset(documents)
+        })
+    }
+    fn encode(documents: &[ChangeDocument], patchset: bool) -> Result<Vec<u8>> {
+        let mut changes = vec![];
+        for document in documents {
+            if document.columns == 0 || document.key.iter().any(|i| *i >= document.columns) {
+                return Err(Error::new("invalid changeset document".into()));
+            }
+            let record =
+                |fields: &Option<BTreeMap<usize, Cell>>| -> Result<Option<Vec<Option<SqlValue>>>> {
+                    let Some(fields) = fields else {
+                        return Ok(None);
+                    };
+                    let mut record = vec![None; document.columns];
+                    for (position, cell) in fields {
+                        *record.get_mut(*position).ok_or_else(|| {
+                            Error::new("changeset field position out of range".into())
+                        })? = Some(cell.0.clone());
+                    }
+                    Ok(Some(record))
+                };
+            changes.push(crate::changeset::RawChange {
+                table: document.table.clone(),
+                primary_key: (0..document.columns)
+                    .map(|i| document.key.contains(&i))
+                    .collect(),
+                operation: document.op,
+                indirect: document.indirect,
+                old: record(&document.old)?,
+                new: record(&document.new)?,
+            });
+        }
+        let bytes = crate::changeset::encode_raw(&changes, patchset);
+        crate::changeset::validate(&bytes)?;
+        Ok(bytes)
+    }
+}
 /// Native SQLite cells have natural YAML scalars. BLOBs use an explicit hex
 /// mapping so text, byte arrays and numbers remain distinguishable on import.
 struct Cell(SqlValue);
@@ -343,10 +446,22 @@ impl<'de> Deserialize<'de> for Cell {
                     Time(String),
                     DateTime(String),
                     Interval(String),
+                    Changeset(Vec<ChangeDocument>),
+                    Patchset(Vec<ChangeDocument>),
                 }
                 let cell = WireCell::deserialize(MapAccessDeserializer::new(map))?;
                 use libsqlite3_sys::native::Kind;
                 let (kind, text) = match cell {
+                    WireCell::Changeset(documents) => {
+                        let bytes =
+                            ChangesetCell::encode(&documents, false).map_err(de::Error::custom)?;
+                        return Ok(Cell(SqlValue::Blob(crate::decimal::encode_blob(&bytes))));
+                    }
+                    WireCell::Patchset(documents) => {
+                        let bytes =
+                            ChangesetCell::encode(&documents, true).map_err(de::Error::custom)?;
+                        return Ok(Cell(SqlValue::Blob(crate::decimal::encode_blob(&bytes))));
+                    }
                     WireCell::Blob(blob) => {
                         return hex::decode(blob)
                             .map(|bytes| Cell(SqlValue::Blob(crate::decimal::encode_blob(&bytes))))
@@ -532,7 +647,7 @@ struct TablePlan {
     select: String,
     lookup: Option<String>,
     prefix: Vec<u8>,
-    keys: Vec<(usize, Vec<u8>, bool)>,
+    keys: Vec<(usize, Vec<u8>, Render)>,
 }
 impl TablePlan {
     fn new(db: &Connection, name: &str, types: &schema::Types) -> Result<Self> {
@@ -574,11 +689,12 @@ impl TablePlan {
                 indented.extend_from_slice(b"  ");
                 indented.extend_from_slice(line.as_bytes());
             }
-            let boolean = matches!(
-                types.get(&(name.to_owned(), columns[index].clone())),
-                Some(crate::Type::Boolean)
-            );
-            keys.push((index, indented, boolean));
+            let render = match types.get(&(name.to_owned(), columns[index].clone())) {
+                Some(crate::Type::Boolean) => Render::Boolean,
+                Some(crate::Type::Changeset) => Render::Changeset,
+                _ => Render::Plain,
+            };
+            keys.push((index, indented, render));
         }
         Ok(Self {
             rowid,
@@ -596,7 +712,7 @@ impl TablePlan {
         }
         let offset = usize::from(self.rowid.is_some());
         let mut has_values = false;
-        for (index, key, boolean) in &self.keys {
+        for (index, key, render) in &self.keys {
             let value = row.get_ref(index + offset)?;
             if matches!(value, ValueRef::Null) {
                 continue;
@@ -608,7 +724,7 @@ impl TablePlan {
             writer.write_all(key)?;
             match value {
                 ValueRef::Null => unreachable!(),
-                ValueRef::Integer(n @ (0 | 1)) if *boolean => {
+                ValueRef::Integer(n @ (0 | 1)) if *render == Render::Boolean => {
                     writer.write_all(if n == 1 { b" true\n" } else { b" false\n" })?
                 }
                 ValueRef::Integer(n) => writeln!(writer, " {n}")?,
@@ -631,6 +747,18 @@ impl TablePlan {
                     }
                 }
                 ValueRef::Blob(bytes) => {
+                    if *render == Render::Changeset
+                        && let Ok(documents) =
+                            ChangesetCell::decode(libsqlite3_sys::wire::blob_payload(bytes))
+                    {
+                        let yaml = serde_saphyr::to_string(&documents)?;
+                        writer.write_all(b"\n")?;
+                        for line in yaml.split_inclusive('\n') {
+                            writer.write_all(b"    ")?;
+                            writer.write_all(line.as_bytes())?;
+                        }
+                        continue;
+                    }
                     if crate::decimal::decode(bytes).is_some()
                         || libsqlite3_sys::native::decode(bytes).is_some()
                     {

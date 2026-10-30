@@ -41,6 +41,7 @@ storage classes is intentional.
 | Duration | `INTERVAL` | Separate months, days and microseconds |
 | Typed collection | `TEXT[]`, `INT64[][]` | Complete arrays, serialized as JSON where required |
 | Opaque document | `JSON` | Validate the document; inspect it in application code |
+| Recorded changes | `CHANGESET` | Validated changeset bytes; see [change history](history.md) |
 
 For declaration details and physical representations, see
 [storage and extended types](storage.md). For arithmetic, read

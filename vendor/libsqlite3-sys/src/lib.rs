@@ -46,6 +46,9 @@ unsafe extern "C" {
     pub fn sqlite3_column_bytes(statement: *mut sqlite3_stmt, column: i32) -> i32;
     #[link_name = "sqlite3_boxdb_column_bytes16"]
     pub fn sqlite3_column_bytes16(statement: *mut sqlite3_stmt, column: i32) -> i32;
+    /// The complete storage cell of a BLOB value, including BoxDB's type tag.
+    pub fn sqlite3_boxdb_value_blob(value: *mut sqlite3_value) -> *const core::ffi::c_void;
+    pub fn sqlite3_boxdb_value_bytes(value: *mut sqlite3_value) -> i32;
 }
 
 impl Default for sqlite3_vtab {
