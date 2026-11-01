@@ -57,14 +57,12 @@ A failed commit is rolled back before the error is returned.
 import { TransactionOptions } from "@boxdb/effect-adapter";
 
 sql.withTransaction(rename).pipe(
-  Effect.provideService(TransactionOptions, { context: { label: "Rename task" } }),
+  Effect.provideService(TransactionOptions, { mode: "immediate" }),
 );
 ```
 
 `TransactionOptions` accepts the client's `begin` options except `signal`:
-`mode`, `readOnly`, `timeoutMs`, `context` and `record`. It applies to
-top-level transactions only. Read recorded changes with
-`SELECT boxdb_changeset()`; see [change history](../../docs/history.md).
+`mode`, `readOnly` and `timeoutMs`. It applies to top-level transactions only.
 
 ## Errors and migrations
 
