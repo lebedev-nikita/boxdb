@@ -76,6 +76,12 @@ export const pages = [
     description: "Connect db0 to a BoxDB client or transaction handle.",
   },
   {
+    source: "packages/effect-adapter/README.md",
+    slug: "docs/integrations/effect",
+    title: "Effect SQL",
+    description: "Use BoxDB as an Effect SQL client with handle-based transactions.",
+  },
+  {
     source: "docs/native-decimal.md",
     slug: "docs/decimals",
     title: "Exact decimals",

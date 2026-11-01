@@ -18,6 +18,7 @@ export const releasePackages: readonly ReleasePackage[] = [
   { directory: "packages/drizzle-adapter", name: "@boxdb/drizzle-adapter" },
   { directory: "packages/db0-adapter", name: "@boxdb/db0-adapter" },
   { directory: "packages/better-auth-adapter", name: "@boxdb/better-auth-adapter" },
+  { directory: "packages/effect-adapter", name: "@boxdb/effect-adapter" },
 ];
 
 interface Package {

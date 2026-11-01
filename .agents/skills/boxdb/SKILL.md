@@ -1,6 +1,6 @@
 ---
 name: boxdb
-description: Use BoxDB from Rust, TypeScript, Go or the CLI, including Drizzle, Better Auth, db0, file diagnostics and recovery. Read the matching client guide before writing application queries, transactions, schemas or migrations. Covers application usage rather than BoxDB engine development.
+description: Use BoxDB from Rust, TypeScript, Go or the CLI, including Drizzle, Better Auth, db0, Effect SQL, file diagnostics and recovery. Read the matching client guide before writing application queries, transactions, schemas or migrations. Covers application usage rather than BoxDB engine development.
 ---
 
 # Use BoxDB
@@ -46,6 +46,9 @@ Read only the guides relevant to the task.
   than upgrading an existing one.
 - db0: [packages/db0-adapter/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/db0-adapter/README.md).
   Pass a BoxDB database or transaction handle; the connector borrows it.
+- Effect SQL: [packages/effect-adapter/README.md](https://github.com/lebedev-nikita/boxdb/blob/main/packages/effect-adapter/README.md).
+  Provide `layer({ client })` and use `SqlClient`; set transaction options through
+  `TransactionOptions`, not `BEGIN` SQL. The layer borrows the client.
 
 ## Apply BoxDB contracts
 

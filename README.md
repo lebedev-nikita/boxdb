@@ -57,8 +57,8 @@ Standalone binaries are available in [releases](https://github.com/lebedev-nikit
 | CLI | `brew install lebedev-nikita/tap/boxdb` or `npm install -g @boxdb/cli` | [Command-line guide](packages/cli/README.md) |
 
 For TypeScript integrations, use the [Drizzle](packages/drizzle-adapter/README.md),
-[Better Auth](packages/better-auth-adapter/README.md) or [db0](packages/db0-adapter/README.md)
-adapter. For AI-assisted projects, use the [BoxDB usage skill](.agents/skills/boxdb/SKILL.md).
+[Better Auth](packages/better-auth-adapter/README.md), [db0](packages/db0-adapter/README.md)
+or [Effect SQL](packages/effect-adapter/README.md) adapter. For AI-assisted projects, use the [BoxDB usage skill](.agents/skills/boxdb/SKILL.md).
 
 ## Why BoxDB?
 

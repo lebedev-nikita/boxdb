@@ -82,7 +82,9 @@ for an INTEGER migration journal and bigint result metadata.
 
 [Better Auth](../packages/better-auth-adapter/README.md) maps booleans and numeric
 fields to its expected application types. [db0](../packages/db0-adapter/README.md)
-preserves bigint values and write metadata. All adapters borrow the client.
+preserves bigint values and write metadata. [Effect SQL](../packages/effect-adapter/README.md)
+wraps failures in `SqlError` with a classified reason whose `cause` is the
+`BoxDBError`. All adapters borrow the client.
 
 See the [TypeScript](../packages/typescript/README.md) and
 [Go](../packages/go/README.md) guides for usage. Contract coverage lives in the

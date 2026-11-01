@@ -31,3 +31,7 @@ the `main` database.
 Register every consumer of SQLite's single preupdate hook in
 `history::install_hook`; the Session extension replaces that hook and is not
 used.
+
+`packages/effect-adapter` uses Effect. Before writing Effect code, read
+`packages/effect-adapter/node_modules/effect/AGENTS.md` completely and follow its
+links when required; search `node_modules/effect/src` there for APIs it omits.

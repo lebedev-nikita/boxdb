@@ -280,6 +280,8 @@ They borrow the client and do not close it:
   schema generation and native atomic credential/counter operations.
 - [db0 adapter](../db0-adapter/README.md): a SQLite connector accepting a database
   or transaction handle.
+- [Effect adapter](../effect-adapter/README.md): an Effect SQL client with
+  interruptible queries and handle-based transactions.
 
 Every connection includes decimal arithmetic, Unicode text functions, regular
 expressions, sqlite-vec, FTS5 and R*Tree; see the

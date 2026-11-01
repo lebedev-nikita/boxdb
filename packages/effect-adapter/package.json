@@ -1,0 +1,61 @@
+{
+  "name": "@boxdb/effect-adapter",
+  "version": "0.7.0",
+  "description": "Effect SQL client for BoxDB",
+  "keywords": [
+    "boxdb",
+    "database",
+    "effect",
+    "sql",
+    "sqlite"
+  ],
+  "homepage": "https://lebedev-nikita.github.io/boxdb/",
+  "bugs": {
+    "url": "https://github.com/lebedev-nikita/boxdb/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lebedev-nikita/boxdb.git",
+    "directory": "packages/effect-adapter"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"throw new Error('Publish verified archives with just publish-npm')\"",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit && oxlint src test && oxfmt --check src test package.json tsconfig.json tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@boxdb/client": "workspace:*",
+    "@types/node": "26.6.5",
+    "effect": "4.1.1",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
+  },
+  "peerDependencies": {
+    "@boxdb/client": "^0.7.0",
+    "effect": "^4.1.1"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
