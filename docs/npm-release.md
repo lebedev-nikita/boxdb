@@ -1,12 +1,13 @@
 # npm releases
 
-The npm release contains five packages at the same version as `Cargo.toml`:
+The npm release contains six packages at the same version as `Cargo.toml`:
 
 - `@boxdb/client`
 - `@boxdb/cli`
 - `@boxdb/drizzle-adapter`
 - `@boxdb/better-auth-adapter`
 - `@boxdb/db0-adapter`
+- `@boxdb/effect-adapter`
 
 The client and CLI archives bundle macOS ARM64 and Linux x64 and ARM64
 binaries; Linux requires glibc 2.35+. Installations do not run scripts or download binaries.
@@ -37,7 +38,7 @@ After every verification job passes, the publish job downloads the same
 `boxdb-npm` artifact, validates its checksums and source commit, and publishes
 with npm OIDC and provenance. It does not rebuild packages. The job uses the
 `npm` GitHub environment and requires `id-token: write`; no npm token or local
-npm login is needed. All five packages are public with the `latest` tag, with
+npm login is needed. All six packages are public with the `latest` tag, with
 the client published before its adapters. Concurrent publish jobs are serialized.
 
 A release tag must equal `v` plus the archive version. Already published
@@ -65,7 +66,7 @@ subsequent releases do not:
 
 ```sh
 npm login --auth-type=web
-for package in client cli drizzle-adapter db0-adapter better-auth-adapter; do
+for package in client cli drizzle-adapter db0-adapter better-auth-adapter effect-adapter; do
   npm trust github "@boxdb/$package" \
     --repository=lebedev-nikita/boxdb --file=npm.yml --environment=npm \
     --allow-publish --yes
@@ -107,6 +108,6 @@ Keep that state file with the prepared archives until publication is complete.
 just npm-test
 ```
 
-This builds only the host platform, packs all five packages and tests installations
+This builds only the host platform, packs all six packages and tests installations
 with scripts disabled. Local bundles cannot be published with the release
 command. Use `just npm-check` for TypeScript, lint and formatting checks.

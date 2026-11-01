@@ -25,8 +25,9 @@ Start with the [quickstart](quickstart.md), then follow your client guide:
 ## Build an application
 
 - [Drizzle](../packages/drizzle-adapter/README.md),
-  [Better Auth](../packages/better-auth-adapter/README.md) and
-  [db0](../packages/db0-adapter/README.md) integrations.
+  [Better Auth](../packages/better-auth-adapter/README.md),
+  [db0](../packages/db0-adapter/README.md) and
+  [Effect SQL](../packages/effect-adapter/README.md) integrations.
 - [Migrations and schema export](migrations.md).
 - [Client errors](client-errors.md).
 - [Deployment and backups](deployment.md).
