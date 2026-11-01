@@ -59,10 +59,6 @@ fn sql(db: &Connection) -> Result<Vec<u8>> {
         }
         output.push_str(";\n");
     }
-    for trigger in crate::history::triggers::load(db)? {
-        output.push_str(&trigger.sql);
-        output.push_str(";\n");
-    }
     output.push_str("COMMIT;\n");
     if output.len() > storage::MAX_SNAPSHOT {
         return Err(Error::new("schema dump exceeds 256 MiB limit".into()));

@@ -38,20 +38,8 @@ struct Document {
     views: BTreeMap<String, View>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     triggers: BTreeMap<String, Trigger>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    commit_triggers: BTreeMap<String, CommitTrigger>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     migrations: Vec<Migration>,
-}
-#[derive(Serialize)]
-struct CommitTrigger {
-    #[serde(
-        skip_serializing_if = "Vec::is_empty",
-        serialize_with = "objects::flow"
-    )]
-    tables: Vec<String>,
-    #[serde(serialize_with = "objects::literal")]
-    body: String,
 }
 #[derive(Serialize)]
 struct Migration {
@@ -266,7 +254,6 @@ fn type_sql(ty: &Type) -> String {
         Type::Time => "TIME".into(),
         Type::DateTime => "DATETIME".into(),
         Type::Interval => "INTERVAL".into(),
-        Type::Changeset => "CHANGESET".into(),
         Type::Array(inner) => format!("{}[]", type_sql(inner)),
     }
 }
@@ -403,20 +390,6 @@ fn omit_nullability(tokens: &[Token]) -> Vec<Token> {
 }
 
 pub(super) type Readonly = std::collections::BTreeSet<(String, String)>;
-fn schema_commit_triggers(db: &Connection) -> Result<BTreeMap<String, CommitTrigger>> {
-    Ok(crate::history::triggers::load(db)?
-        .into_iter()
-        .map(|trigger| {
-            (
-                trigger.name,
-                CommitTrigger {
-                    tables: trigger.tables.unwrap_or_default(),
-                    body: format!("{};", trigger.body.join(";\n")),
-                },
-            )
-        })
-        .collect())
-}
 pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
     let types = schema::load(db)?;
     let readonly = schema::readonly::columns(db)?;
@@ -431,7 +404,6 @@ pub(crate) fn encode(db: &Connection) -> Result<Vec<u8>> {
         indexes: BTreeMap::new(),
         views: BTreeMap::new(),
         triggers: BTreeMap::new(),
-        commit_triggers: schema_commit_triggers(db)?,
         migrations: vec![],
     };
     let mut statement = db.prepare("SELECT type,name,sql FROM main.sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' ORDER BY type,name")?;

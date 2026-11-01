@@ -76,16 +76,16 @@ it("applies BoxDB transaction options to top-level transactions", async () => {
     client,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const [context] = yield* sql
-        .withTransaction(sql`SELECT boxdb_context('label') AS label`)
-        .pipe(Effect.provideService(TransactionOptions, { context: { label: "Rename" } }));
+      const mode = yield* sql
+        .withTransaction(sql`SELECT 1 AS one`)
+        .pipe(Effect.provideService(TransactionOptions, { mode: "immediate" }));
       const readOnly = yield* sql
         .withTransaction(insert("Ada"))
         .pipe(Effect.provideService(TransactionOptions, { readOnly: true }), Effect.flip);
-      return { context, readOnly: findBoxDBError(readOnly)?.code };
+      return { mode, readOnly: findBoxDBError(readOnly)?.code };
     }),
   );
-  expect(result).toEqual({ context: { label: "Rename" }, readOnly: "BOXDB_READONLY" });
+  expect(result).toEqual({ mode: [{ one: 1n }], readOnly: "BOXDB_READONLY" });
 });
 
 it("rolls back a transaction whose commit fails and keeps the client usable", async () => {

@@ -1,5 +1,5 @@
 import type { QueryOptions } from "./database.js";
-import type { ClientResult } from "./native.js";
+import type { NativeResult } from "./native.js";
 import type { Parameters, RunResult, SQLParameter } from "./types.js";
 
 export interface CompiledQuery {
@@ -57,16 +57,16 @@ type Execute = (
   parameters: Parameters,
   options: QueryOptions,
   writeOnly: boolean,
-) => Promise<ClientResult>;
+) => Promise<NativeResult>;
 export class Query extends Fragment implements PromiseLike<unknown[]> {
-  #result?: Promise<ClientResult>;
+  #result?: Promise<NativeResult>;
   constructor(
     compiled: CompiledQuery,
     private readonly executeQuery: Execute,
   ) {
     super(compiled.sql, compiled.parameters);
   }
-  private result(options: QueryOptions = {}, writeOnly = false): Promise<ClientResult> {
+  private result(options: QueryOptions = {}, writeOnly = false): Promise<NativeResult> {
     if (!this.#result) {
       const { sql, parameters } = this.compile();
       this.#result = this.executeQuery(sql, parameters, { ...options, raw: true }, writeOnly);

@@ -72,7 +72,6 @@ export default defineConfig({
             { slug: "docs/decimals" },
             { slug: "docs/temporal" },
             { slug: "docs/storage" },
-            { slug: "docs/history" },
             { slug: "docs/extensions" },
           ],
         },
