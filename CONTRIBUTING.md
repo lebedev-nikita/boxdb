@@ -13,9 +13,11 @@ private database. Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Work locally
 
-Install current stable Rust, native build tools and libclang, Go 1.23+ with cgo,
-Node.js 22.18+, Bun, Just and Python 3.11+. On macOS, use Xcode Command Line
-Tools; on Debian/Ubuntu, install `build-essential` and `libclang-dev`.
+Install current stable Rust with the `llvm-tools` component
+(`rustup component add llvm-tools`), native build tools and libclang, Go 1.23+
+with cgo, Node.js 22.18+, Bun, Just and Python 3.11+. On macOS, use Xcode
+Command Line Tools; on Debian/Ubuntu, install `build-essential` and
+`libclang-dev`.
 
 ```sh
 git clone https://github.com/lebedev-nikita/boxdb.git

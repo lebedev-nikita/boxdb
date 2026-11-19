@@ -36,8 +36,10 @@ Git tags, pointing to the same commit as the corresponding `vX.Y.Z` release.
 
 ## Build from this checkout
 
-Requires Go 1.23+, Rust, a C compiler, libclang and Just on macOS or Linux.
-See the [repository prerequisites](../../README.md). Keep `CGO_ENABLED=1`;
+Requires Go 1.23+, Rust with the `llvm-tools` component, a C compiler, libclang
+and Just on macOS or Linux. See the [repository prerequisites](../../README.md).
+The build removes LLVM bitcode that Rust's standard library embeds, because
+recent Go releases reject cgo libraries containing LTO sections. Keep `CGO_ENABLED=1`;
 the native library must be built for the same OS and architecture as Go.
 
 From the repository root:
