@@ -108,7 +108,10 @@ jobs:
               run("convert", readable, compact, "--format", "binary")
               assert json.loads(run(compact, "--json", "-e", "SELECT id,label FROM smoke"))["rows"] == expected
               run("convert", compact, restored, "--format", "readable")
-              assert readable.read_bytes() == restored.read_bytes()
+              # Writes append commits; conversion writes the canonical snapshot.
+              canonical = Path(directory) / "canonical.yaml"
+              run("convert", readable, canonical, "--format", "readable")
+              assert canonical.read_bytes() == restored.read_bytes()
           PY
       - name: Package CLI
         run: |
