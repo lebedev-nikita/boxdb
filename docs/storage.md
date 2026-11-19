@@ -275,7 +275,8 @@ REPLACE deletions and foreign-key cascades. Rolled-back transactions and failed
 statements are not written; rows touched inside a savepoint that was rolled back
 may be written unchanged. Pending transactions stay private. Group
 related writes in BEGIN/COMMIT to synchronize once. Opening a file must parse
-and restore the stream; reading an open database uses SQLite in memory.
+and restore the stream; large tables are parsed on several threads, split at
+rows. Reading an open database uses SQLite in memory.
 
 A crash during an append can leave an incomplete commit at the end of the file.
 Readers ignore content after the last `...` line that starts a commit or

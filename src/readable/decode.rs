@@ -159,6 +159,79 @@ impl Import<'_> {
     }
 }
 
+/// Rows documents of at least this size are parsed on several threads.
+const PARALLEL_BYTES: usize = 256 * 1024;
+
+/// Byte offsets where a block rows section can be split: starts of items at
+/// column zero, near equal shares of the section.
+fn chunk_starts(section: &[u8], chunks: usize) -> Vec<usize> {
+    let mut starts = vec![0];
+    for share in 1..chunks {
+        let target = (section.len() * share / chunks).max(starts[starts.len() - 1] + 1);
+        let found = section[target.min(section.len())..]
+            .windows(3)
+            .position(|w| w[0] == b'\n' && w[1] == b'-' && w[2].is_ascii_whitespace())
+            .map(|position| target + position + 1);
+        match found {
+            Some(start) if start > starts[starts.len() - 1] => starts.push(start),
+            _ => break,
+        }
+    }
+    starts
+}
+
+/// Parse a large rows document in chunks of whole rows on several threads.
+/// `None` leaves the document to the sequential parser, which also reports
+/// errors and resolves aliases between rows.
+fn parse_rows_in_parallel(
+    fragment: &[u8],
+    import: &mut Import,
+) -> Result<Option<(String, Vec<Row>)>> {
+    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+    if threads < 2 || fragment.len() < PARALLEL_BYTES {
+        return Ok(None);
+    }
+    let Some(RowsSection::Block { head, items }) = rows_section(fragment) else {
+        return Ok(None);
+    };
+    let section = &fragment[items..];
+    if !section.starts_with(b"- ") {
+        return Ok(None);
+    }
+    let Ok(table) = rows_head(&fragment[..head]) else {
+        return Ok(None);
+    };
+    let layout = import.layout(&table)?;
+    let chunks = threads.min(section.len() / (PARALLEL_BYTES / 2)).max(2);
+    let mut starts = chunk_starts(section, chunks);
+    starts.push(section.len());
+    let parsed: Vec<Result<Vec<Row>>> = std::thread::scope(|scope| {
+        starts
+            .windows(2)
+            .map(|range| {
+                let chunk = &section[range[0]..range[1]];
+                let layout = &layout;
+                scope.spawn(move || parse_items(chunk, layout))
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|thread| {
+                thread
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    let mut rows = Vec::new();
+    for chunk in parsed {
+        match chunk {
+            Ok(chunk) => rows.extend(chunk),
+            Err(_) => return Ok(None),
+        }
+    }
+    Ok(Some((table, rows)))
+}
+
 pub(crate) fn decode(bytes: &[u8]) -> Result<Connection> {
     decode_file(bytes).map(|(db, _)| db)
 }
@@ -183,6 +256,14 @@ pub(crate) fn decode_file(bytes: &[u8]) -> Result<(Connection, Extent)> {
     };
     let mut deferred = vec![];
     for (_, fragment) in documents {
+        if let Some((table, rows)) = parse_rows_in_parallel(fragment, &mut import)? {
+            import.enter(Import::rows_section(&table))?;
+            let layout = import.layouts.get(&table)?;
+            for row in rows {
+                layout.insert(&db, row)?;
+            }
+            continue;
+        }
         let record = parse_document(fragment, &mut |table| import.layout(table).map(Some))?;
         match record {
             Record::Database { .. } => {

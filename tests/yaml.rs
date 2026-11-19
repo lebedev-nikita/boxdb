@@ -629,3 +629,63 @@ fn yaml_text_quoting_roundtrips_generated_strings() {
         bytes
     );
 }
+
+const LARGE: usize = 30_000;
+
+fn large_database() -> Database {
+    let mut db = Database::memory();
+    db.execute(&format!(
+        "CREATE TABLE big(id INTEGER PRIMARY KEY,body TEXT,amount DECIMAL,at INSTANT,data BYTEA);
+         WITH RECURSIVE r(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM r WHERE n<{LARGE})
+         INSERT INTO big SELECT n,
+           CASE WHEN n%7=0 THEN 'line '||n||char(10)||'next' WHEN n%5=0 THEN 'quote \"'||n||'\", ok' ELSE 'row '||n END,
+           CAST(n||'.25' AS DECIMAL), CAST('2024-02-29T12:00:00Z' AS INSTANT),
+           CASE WHEN n%3=0 THEN randomblob(8) END FROM r"
+    ))
+    .unwrap();
+    db
+}
+
+#[test]
+fn large_table_documents_roundtrip() {
+    let mut db = large_database();
+    let query = "SELECT * FROM big ORDER BY id";
+    let expected = db.execute(query).unwrap();
+    let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
+    assert!(bytes.len() > 2 * 1024 * 1024, "{}", bytes.len());
+    let mut restored = files::open_bytes(&bytes).unwrap();
+    assert_eq!(restored.execute(query).unwrap(), expected);
+    assert_eq!(
+        files::converted_bytes(&mut restored, Format::Readable).unwrap(),
+        bytes
+    );
+    let damaged =
+        String::from_utf8(bytes)
+            .unwrap()
+            .replacen("amount: 29999.25", "amount: not-a-number", 1);
+    assert!(damaged.contains("not-a-number"));
+    assert!(files::open_bytes(damaged.as_bytes()).is_err());
+}
+
+#[test]
+fn aliases_between_distant_rows_are_resolved() {
+    let mut yaml = String::from(
+        "---\nkind: database\nversion: 4\ncodec_version: 1\napplication_id: 0\nuser_version: 0\n---\nkind: schema\nobject_type: table\nname: t\ntable: t\nsql: CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT) STRICT\n---\nkind: rows\ntable: t\nrows:\n- {rowid: 1, body: &shared shared text, id: 1}\n",
+    );
+    for id in 2..=LARGE {
+        yaml.push_str(&format!(
+            "- {{rowid: {id}, body: filler row {id}, id: {id}}}\n"
+        ));
+    }
+    yaml.push_str(&format!(
+        "- {{rowid: {0}, body: *shared, id: {0}}}\n",
+        LARGE + 1
+    ));
+    let mut db = files::open_bytes(yaml.as_bytes()).unwrap();
+    assert_eq!(
+        db.execute(&format!("SELECT body FROM t WHERE id={}", LARGE + 1))
+            .unwrap()[0]
+            .rows,
+        vec![vec![Value::Text("shared text".into())]]
+    );
+}
