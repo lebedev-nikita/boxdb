@@ -138,8 +138,9 @@ Other logical values use column-origin metadata for typed projections.
 The binary file retains SQLite's standard page and record encoding. Native
 values use a one-byte type tag followed by their payload. Ordinary BLOBs always
 use the BYTEA tag `b`, including empty values and payloads starting with a type
-tag. No cell contains a signature or codec version. Readable YAML uses typed mappings such as
-`at: {instant: "2024-02-29T12:00:00.000000Z"}` and `amount: {decimal: "12.50"}`.
+tag. No cell contains a signature or codec version. Readable YAML writes typed
+columns as canonical text, such as `at: 2024-02-29T12:00:00.000000Z` and
+`amount: 12.5`; ANY columns use typed mappings such as `{decimal: 12.5}`.
 UUID uses a 16-byte payload and canonical lowercase text at public interfaces.
 See [native decimals](native-decimal.md) and [temporal types](temporal.md).
 
@@ -168,13 +169,15 @@ silently guessing a new logical schema.
 ## Independent readable YAML stream
 
 [The readable codec](../src/readable.rs) stores a versioned header, SQL schema
-objects, rows with named columns, and AUTOINCREMENT sequences as separate YAML
-documents. Each document starts with `---`. A small complete database looks like:
+objects, the rows of each table, AUTOINCREMENT sequences and appended commits as
+separate YAML documents, in that order. Rows of BoxDB metadata tables come before other rows,
+because typed values are read through that metadata. Each document starts with
+`---`. A small complete database looks like:
 
 ```yaml
 ---
 kind: database
-version: 3
+version: 4
 codec_version: 1
 application_id: 0
 user_version: 0
@@ -185,47 +188,105 @@ name: notes
 table: notes
 sql: CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT) STRICT
 ---
-kind: row
+kind: rows
 table: notes
-rowid: 1
-values:
+rows:
+- {rowid: 1, body: hello, id: 1}
+- rowid: 2
   body: |-
     First line
     Second line
-  id: 1
+  id: 2
 ```
 
-Columns containing SQL NULL are omitted from row `values`; missing columns are
-restored as NULL, even when a column has a DEFAULT. Rows containing only NULLs
-use `values: {}`. JSON documents remain opaque, including any nulls within them.
-BOOLEAN and BOOL columns use YAML `true`/`false`.
-INTEGER and ANY columns retain numeric 0/1. Other cells use YAML numbers and
-strings. Quote text that looks like a number, boolean or null. BLOBs use a
-mapping such as `bytes: {blob: '00ff'}`; boolean scalars are imported as SQLite
-integers 0/1. Rows retain their accessible SQLite row IDs; generated columns are
-recomputed. The representation is independent of SQLite file bytes.
+Each row maps column names to values on one line, unless a text value spans
+lines. `rowid` holds the SQLite row ID; it is named `_rowid_` or `oid` when a
+column shadows it and omitted when no alias is accessible. Columns containing SQL
+NULL are omitted; missing columns are restored as NULL, even when a column has a
+DEFAULT. Tables without rows have no rows document. JSON documents remain opaque,
+including any nulls within them.
 
-Comments are accepted on import and omitted when snapshots are regenerated.
-Duplicate keys, unknown row columns and malformed cells are rejected.
+BOOLEAN and BOOL columns use YAML `true`/`false`. INTEGER and ANY columns retain
+numeric 0/1. Columns of a native type (DECIMAL, UUID, UINT64, INSTANT, DATE,
+TIME, DATETIME and INTERVAL) hold canonical text such as `amount: 12.5` or
+`at: 2024-02-29T12:00:00.000000Z`; BYTEA columns hold base64 such as
+`photo: AP8=`. These values are read as text through the column type, so `12.50`
+is not rounded through floating point. Import rejects a value the type does not
+accept, such as `true`, a mapping or malformed base64. Export fails with
+`BOXDB_INVALID_VALUE` when a typed column holds a cell of another type, rather
+than writing text that import would convert.
 
-Readable connections execute SQL in memory and publish a synchronized complete
-snapshot by atomic file replacement after committing. Pending transactions stay
-private. A readable file holds a separate `.lock` sidecar until closed. On a
-publication error, reopen the connection before continuing. Readable snapshots
-do not support virtual tables or non-finite floating-point values.
+Other cells use YAML numbers and strings. Quote text that looks like a number,
+boolean or null. ANY and untyped columns keep explicit mappings for BLOBs and
+native values, such as `{blob: AP8=}` and `{decimal: 1.25}`; boolean scalars are
+imported as SQLite integers 0/1. Generated columns are recomputed. The
+representation is independent of SQLite file bytes.
 
-Row documents are cached in memory. SQLite change notifications select the rows
-to serialize again, including trigger writes, REPLACE deletions and foreign-key
-cascades; rollback is reconciled against the current database state. Schema
-changes rebuild the cache. Tables without an accessible rowid are reserialized
-as a whole when changed. Cached documents add memory proportional to the YAML
-snapshot, alongside the in-memory SQLite database.
+Comments are accepted on import and omitted when snapshots are regenerated;
+commits are appended after them.
+Duplicate keys, unknown row columns, malformed cells and documents out of order
+are rejected.
 
-Publication still writes the complete stream, synchronizes the temporary file,
-replaces the destination and synchronizes its directory. Its I/O cost grows with
-file size even for a single changed row. Group related writes in BEGIN/COMMIT to
-pay for one publication; reading an already open database uses SQLite in memory
-without parsing YAML again. Opening a file must parse and restore the stream.
+Format version 4 groups rows by table, writes typed values without wrappers and
+appends commits.
+BoxDB rejects version 3 streams with `BOXDB_FORMAT`. Migrate one through the
+binary format, which is SQLite's own and needs no migration:
+
+```sh
+boxdb convert data.yaml data.db --format binary          # BoxDB 0.7
+boxdb convert data.db data-v4.yaml --format readable     # current BoxDB
+```
+
+### Commit journal
+
+Readable connections execute SQL in memory. The snapshot ends with `...`; each
+later transaction appends one commit document and synchronizes the file:
+
+```yaml
+---
+kind: commit
+tables:
+  notes:
+    put:
+    - {rowid: 3, body: third, id: 3}
+    delete: [2]
+sequences: {notes: 3}
+...
+```
+
+`put` holds the complete row after the transaction and replaces any row with
+that rowid; `delete` lists removed rowids. `sequences` holds changed
+AUTOINCREMENT values. Opening a file applies commits in order. Each commit
+removes all of its rows before inserting the new ones, so values swapped between
+rows do not conflict, and replay does not run triggers or foreign-key actions.
+Foreign keys are checked once all commits are applied.
+
+A commit is appended when it keeps the journal within half of the snapshot or
+64 KiB, whichever is larger; 64 KiB parses in a few milliseconds. Otherwise, and after schema changes, `PRAGMA` writes, VACUUM, changes to tables
+without an accessible rowid and removed AUTOINCREMENT entries, BoxDB writes a
+new snapshot to a temporary file, synchronizes it, replaces the destination
+and synchronizes its directory. A file holds at most one and a half snapshots,
+or the snapshot and 64 KiB, and appending costs time proportional to the
+changed rows. Conversion always
+writes a snapshot without commits.
+
+Changed rows come from SQLite change notifications, including trigger writes,
+REPLACE deletions and foreign-key cascades. Rolled-back transactions and failed
+statements are not written; rows touched inside a savepoint that was rolled back
+may be written unchanged. Pending transactions stay private. Group
+related writes in BEGIN/COMMIT to synchronize once. Opening a file must parse
+and restore the stream; large tables are parsed on several threads, split at
+rows. Reading an open database uses SQLite in memory.
+
+A crash during an append can leave an incomplete commit at the end of the file.
+Readers ignore content after the last `...` line that starts a commit or
+contains NUL bytes, and a final commit containing NUL bytes. `boxdb check`
+reports it as `BOXDB_INCOMPLETE_COMMIT`; the next connection that opens the file
+for writing removes it. Damage before the last commit is an error.
+
+A readable file holds a separate `.lock` sidecar until closed. On a publication
+error, reopen the connection before continuing. Readable storage does not
+support virtual tables or non-finite floating-point values.
 
 `boxdb convert source.db destination.yaml --format readable` converts committed
 data without modifying the source. Use `--format binary` for a self-contained

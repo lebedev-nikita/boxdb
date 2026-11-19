@@ -65,9 +65,12 @@ schema objects are not guaranteed to survive. See SQLite's
 
 YAML recovery reads independently delimited documents, requires a valid header,
 and restores the available schema and metadata without inferring missing types.
-It skips malformed or rejected row documents and creates application triggers
-after rows. Rejected fragments are retained verbatim in `<destination>.rejected`,
-with document numbers and source line numbers. This file contains source data;
+It skips malformed or rejected documents and rows; a damaged row does not affect
+other rows of its table. Each intact commit is applied in order; a damaged
+commit is rejected as a whole, and an incomplete final commit is kept as a
+rejected fragment. Application triggers are created after rows. Rejected
+fragments are retained verbatim in `<destination>.rejected`, with document
+numbers and source line numbers; a rejected row keeps its table document header. This file contains source data;
 the report only lists locations and reasons. Damage to document boundaries or
 required schema/metadata can prevent recovery. Orphaned rows are retained and
 reported by the final foreign-key check.

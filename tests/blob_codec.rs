@@ -75,8 +75,8 @@ fn bytea_payloads_are_never_confused_with_native_tags_and_survive_conversion() {
         let snapshot = files::converted_bytes(&mut db, format).unwrap();
         if format == Format::Readable {
             let text = std::str::from_utf8(&snapshot).unwrap();
-            assert!(text.contains("blob: '00ff'"), "{text}");
-            assert!(!text.contains("blob: '6200ff'"), "{text}");
+            assert!(text.contains(", v: AP8=}"), "{text}");
+            assert!(!text.contains("YgD/"), "{text}");
         }
         let mut restored = files::open_bytes(&snapshot).unwrap();
         assert_eq!(

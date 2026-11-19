@@ -174,6 +174,24 @@ fn check_file(path: &Path, mode: CheckMode) -> Result<CheckReport> {
             return Ok(report);
         }
         report.format = Some(Format::Readable);
+        let extent = crate::readable::extent(&bytes);
+        if extent.torn {
+            report.issue(
+                "yaml",
+                &Error::new(
+                    "an interrupted write left an incomplete commit; the next write removes it"
+                        .into(),
+                )
+                .with_code("BOXDB_INCOMPLETE_COMMIT"),
+            );
+            report.issues.last_mut().unwrap().line = Some(
+                bytes[..extent.committed]
+                    .iter()
+                    .filter(|b| **b == b'\n')
+                    .count()
+                    + 1,
+            );
+        }
         match storage::import(&bytes) {
             Ok(db) => Ok(db),
             Err(error) => {

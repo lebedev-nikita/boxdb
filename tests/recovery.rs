@@ -27,7 +27,7 @@ fn yaml_salvage_keeps_valid_documents_and_preserves_rejected_fragments() {
     db.execute("CREATE TABLE items(id INTEGER PRIMARY KEY, doc JSON); INSERT INTO items VALUES(1,'{\"saved\":true}')").unwrap();
     drop(db);
     let mut yaml = std::fs::read_to_string(&source).unwrap();
-    yaml.push_str("---\nkind: row\ntable: items\nrowid: 2\nvalues: [broken\n---\nkind: row\ntable: items\nrowid: 3\nvalues:\n  id: 3\n  doc: invalid-json\n---\nkind: row\ntable: items\nrowid: 4\nvalues:\n  id: 4\n  doc: '{\"later\":true}'\n");
+    yaml.push_str("---\nkind: rows\ntable: items\nrows:\n- {rowid: 2, id: 2, doc: [broken\n- rowid: 3\n  id: 3\n  doc: invalid-json\n- {rowid: 4, id: 4, doc: '{\"later\":true}'}\n");
     std::fs::write(&source, &yaml).unwrap();
     let report = Database::recover_file(&source, &output, Format::Binary).unwrap();
     assert_eq!(report.output.status, CheckStatus::Valid);
@@ -35,7 +35,8 @@ fn yaml_salvage_keeps_valid_documents_and_preserves_rejected_fragments() {
     assert_eq!(report.recovered_rows, 2);
     assert_eq!(report.rejected.len(), 2);
     let rejects = std::fs::read_to_string(report.rejected_path.unwrap()).unwrap();
-    assert!(rejects.contains("values: [broken"));
+    assert!(rejects.contains("doc: [broken"));
+    assert!(rejects.contains("kind: rows\ntable: items\nrows:\n- rowid: 3"));
     assert!(rejects.contains("invalid-json"));
     assert_eq!(std::fs::read_to_string(&source).unwrap(), yaml);
     let mut db = Database::open(&output, Format::Binary).unwrap();
@@ -54,7 +55,7 @@ fn failed_readable_recovery_does_not_publish_partial_artifacts() {
     db.execute("CREATE TABLE parents(id INTEGER PRIMARY KEY); CREATE TABLE children(id INTEGER PRIMARY KEY,parent INTEGER REFERENCES parents(id))").unwrap();
     drop(db);
     let mut yaml = std::fs::read_to_string(&source).unwrap();
-    yaml.push_str("---\nkind: row\ntable: children\nrowid: 1\nvalues:\n  id: 1\n  parent: 99\n---\nkind: row\nvalues: [broken\n");
+    yaml.push_str("---\nkind: rows\ntable: children\nrows:\n- {rowid: 1, id: 1, parent: 99}\n---\nkind: rows\nrows: [broken\n");
     std::fs::write(&source, &yaml).unwrap();
     assert!(Database::recover_file(&source, &output, Format::Readable).is_err());
     assert!(!output.exists());

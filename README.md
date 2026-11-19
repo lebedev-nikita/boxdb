@@ -74,8 +74,8 @@ or [Effect SQL](packages/effect-adapter/README.md) adapter. For AI-assisted proj
 
 BoxDB is intended for single-server applications. It has no built-in remote
 server or distributed writes. Readable storage executes in memory, has one writer
-per file and writes a complete snapshot on commit. JSON is a validated opaque
-document; SQL JSON/JSONB processing is disabled.
+per file, appends each commit and periodically rewrites a complete snapshot.
+JSON is a validated opaque document; SQL JSON/JSONB processing is disabled.
 
 Read [the fit and tradeoffs](docs/why-boxdb.md) before adoption. See
 [benchmark methodology](docs/benchmarks.md) to measure your workload.

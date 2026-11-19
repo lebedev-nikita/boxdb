@@ -16,7 +16,7 @@ version, then add the driver to your
 application:
 
 ```sh
-BOXDB_GO_VERSION=0.7.1
+BOXDB_GO_VERSION=0.8.0
 BOXDB_GO_PLATFORM=darwin-arm64 # Linux: linux-x64 or linux-arm64 (64-bit Raspberry Pi).
 BOXDB_GO_PREFIX="$HOME/.local/share/boxdb/$BOXDB_GO_VERSION/$BOXDB_GO_PLATFORM"
 mkdir -p "$BOXDB_GO_PREFIX"
@@ -26,7 +26,7 @@ curl --fail --location \
 tar -xzf "$BOXDB_GO_PREFIX/native.tar.gz" -C "$BOXDB_GO_PREFIX"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$BOXDB_GO_PREFIX/lib ${CGO_LDFLAGS:-}"
-go get github.com/lebedev-nikita/boxdb/packages/go@v0.7.1
+go get github.com/lebedev-nikita/boxdb/packages/go@v0.8.0
 ```
 
 Keep `CGO_LDFLAGS` set when building, testing or running your application. The
@@ -36,8 +36,10 @@ Git tags, pointing to the same commit as the corresponding `vX.Y.Z` release.
 
 ## Build from this checkout
 
-Requires Go 1.23+, Rust, a C compiler, libclang and Just on macOS or Linux.
-See the [repository prerequisites](../../README.md). Keep `CGO_ENABLED=1`;
+Requires Go 1.23+, Rust with the `llvm-tools` component, a C compiler, libclang
+and Just on macOS or Linux. See the [repository prerequisites](../../README.md).
+The build removes LLVM bitcode that Rust's standard library embeds, because
+recent Go releases reject cgo libraries containing LTO sections. Keep `CGO_ENABLED=1`;
 the native library must be built for the same OS and architecture as Go.
 
 From the repository root:

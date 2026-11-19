@@ -66,8 +66,10 @@ Read only the guides relevant to the task.
   requests wait for the active transaction; finish it before awaiting root work.
   Adapters borrow the client, so its owner closes it.
 - Choose binary storage for concurrent connections or virtual tables. Readable
-  YAML executes in memory, has one writer per file and publishes complete
-  snapshots on commit; see [storage](https://github.com/lebedev-nikita/boxdb/blob/main/docs/storage.md).
+  YAML executes in memory, has one writer per file, appends each commit and
+  periodically rewrites a complete snapshot; opening parses the whole file; see [storage](https://github.com/lebedev-nikita/boxdb/blob/main/docs/storage.md).
+  Version 3 YAML files fail with `BOXDB_FORMAT`; convert them to binary with
+  BoxDB 0.7, then back to readable.
 - Keep the standard SQLite file format distinct from SQL compatibility: native
   values and indexes require BoxDB's patched engine. Use BoxDB's conversion or
   SQLite backup facilities for live binary databases, accounting for the WAL.

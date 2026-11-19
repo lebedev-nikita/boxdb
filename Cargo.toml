@@ -1,6 +1,6 @@
 [package]
 name = "boxdb"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2024"
 description = "An extended SQLite client with typed columns and readable storage"
 license = "MIT"
@@ -46,13 +46,17 @@ num-traits = "0.2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde"] }
 hex = "0.4"
+base64 = "0.23"
 sha2 = "0.10"
 fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
-rusqlite = { package = "boxdb-rusqlite", path = "vendor/rusqlite", version = "=0.7.1", features = ["bundled", "functions", "pointer", "backup", "column_metadata", "hooks", "preupdate_hook"] }
-libsqlite3-sys = { package = "boxdb-sqlite-sys", path = "vendor/libsqlite3-sys", version = "=0.7.1", features = ["bundled"] }
+rusqlite = { package = "boxdb-rusqlite", path = "vendor/rusqlite", version = "=0.8.0", features = ["bundled", "functions", "pointer", "backup", "column_metadata", "hooks", "preupdate_hook"] }
+libsqlite3-sys = { package = "boxdb-sqlite-sys", path = "vendor/libsqlite3-sys", version = "=0.8.0", features = ["bundled"] }
 sqlite-vec = "=0.1.9"
+
+[dev-dependencies]
+libc = "0.2"
 
 [build-dependencies]
 cc = "1"

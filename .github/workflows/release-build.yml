@@ -158,6 +158,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: stable
+          components: llvm-tools
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.23.x'
@@ -184,15 +185,32 @@ jobs:
             lib/libboxdb_go.a include/boxdb.h README.md LICENSE \
             licenses/sqlean.txt licenses/pcre2.txt licenses/sqlite-vec-MIT.txt licenses/sqlite-vec-APACHE.txt \
             licenses/rusqlite.txt licenses/libsqlite3-sys.txt
-      - name: Verify standalone Go module with the packaged library
+      - name: Unpack standalone Go module with the packaged library
         run: |
           boxdb_go_standalone=$(mktemp -d)
           mkdir -p "$boxdb_go_standalone/native"
           tar -xzf "target/go-release/boxdb-go-${BOXDB_RELEASE_VERSION}-${BOXDB_GO_PLATFORM}.tar.gz" -C "$boxdb_go_standalone/native"
           git archive HEAD packages/go | tar -x -C "$boxdb_go_standalone"
-          export CGO_ENABLED=1
-          export CGO_LDFLAGS="-L$boxdb_go_standalone/native/lib"
-          cd "$boxdb_go_standalone/packages/go"
+          echo "BOXDB_GO_STANDALONE=$boxdb_go_standalone" >> "$GITHUB_ENV"
+      - name: Verify the packaged library with the minimum Go version
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          export CGO_LDFLAGS="-L$BOXDB_GO_STANDALONE/native/lib"
+          cd "$BOXDB_GO_STANDALONE/packages/go"
+          go vet ./...
+          go test -race -count=1 ./...
+      # Newer Go releases add cgo library checks, such as rejecting LTO sections.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: stable
+          cache: false
+      - name: Verify the packaged library with the latest Go
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          export CGO_LDFLAGS="-L$BOXDB_GO_STANDALONE/native/lib"
+          cd "$BOXDB_GO_STANDALONE/packages/go"
           go vet ./...
           go test -race -count=1 ./...
       - name: Upload native Go archive
