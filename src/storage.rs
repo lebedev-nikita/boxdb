@@ -1,5 +1,5 @@
-//! SQLite owns binary files and their WAL. Only readable YAML uses snapshot
-//! replacement and a separate single-writer lock.
+//! SQLite owns binary files and their WAL. Readable YAML appends commits,
+//! replaces compacted snapshots and uses a separate single-writer lock.
 use crate::{Error, Result, readable};
 use fs2::FileExt;
 use rusqlite::{
@@ -29,7 +29,7 @@ pub(crate) fn reader(path: &Path) -> Result<Connection> {
 pub(crate) struct ReadableFile {
     pub path: PathBuf,
     _lock: File,
-    cache: readable::SnapshotCache,
+    journal: readable::Journal,
 }
 impl ReadableFile {
     pub fn open(path: &Path) -> Result<Self> {
@@ -67,43 +67,86 @@ impl ReadableFile {
         Ok(Self {
             path,
             _lock: lock,
-            cache: readable::SnapshotCache::default(),
+            journal: readable::Journal::default(),
         })
     }
     pub fn watch(&self, db: &Connection) -> Result<()> {
-        self.cache.watch(db)
+        self.journal.watch(db)
+    }
+    /// Decode the file, drop an interrupted append and accept further commits.
+    pub fn load(&self) -> Result<Connection> {
+        let (db, extent) = import_file(&fs::read(&self.path)?)?;
+        if extent.torn {
+            let file = OpenOptions::new().write(true).open(&self.path)?;
+            file.set_len(extent.committed as u64)?;
+            file.sync_all()?;
+        }
+        self.journal.watch(&db)?;
+        self.journal.opened(&db, extent)?;
+        Ok(db)
+    }
+    /// Forget changes of a statement rolled back outside any transaction.
+    pub fn discard(&self) {
+        self.journal.discard();
+    }
+    /// Rows changed outside preupdate hooks, so the next commit rewrites the file.
+    pub fn reset(&self) {
+        self.journal.reset();
     }
     pub fn publish(&self, db: &Connection, types: &crate::schema::Types) -> Result<()> {
-        let mut replaced = false;
-        self.cache
-            .publish(db, types, |snapshot| {
+        let mut written = false;
+        let result = (|| match self.journal.plan(db, types)? {
+            readable::Publication::Unchanged => Ok(()),
+            readable::Publication::Append(commit) => {
+                let file = OpenOptions::new().append(true).open(&self.path)?;
+                written = true;
+                append(file, &commit)?;
+                self.journal.appended(db, commit.len())
+            }
+            readable::Publication::Rewrite => {
                 let parent = self.path.parent().unwrap();
                 let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-                {
+                let size = {
                     let mut writer = BufWriter::with_capacity(64 * 1024, temp.as_file_mut());
-                    snapshot.write(&mut writer)?;
+                    let size = readable::write_snapshot(db, types, &mut writer)?;
                     writer.flush()?;
-                }
+                    size
+                };
                 temp.as_file().sync_all()?;
                 temp.persist(&self.path)
                     .map_err(|e| Error::from(e.error).with_context("publish readable database"))?;
-                replaced = true;
+                written = true;
                 File::open(parent)?.sync_all()?;
-                Ok(())
-            })
-            .map_err(|error| {
-                error.state(
-                    crate::ErrorOperation::Publish,
-                    if replaced {
-                        crate::OperationOutcome::Unknown
-                    } else {
-                        crate::OperationOutcome::NotApplied
-                    },
-                    !db.is_autocommit(),
-                    false,
-                )
-            })
+                self.journal.rewritten(db, size)
+            }
+        })();
+        if result.is_err() {
+            self.journal.reset();
+        }
+        result.map_err(|error| {
+            error.state(
+                crate::ErrorOperation::Publish,
+                if written {
+                    crate::OperationOutcome::Unknown
+                } else {
+                    crate::OperationOutcome::NotApplied
+                },
+                !db.is_autocommit(),
+                false,
+            )
+        })
     }
+}
+/// A failed append is truncated away; the commit was not acknowledged.
+fn append(mut file: File, commit: &[u8]) -> Result<()> {
+    let length = file.metadata()?.len();
+    let result = file.write_all(commit).and_then(|()| file.sync_all());
+    if let Err(error) = result {
+        let _ = file.set_len(length);
+        let _ = file.sync_all();
+        return Err(Error::from(error).with_context("append readable commit"));
+    }
+    Ok(())
 }
 pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<()> {
     let backup = Backup::new(source, destination)?;
@@ -121,10 +164,13 @@ pub(crate) fn copy(source: &Connection, destination: &mut Connection) -> Result<
     }
 }
 pub(crate) fn import(bytes: &[u8]) -> Result<Connection> {
+    import_file(bytes).map(|(db, _)| db)
+}
+fn import_file(bytes: &[u8]) -> Result<(Connection, readable::Extent)> {
     if bytes.len() > MAX_SNAPSHOT {
         return Err(Error::new("readable database exceeds 256 MiB limit".into()));
     }
-    readable::decode(bytes)
+    readable::decode_file(bytes)
 }
 
 /// The pager counter is inspected after SQLite steps a query, so external WAL

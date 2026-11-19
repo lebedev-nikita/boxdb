@@ -295,13 +295,16 @@ impl Database {
                     return Ok(db);
                 }
                 let file = storage::ReadableFile::open(path)?;
+                // Changes made while initializing the connection are published
+                // with the next commit.
                 let connection = if path.exists() && path.metadata()?.len() > 0 {
-                    storage::import(&std::fs::read(path)?)?
+                    file.load()?
                 } else {
-                    Connection::open_in_memory()?
+                    let connection = Connection::open_in_memory()?;
+                    file.watch(&connection)?;
+                    connection
                 };
                 let mut db = Self::new_with_options(connection, false, options)?;
-                file.watch(&db.connection)?;
                 if !path.exists() || path.metadata()?.len() == 0 {
                     file.publish(&db.connection, &db.types.borrow())?;
                 }
@@ -661,6 +664,13 @@ impl Database {
             if refresh {
                 self.refresh(true)?;
             }
+            // Outside a transaction, everything committed was published, so
+            // recorded readable changes belong to the rolled-back statement.
+            if self.connection.is_autocommit()
+                && let Some(file) = &self.readable
+            {
+                file.discard();
+            }
             Ok(())
         });
         if let Err(cleanup) = cleanup {
@@ -854,6 +864,13 @@ impl Database {
         let result = self
             .run(sql, params, typed)
             .map(|result| if ddl { empty() } else { result });
+        // VACUUM may renumber rowids without preupdate notifications.
+        if keyword == "VACUUM"
+            && result.is_ok()
+            && let Some(file) = &self.readable
+        {
+            file.reset();
+        }
         if let Err(error) = result {
             return Err(if guarded {
                 self.cleanup_failure(

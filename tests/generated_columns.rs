@@ -131,13 +131,14 @@ fn conversion_preserves_typed_generated_columns_from_their_source_values() {
         if format == Format::Readable {
             let documents: Vec<serde_json::Value> =
                 serde_saphyr::from_slice_multiple(&bytes).unwrap();
-            let row = documents
+            let row = &documents
                 .iter()
-                .find(|doc| doc["kind"] == "row" && doc["table"] == "derived")
-                .unwrap();
+                .find(|doc| doc["kind"] == "rows" && doc["table"] == "derived")
+                .unwrap()["rows"][0];
             assert_eq!(
-                row["values"],
-                serde_json::json!({
+                row,
+                &serde_json::json!({
+                    "rowid": 1,
                     "id": 1,
                     "enabled_source": true,
                     "amount_source": "12.50"

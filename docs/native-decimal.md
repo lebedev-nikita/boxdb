@@ -108,9 +108,9 @@ values and connect VDBE operations to
 [Aggregate helpers](../vendor/libsqlite3-sys/boxdb_aggregate.inc) keep exact
 accumulators. [The shared native type registry](../vendor/libsqlite3-sys/native_types.rs) also
 drives UUID and temporal affinities. The original record encoder continues to
-serialize BLOB payloads. Readable YAML version 3 records the codec version once
-and uses typed mappings, such as
-`amount: {decimal: "12.50"}`, preserving requested display scale.
+serialize BLOB payloads. Readable YAML records the codec version once and writes
+DECIMAL columns as canonical text, such as `amount: 12.5`; ANY columns use
+`{decimal: 12.5}`.
 
 Comparison patches cover in-memory values and serialized-record paths, including
 optimized index comparison. SQLite's sorter consumes those record comparators.

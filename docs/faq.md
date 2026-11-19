@@ -54,7 +54,8 @@ functions, operators and virtual tables are disabled.
 ## Should I put my application database in Git?
 
 Readable YAML is useful for small, deliberately versioned datasets. It loads
-into memory and writes a complete snapshot on commit, with one writer per file.
+into memory, appends each commit and periodically rewrites a complete snapshot,
+with one writer per file.
 Binary storage is the normal choice for application data. Neither format should
 be committed if it contains secrets or private user data.
 

@@ -175,6 +175,7 @@ dependencies = [
 name = "boxdb"
 version = "0.7.1"
 dependencies = [
+ "base64",
  "bigdecimal",
  "boxdb-rusqlite",
  "boxdb-sqlite-sys",

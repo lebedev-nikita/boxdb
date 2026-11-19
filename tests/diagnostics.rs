@@ -73,7 +73,7 @@ fn diagnostics_report_yaml_document_locations_and_reject_missing_or_empty_source
     let mut yaml = std::fs::read_to_string(&path).unwrap();
     let document = yaml.lines().filter(|line| *line == "---").count() + 1;
     let line = yaml.lines().count() + 1;
-    yaml.push_str("---\nkind: row\ntable: items\nvalues: [broken\n");
+    yaml.push_str("---\nkind: rows\ntable: items\nrows:\n- [broken\n");
     std::fs::write(&path, &yaml).unwrap();
     let report = Database::check_file(&path, CheckMode::Full).unwrap();
     assert_eq!(report.status, CheckStatus::Invalid);
