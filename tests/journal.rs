@@ -305,3 +305,122 @@ fn recovery_applies_intact_commits_and_rejects_damaged_ones() {
         vec![vec![Value::Integer(1)], vec![Value::Integer(3)]]
     );
 }
+
+/// Run the CLI with a file size limit, so the kernel cuts an append short.
+/// With SIGXFSZ ignored the next write fails with EFBIG; otherwise the
+/// process is killed in the middle of the append.
+#[cfg(unix)]
+fn run_with_file_limit(
+    path: &std::path::Path,
+    limit: usize,
+    ignore_signal: bool,
+    sql: &str,
+) -> std::process::Output {
+    use std::os::unix::process::CommandExt;
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_boxdb"));
+    command.arg(path).args(["-e", sql]);
+    // SAFETY: the closure runs in the forked child before exec and calls only
+    // the async-signal-safe setrlimit and signal functions.
+    unsafe {
+        command.pre_exec(move || {
+            let limit = libc::rlimit {
+                rlim_cur: limit as libc::rlim_t,
+                rlim_max: limit as libc::rlim_t,
+            };
+            if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if ignore_signal {
+                libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+            }
+            Ok(())
+        });
+    }
+    command.output().unwrap()
+}
+
+#[cfg(unix)]
+fn limited_append_setup() -> (tempfile::TempDir, std::path::PathBuf, String, String) {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("data.yaml");
+    let mut db = Database::open(&path, Format::Readable).unwrap();
+    db.execute(FILLER).unwrap();
+    db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT); INSERT INTO t VALUES(1,'a')")
+        .unwrap();
+    db.execute("INSERT INTO t VALUES(2,'b')").unwrap();
+    drop(db);
+    let before = read(&path);
+    assert!(before.contains("kind: commit"), "{before}");
+    let sql = format!("INSERT INTO t VALUES(3,'{}')", "x".repeat(8000));
+    (temp, path, before, sql)
+}
+
+#[cfg(unix)]
+fn ids(path: &std::path::Path) -> Vec<Vec<Value>> {
+    let mut db = Database::open_with_options(
+        path,
+        Format::Readable,
+        OpenOptions {
+            read_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    db.execute("SELECT id FROM t ORDER BY id").unwrap()[0]
+        .rows
+        .clone()
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_appends_are_truncated_to_the_last_commit() {
+    let (_temp, path, before, sql) = limited_append_setup();
+    let output = run_with_file_limit(&path, before.len() + 1000, true, &sql);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(stderr.contains("append readable commit"), "{stderr}");
+    assert_eq!(read(&path), before);
+    let report = Database::check_file(&path, CheckMode::Full).unwrap();
+    assert!(report.issues.is_empty(), "{report:?}");
+    assert_eq!(
+        ids(&path),
+        vec![vec![Value::Integer(1)], vec![Value::Integer(2)]]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn appends_cut_short_by_a_killed_process_are_removed_by_the_next_writer() {
+    use std::os::unix::process::ExitStatusExt;
+    let (_temp, path, before, sql) = limited_append_setup();
+    let limit = before.len() + 1000;
+    let output = run_with_file_limit(&path, limit, false, &sql);
+    assert_eq!(output.status.signal(), Some(libc::SIGXFSZ), "{output:?}");
+    // Linux stops at the limit; macOS counts it from the append offset.
+    let torn = read(&path);
+    assert!(torn.starts_with(&before));
+    assert!(torn.len() > before.len() && torn.len() < before.len() + sql.len());
+    assert!(!torn.ends_with("...\n"));
+    let report = Database::check_file(&path, CheckMode::Full).unwrap();
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "BOXDB_INCOMPLETE_COMMIT"),
+        "{report:?}"
+    );
+    assert_eq!(
+        ids(&path),
+        vec![vec![Value::Integer(1)], vec![Value::Integer(2)]]
+    );
+    let mut writer = Database::open(&path, Format::Readable).unwrap();
+    writer.execute("INSERT INTO t VALUES(4,'d')").unwrap();
+    drop(writer);
+    let text = read(&path);
+    assert_eq!(
+        &text[before.len()..],
+        "---\nkind: commit\ntables:\n  t:\n    put:\n    - {rowid: 4, body: d, id: 4}\n...\n"
+    );
+    let report = Database::check_file(&path, CheckMode::Full).unwrap();
+    assert!(report.issues.is_empty(), "{report:?}");
+}

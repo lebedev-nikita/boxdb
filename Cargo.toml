@@ -55,6 +55,9 @@ rusqlite = { package = "boxdb-rusqlite", path = "vendor/rusqlite", version = "=0
 libsqlite3-sys = { package = "boxdb-sqlite-sys", path = "vendor/libsqlite3-sys", version = "=0.7.1", features = ["bundled"] }
 sqlite-vec = "=0.1.9"
 
+[dev-dependencies]
+libc = "0.2"
+
 [build-dependencies]
 cc = "1"
 

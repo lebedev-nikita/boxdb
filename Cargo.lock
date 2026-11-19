@@ -184,6 +184,7 @@ dependencies = [
  "clap",
  "fs2",
  "hex",
+ "libc",
  "num-bigint",
  "num-integer",
  "num-traits",
