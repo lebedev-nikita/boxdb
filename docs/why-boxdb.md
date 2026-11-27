@@ -44,9 +44,9 @@ particular version.
 - **Platform-specific native clients.** npm releases support macOS ARM64 and
   Linux x64/ARM64 with glibc 2.35+. No browser, Windows, Intel macOS or npm
   Alpine/musl support. Check each client's installation guide.
-- **Readable storage has different costs.** It restores the database into memory,
-  has a 256 MiB file limit, allows one writer and publishes the entire snapshot
-  on commit. Virtual tables require binary or memory storage.
+- **Readable storage has different costs.** It replays the file's history into
+  memory when opened, has a 256 MiB file limit, allows one writer and appends one
+  line per commit; VACUUM compacts the history. Virtual tables require binary or memory storage.
 - **JSON is opaque.** Complete documents are validated and processed in your
   application. SQL JSON/JSONB functions, operators and virtual tables are disabled.
 - **Results are materialized.** Keep result sets bounded; the TypeScript API has

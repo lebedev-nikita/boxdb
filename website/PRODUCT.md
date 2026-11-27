@@ -36,8 +36,8 @@ storage for Git-tracked data.
   values and indexes require BoxDB's patched engine.
 - TypeScript, Rust, Go and CLI share the Rust core. Drizzle, Better Auth and
   db0 adapters already exist.
-- Readable YAML executes in memory, allows one writer and publishes a complete
-  snapshot on commit. It does not support virtual tables.
+- Readable YAML executes in memory, allows one writer and appends one line per
+  commit to a log that VACUUM compacts. It does not support virtual tables.
 - JSON documents are opaque and validated; SQL JSON inspection is out of scope.
 - Hosting must be GitHub Pages. No social media outreach was authorized.
 

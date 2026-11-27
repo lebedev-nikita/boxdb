@@ -4,7 +4,7 @@ mod files;
 use boxdb::{Database, Format, Value};
 
 #[test]
-fn yaml_omits_sql_null_columns_and_restores_them_without_defaults() {
+fn inserted_rows_omit_null_cells_only_where_the_default_is_null() {
     let temp = tempfile::tempdir().unwrap();
     let binary = temp.path().join("source.db");
     let readable = temp.path().join("data.yaml");
@@ -17,14 +17,14 @@ fn yaml_omits_sql_null_columns_and_restores_them_without_defaults() {
     assert_eq!(
         table_rows(&bytes, "notes"),
         vec![
-            serde_json::json!({"rowid": 7}),
+            serde_json::json!({"rowid": 7, "body": null, "active": null}),
             serde_json::json!({"rowid": 9, "body": "null", "active": false, "doc": "{\"nested\":null}"}),
         ]
     );
     assert!(
         std::str::from_utf8(&bytes)
             .unwrap()
-            .contains("- {rowid: 7}\n")
+            .contains("- {insert: notes, rows: [{rowid: 7, body: null, active: null}]}\n")
     );
     let mut restored = Database::open(&readable, Format::Readable).unwrap();
     assert_eq!(restored.execute(query).unwrap(), expected);
@@ -35,12 +35,8 @@ fn yaml_omits_sql_null_columns_and_restores_them_without_defaults() {
         table_rows(&bytes, "notes"),
         vec![
             serde_json::json!({"rowid": 7, "body": "", "active": false}),
-            serde_json::json!({"rowid": 9})
+            serde_json::json!({"rowid": 9, "body": null, "active": null})
         ]
-    );
-    assert_eq!(
-        files::converted_bytes(&mut restored, Format::Readable).unwrap(),
-        bytes
     );
     drop(restored);
     assert_eq!(
@@ -49,6 +45,20 @@ fn yaml_omits_sql_null_columns_and_restores_them_without_defaults() {
             .execute(query)
             .unwrap(),
         expected
+    );
+    // Cells a line does not mention take the column default.
+    let mut text = std::fs::read_to_string(&readable).unwrap();
+    text.push_str("- {insert: notes, rows: [{rowid: 10}]}\n");
+    let mut db = files::open_bytes(text.as_bytes()).unwrap();
+    assert_eq!(
+        db.execute("SELECT body,active,doc FROM notes WHERE rowid=10")
+            .unwrap()[0]
+            .rows,
+        vec![vec![
+            Value::Text("default".into()),
+            Value::Boolean(true),
+            Value::Null
+        ]]
     );
 }
 
@@ -66,9 +76,9 @@ fn boolean_columns_use_yaml_booleans_and_roundtrip_through_updates() {
     assert_eq!(
         table_rows(&bytes, "flags"),
         vec![
-            serde_json::json!({"rowid": 1, "id": 1, "active": true, "alias": false, "n": 1, "untyped": 0}),
-            serde_json::json!({"rowid": 2, "id": 2, "active": false, "alias": true, "n": 0, "untyped": 1}),
-            serde_json::json!({"rowid": 3, "id": 3}),
+            serde_json::json!({"id": 1, "active": true, "alias": false, "n": 1, "untyped": 0}),
+            serde_json::json!({"id": 2, "active": false, "alias": true, "n": 0, "untyped": 1}),
+            serde_json::json!({"id": 3}),
         ]
     );
     let mut restored = Database::open(&readable, Format::Readable).unwrap();
@@ -99,7 +109,11 @@ fn yaml_boolean_columns_follow_committed_schema_changes() {
     db.execute("CREATE TABLE flags(id TEXT PRIMARY KEY,active BOOLEAN) WITHOUT ROWID; INSERT INTO flags VALUES('a',TRUE)").unwrap();
     db.execute("BEGIN; DROP TABLE flags; CREATE TABLE flags(id TEXT PRIMARY KEY,active INTEGER) WITHOUT ROWID; INSERT INTO flags VALUES('b',0); ROLLBACK").unwrap();
     let yaml = std::fs::read_to_string(&path).unwrap();
-    assert!(yaml.contains("- {active: true, id: a}\n"), "{yaml}");
+    assert!(
+        yaml.contains("- {insert: flags, rows: [{id: a, active: true}]}\n"),
+        "{yaml}"
+    );
+    assert!(!yaml.contains("id: b"), "rolled back: {yaml}");
     assert_eq!(
         db.execute("SELECT * FROM flags").unwrap()[0].rows,
         vec![vec![Value::Text("a".into()), Value::Boolean(true)]]
@@ -107,7 +121,9 @@ fn yaml_boolean_columns_follow_committed_schema_changes() {
     db.execute("ALTER TABLE flags ADD COLUMN other BOOL DEFAULT FALSE; ALTER TABLE flags RENAME COLUMN active TO enabled; ALTER TABLE flags RENAME TO settings; UPDATE settings SET enabled=FALSE,other=TRUE").unwrap();
     let yaml = std::fs::read_to_string(&path).unwrap();
     assert!(
-        yaml.contains("- {enabled: false, id: a, other: true}\n"),
+        yaml.contains(
+            "{update: settings, key: {id: a}, set: {enabled: false, other: true}, was: {enabled: true, other: false}}"
+        ),
         "{yaml}"
     );
     let expected = db.execute("SELECT * FROM settings").unwrap();
@@ -189,13 +205,19 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     let before = db.execute(query).unwrap();
     let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
     let yaml = std::str::from_utf8(&bytes).unwrap();
-    assert!(yaml.starts_with("---\nkind: database\nversion: 4\n"));
-    assert!(yaml.contains("rows:\n- {rowid: 0, id: 0}\n"), "{yaml}");
-    assert!(yaml.contains(", \"n\": user.name@example.com}\n"), "{yaml}");
-    assert!(yaml.contains(", \"n\": docs/v1.2+beta}\n"), "{yaml}");
+    assert!(yaml.starts_with("- {boxdb: 5}\n"));
     assert!(
-        yaml.contains("|"),
-        "multiline text should use block scalars"
+        yaml.contains("- {insert: cells, rows: [{id: 0}]}\n"),
+        "{yaml}"
+    );
+    assert!(
+        yaml.contains(", \"n\": user.name@example.com}]}\n"),
+        "{yaml}"
+    );
+    assert!(yaml.contains(", \"n\": docs/v1.2+beta}]}\n"), "{yaml}");
+    assert!(
+        yaml.lines().all(|line| line.starts_with("- ")),
+        "every entry is one line: {yaml}"
     );
     let first_row = &table_rows(&bytes, "cells")[0];
     assert_eq!(first_row["id"], 0);
@@ -221,33 +243,11 @@ fn yaml_stream_preserves_sqlite_storage_classes_and_ambiguous_text() {
     assert_eq!(file.execute(query).unwrap(), db.execute(query).unwrap());
 }
 
-const MANUAL: &str = r#"# Documents and rows may be edited by hand.
----
-kind: database
-version: 4
-codec_version: 1
-application_id: 0
-user_version: 0
----
-kind: schema
-object_type: table
-name: notes
-table: notes
-sql: |
-  CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT,flag INTEGER,weight REAL,bytes BLOB)
----
-kind: rows
-table: notes
-rows:
-- body: |-
-    First line
-    雪
-  weight: 1.0
-  flag: true
-  bytes:
-    blob: AP8=
-  id: 7
-...
+const MANUAL: &str = r#"# Lines may be edited by hand; each entry stays on one line.
+- {boxdb: 5}
+- {schema: ['CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT,flag INTEGER,weight REAL,bytes BLOB)']}
+
+- {insert: notes, rows: [{body: "First line\n雪", weight: 1.0, flag: true, bytes: {blob: AP8=}, id: 7}]}  # comment
 "#;
 
 const MANUAL_V3: &str = r#"# Documents and row fields may be edited by hand.
@@ -280,7 +280,7 @@ values:
 "#;
 
 #[test]
-fn handwritten_yaml_supports_comments_blocks_and_named_columns() {
+fn handwritten_logs_support_comments_quoted_text_and_named_columns() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("notes.yaml");
     std::fs::write(&path, MANUAL).unwrap();
@@ -326,29 +326,33 @@ fn yaml_stream_handles_more_than_a_thousand_documents() {
 #[test]
 fn invalid_yaml_cannot_publish_a_database() {
     let invalid = [
-        MANUAL.replace("version: 4", "version: 1"),
-        MANUAL.replace("version: 4", "version: 4\nversion: 4"),
-        MANUAL.replace("version: 4", "version: 4\nrows: []"),
-        MANUAL.replace("  id: 7", "  id: 7\nversion: 4"),
-        MANUAL.replace("  id: 7", "  id: 7\n  rowid: 7\n  rowid: 8"),
-        MANUAL.replace("table: notes\nrows:", "rows:"),
-        MANUAL.replace("kind: rows\ntable: notes", "kind: rows\ntable: missing"),
-        MANUAL.replace("  id: 7", "  id: 7\n  id: 8"),
-        MANUAL.replace("  id: 7", "  wrong: 7"),
+        MANUAL.replace("{boxdb: 5}", "{boxdb: 1}"),
+        MANUAL.replace("{boxdb: 5}", "{boxdb: 5, boxdb: 5}"),
+        MANUAL.replace("{boxdb: 5}", "{boxdb: 5, rows: []}"),
+        MANUAL.replace("- {boxdb: 5}\n", ""),
+        MANUAL.replace("id: 7}", "id: 7, id: 8}"),
+        MANUAL.replace("id: 7}", "wrong: 7}"),
+        MANUAL.replace("{insert: notes", "{insert: missing"),
+        MANUAL.replace("{insert: notes", "{upsert: notes"),
+        MANUAL.replace(
+            "{insert: notes, rows: [",
+            "{insert: notes, rows: [], rows: [",
+        ),
         MANUAL
             .replace("body TEXT", "body TEXT NOT NULL")
-            .replace("- body: |-\n    First line\n    雪\n  weight", "- weight"),
+            .replace("body: \"First line\\n雪\", ", ""),
         MANUAL.replace("blob: AP8=", "blob: xyz"),
-        MANUAL.replace("    blob: AP8=", "    blob: AP8=\n    extra: 1"),
+        MANUAL.replace("{blob: AP8=}", "{blob: AP8=, extra: 1}"),
         MANUAL.replace("weight: 1.0", "weight: .nan"),
         MANUAL.replace("weight: 1.0", "weight: .inf"),
         MANUAL.replace("weight: 1.0", "weight: 1e999"),
-        MANUAL.replace("  id: 7", "  id: 9223372036854775808"),
+        MANUAL.replace("id: 7}", "id: 9223372036854775808}"),
         MANUAL.replace("weight: 1.0", "weight: !custom 1.0"),
+        MANUAL.replace("weight: 1.0", "weight: &anchor 1.0"),
         MANUAL.replace("weight: 1.0", "weight: [unterminated"),
-        format!(
-            "{MANUAL}---\nkind: database\nversion: 4\ncodec_version: 1\napplication_id: 0\nuser_version: 0\n"
-        ),
+        MANUAL.replace("{schema: ['CREATE", "{schema: ['ATTACH 'x' AS y; CREATE"),
+        MANUAL.replace(", id: 7}", ",\n  id: 7}"),
+        format!("{MANUAL}- {{boxdb: 5}}\n"),
     ];
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("invalid.yaml");
@@ -451,18 +455,18 @@ fn canonical_file(path: &std::path::Path) -> Vec<u8> {
     files::converted_bytes(&mut db, Format::Readable).unwrap()
 }
 
-/// Row maps of one table document, including the rowid alias key.
+/// Rows inserted into one table, read with an ordinary YAML parser.
 fn table_rows(bytes: &[u8], table: &str) -> Vec<serde_json::Value> {
-    let documents: Vec<serde_json::Value> = serde_saphyr::from_slice_multiple(bytes).unwrap();
-    documents
+    let entries: Vec<serde_json::Value> = serde_saphyr::from_slice(bytes).unwrap();
+    entries
         .into_iter()
-        .filter(|doc| doc["kind"] == "rows" && doc["table"] == table)
-        .flat_map(|doc| doc["rows"].as_array().unwrap().clone())
+        .filter(|entry| entry["insert"] == table)
+        .flat_map(|entry| entry["rows"].as_array().unwrap().clone())
         .collect()
 }
 
 #[test]
-fn yaml_groups_rows_by_table_with_one_line_per_row() {
+fn canonical_logs_write_one_line_per_row() {
     let mut db = Database::memory();
     db.execute(
         "CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT,amount DECIMAL(10,2),at INSTANT,ref UUID,data BYTEA,raw ANY,done BOOLEAN);
@@ -476,29 +480,17 @@ fn yaml_groups_rows_by_table_with_one_line_per_row() {
     let expected = db.execute(query).unwrap();
     let bytes = files::converted_bytes(&mut db, Format::Readable).unwrap();
     let yaml = std::str::from_utf8(&bytes).unwrap();
-    assert!(
-        yaml.starts_with("---\nkind: database\nversion: 4\n"),
-        "{yaml}"
-    );
-    let notes = "---
-kind: rows
-table: notes
-rows:
-- {rowid: 1, amount: 12.5, at: 2024-02-29T12:00:00.000000Z, body: hello, data: AP8=, done: true, id: 1, raw: {blob: AQI=}, ref: 00000000-0000-4000-8000-000000000001}
-- rowid: 2
-  body: |-
-    First line
-    Second line
-  id: 2
-  raw: {decimal: 1.25}
-- {rowid: 3, body: \"Hello, world\", id: 3}
+    assert!(yaml.starts_with("- {boxdb: 5}\n"), "{yaml}");
+    let notes = "- {insert: notes, rows: [{id: 1, body: hello, amount: 12.5, at: 2024-02-29T12:00:00.000000Z, ref: 00000000-0000-4000-8000-000000000001, data: AP8=, raw: {blob: AQI=}, done: true}]}
+- {insert: notes, rows: [{id: 2, body: \"First line\\nSecond line\", raw: {decimal: 1.25}}]}
+- {insert: notes, rows: [{id: 3, body: \"Hello, world\"}]}
 ";
-    let start = yaml.find("---\nkind: rows\ntable: notes\n").expect(yaml);
+    let start = yaml.find("- {insert: notes").expect(yaml);
     assert!(yaml[start..].starts_with(notes), "{yaml}");
-    let metadata = yaml.find("table: __boxdb_columns\n").expect(yaml);
+    let metadata = yaml.find("- {insert: __boxdb_columns").expect(yaml);
     assert!(metadata < start, "metadata rows precede table rows: {yaml}");
-    assert!(!yaml.contains("table: empty\nrows"), "{yaml}");
-    assert_eq!(yaml.matches("kind: rows\n").count(), 3, "{yaml}");
+    assert!(!yaml.contains("{insert: empty"), "{yaml}");
+    assert_eq!(yaml.matches("{insert: notes").count(), 3, "{yaml}");
     let mut restored = files::open_bytes(&bytes).unwrap();
     assert_eq!(restored.execute(query).unwrap(), expected);
     assert_eq!(
@@ -513,7 +505,7 @@ fn typed_plain_scalars_are_validated_on_import() {
     db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,amount DECIMAL,at INSTANT,ref UUID,data BYTEA,big UINT64); INSERT INTO t VALUES(1,'1.50','2024-02-29T12:00:00Z','00000000-0000-4000-8000-000000000001',X'00ff',18446744073709551615)").unwrap();
     let valid =
         String::from_utf8(files::converted_bytes(&mut db, Format::Readable).unwrap()).unwrap();
-    let row = "- {rowid: 1, amount: 1.5, at: 2024-02-29T12:00:00.000000Z, big: 18446744073709551615, data: AP8=, id: 1, ref: 00000000-0000-4000-8000-000000000001}\n";
+    let row = "- {insert: t, rows: [{id: 1, amount: 1.5, at: 2024-02-29T12:00:00.000000Z, ref: 00000000-0000-4000-8000-000000000001, data: AP8=, big: 18446744073709551615}]}\n";
     assert!(valid.contains(row), "{valid}");
     let restored = files::open_bytes(valid.as_bytes())
         .unwrap()
@@ -535,6 +527,13 @@ fn typed_plain_scalars_are_validated_on_import() {
         let yaml = valid.replace(row, &replacement);
         assert!(files::open_bytes(yaml.as_bytes()).is_ok(), "{yaml}");
     }
+    let fields = [
+        ("amount", "1.5"),
+        ("at", "2024-02-29T12:00:00.000000Z"),
+        ("ref", "00000000-0000-4000-8000-000000000001"),
+        ("data", "AP8="),
+        ("big", "18446744073709551615"),
+    ];
     let rejected = [
         "amount: true",
         "amount: {decimal: 1.5}",
@@ -550,41 +549,44 @@ fn typed_plain_scalars_are_validated_on_import() {
     ];
     for value in rejected {
         let key = value.split(':').next().unwrap();
-        let original = row
-            .split(", ")
-            .find(|field| field.starts_with(&format!("{key}:")))
-            .unwrap();
-        let yaml = valid.replace(row, &row.replace(original, value));
+        let (_, original) = fields.iter().find(|(name, _)| *name == key).unwrap();
+        let yaml = valid.replace(row, &row.replace(&format!("{key}: {original}"), value));
         assert_ne!(yaml, valid, "{value}");
         assert!(files::open_bytes(yaml.as_bytes()).is_err(), "{value}");
     }
 }
 
 #[test]
-fn yaml_rejects_documents_out_of_stream_order() {
+fn log_lines_apply_in_order() {
     let mut db = Database::memory();
     db.execute("CREATE TABLE t(id INTEGER PRIMARY KEY,at INSTANT); INSERT INTO t VALUES(1,'2024-02-29T12:00:00Z')").unwrap();
     let valid =
         String::from_utf8(files::converted_bytes(&mut db, Format::Readable).unwrap()).unwrap();
     assert!(files::open_bytes(valid.as_bytes()).is_ok());
-    let mut documents: Vec<&str> = valid.split("---\n").filter(|doc| !doc.is_empty()).collect();
-    let count = documents.len();
-    assert!(documents[count - 1].contains("table: t\n"), "{valid}");
-    assert!(
-        documents[count - 2].contains("table: __boxdb_columns\n"),
-        "{valid}"
-    );
-    documents.swap(count - 1, count - 2);
-    let reordered: String = documents.iter().map(|doc| format!("---\n{doc}")).collect();
+    let mut lines: Vec<&str> = valid.lines().collect();
+    let schema = lines
+        .iter()
+        .position(|line| line.starts_with("- {schema: [\"CREATE TABLE t "))
+        .expect(&valid);
+    let row = lines
+        .iter()
+        .position(|line| line.starts_with("- {insert: t,"))
+        .expect(&valid);
+    let moved = lines.remove(row);
+    lines.insert(schema, moved);
+    let reordered: String = lines.iter().map(|line| format!("{line}\n")).collect();
     let error = files::open_bytes(reordered.as_bytes()).err().unwrap();
-    assert!(error.to_string().contains("order"), "{error}");
+    assert!(
+        error.to_string().contains(&format!("line {}", schema + 1)),
+        "{error}"
+    );
 }
 
 #[test]
-fn version_three_streams_explain_the_binary_migration_path() {
+fn previous_streams_explain_the_binary_migration_path() {
     let error = files::open_bytes(MANUAL_V3.as_bytes()).err().unwrap();
     assert_eq!(error.code(), "BOXDB_FORMAT");
-    assert!(error.to_string().contains("version 3"), "{error}");
+    assert!(error.to_string().contains("BoxDB 0.8"), "{error}");
     assert!(error.to_string().contains("binary"), "{error}");
 }
 
@@ -668,24 +670,21 @@ fn large_table_documents_roundtrip() {
 }
 
 #[test]
-fn aliases_between_distant_rows_are_resolved() {
+fn large_logs_report_the_line_of_a_damaged_entry() {
     let mut yaml = String::from(
-        "---\nkind: database\nversion: 4\ncodec_version: 1\napplication_id: 0\nuser_version: 0\n---\nkind: schema\nobject_type: table\nname: t\ntable: t\nsql: CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT) STRICT\n---\nkind: rows\ntable: t\nrows:\n- {rowid: 1, body: &shared shared text, id: 1}\n",
+        "- {boxdb: 5}\n- {schema: [\"CREATE TABLE t(id INTEGER PRIMARY KEY,body TEXT) STRICT\"]}\n",
     );
-    for id in 2..=LARGE {
+    for id in 1..=LARGE {
         yaml.push_str(&format!(
-            "- {{rowid: {id}, body: filler row {id}, id: {id}}}\n"
+            "- {{insert: t, rows: [{{id: {id}, body: filler row {id}}}]}}\n"
         ));
     }
-    yaml.push_str(&format!(
-        "- {{rowid: {0}, body: *shared, id: {0}}}\n",
-        LARGE + 1
-    ));
-    let mut db = files::open_bytes(yaml.as_bytes()).unwrap();
-    assert_eq!(
-        db.execute(&format!("SELECT body FROM t WHERE id={}", LARGE + 1))
-            .unwrap()[0]
-            .rows,
-        vec![vec![Value::Text("shared text".into())]]
+    assert!(files::open_bytes(yaml.as_bytes()).is_ok());
+    let damaged = yaml.replacen(
+        "{id: 20000, body: filler row 20000}",
+        "{id: 20000, body: &a x}",
+        1,
     );
+    let error = files::open_bytes(damaged.as_bytes()).err().unwrap();
+    assert!(error.to_string().contains("line 20002"), "{error}");
 }

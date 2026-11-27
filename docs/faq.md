@@ -53,9 +53,10 @@ functions, operators and virtual tables are disabled.
 
 ## Should I put my application database in Git?
 
-Readable YAML is useful for small, deliberately versioned datasets. It loads
-into memory, appends each commit and periodically rewrites a complete snapshot,
-with one writer per file.
+Readable YAML is useful for small, deliberately versioned datasets. The file is
+a log with one line per transaction, so diffs show transactions and branches
+merge by keeping the lines of both; see [merging branches](storage.md#merging-branches).
+It loads into memory and has one writer per file; VACUUM compacts its history.
 Binary storage is the normal choice for application data. Neither format should
 be committed if it contains secrets or private user data.
 

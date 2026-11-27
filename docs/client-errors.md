@@ -111,6 +111,9 @@ queries and preparation return `BOXDB_UNAVAILABLE`; Go also marks that connectio
 invalid for the pool. Constraint and argument errors do not invalidate it.
 `BOXDB_METADATA`, `BOXDB_UNSUPPORTED_CODEC` and `BOXDB_FORMAT` distinguish schema
 metadata, codec-version and file-format problems from engine corruption.
+Opening a readable file reports `BOXDB_CONFLICT` with a line number when a
+logged change does not apply, for example after merging branches that changed
+the same values; see [merging branches](storage.md#merging-branches).
 Invalid projected logical values use `BOXDB_INVALID_VALUE`, keeping stored-data
 failures distinct from invalid query arguments.
 

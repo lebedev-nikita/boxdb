@@ -206,7 +206,7 @@ for logical types, generated columns, views, triggers and migration records.
 
 YAML schema dumps are export-only documents for inspection and version-control
 diffs. They cannot be opened as databases or imported through `boxdb convert`.
-The readable database stream is a separate format containing schemas and rows;
+The readable database log is a separate format containing schemas and rows;
 `boxdb convert` converts complete databases between binary and readable storage.
 SQL dumps can bootstrap an empty database. The library exposes
 `Database::dump_schema` and `Database::dump_schema_file` with `SchemaFormat`.

@@ -146,7 +146,7 @@ fn cli_executes_sql_reopens_readable_files_and_reports_type_errors() {
     assert!(
         std::fs::read_to_string(&path)
             .unwrap()
-            .starts_with("---\nkind: database\n")
+            .starts_with("- {boxdb: 5}\n")
     );
 }
 

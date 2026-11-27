@@ -13,9 +13,9 @@ default busy timeout. SQLite still serializes writers; keep write transactions
 short and measure contention on your workload.
 
 Use **readable YAML** for small datasets where text review and Git diffs matter.
-It executes in memory, permits one writer per file and publishes a complete
-snapshot per commit. Its file limit is 256 MiB. Group writes in transactions;
-do not use it for virtual tables. See the [storage contract](storage.md).
+It executes in memory, permits one writer per file and appends one line per
+commit. Its file limit is 256 MiB; VACUUM compacts the history. Group writes in
+transactions; do not use it for virtual tables. See the [storage contract](storage.md).
 
 ## Deploy the application
 
