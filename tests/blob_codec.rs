@@ -168,10 +168,11 @@ fn codec_versions_are_database_metadata_and_unknown_versions_are_rejected() {
     );
     let readable = files::converted_bytes(&mut db, Format::Readable).unwrap();
     let text = String::from_utf8(readable).unwrap();
-    assert!(text.contains("codec_version: 1"), "{text}");
+    let codec = "- {insert: __boxdb_codec, rows: [{id: 1, version: 1}]}\n";
+    assert!(text.contains(codec), "{text}");
     assert!(
         files::open_bytes(
-            text.replace("codec_version: 1", "codec_version: 99")
+            text.replace(codec, &codec.replace("version: 1", "version: 99"))
                 .as_bytes()
         )
         .is_err()

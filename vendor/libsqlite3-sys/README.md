@@ -32,7 +32,7 @@ rules. DECIMAL has a dedicated variable-length codec and numeric backend.
 Expose the type in BoxDB's Rust Type/Value enums, schema translation and client
 value mappings. Native parameters, results and snapshots use a one-byte BLOB
 type tag, while the SQLite C API retains its five standard storage classes.
-Test behavior through Database, including scans versus indexes and both snapshot
+Test behavior through Database, including scans versus indexes and both storage
 formats. Public Rust values and serialization form the other integration boundary.
 
 ## Engine integration
@@ -50,7 +50,7 @@ when a column or index declaration supplies their width; OP_Column restores
 that width before evaluation. Runtime and untyped values keep their tag, while
 UINT64 always uses a tagged BLOB. `src/unsigned.rs` implements checked unsigned
 arithmetic and logical shifts. The database codec version is stored
-in `__boxdb_codec`, and readable headers also record it. Stock SQLite does not have
+in `__boxdb_codec`. Stock SQLite does not have
 compatible query or index semantics. See [the decimal contract](../../docs/native-decimal.md).
 
 Normal BLOB bind/result APIs add the BYTEA tag. BoxDB transports already
@@ -58,9 +58,10 @@ encoded cells through the pointer API with the private type `boxdb.wire-blob.v1`
 and a borrowed C descriptor `{ const char *data; int length; }`. The patched API
 copies the descriptor's bytes immediately and calls a supplied destructor once.
 This route is used for typed parameters, native decimal function results, and
-readable snapshot import. Standard C column and scalar-function value accessors
-expose logical payloads. `sqlite3_boxdb_column_blob` and its size accessors expose
-wire cells; the Rust FFI uses these for column BLOB decoding. Incremental BLOB
+replaying readable files. Standard C column and scalar-function value accessors
+expose logical payloads. `sqlite3_boxdb_column_blob`, `sqlite3_boxdb_value_blob` and their size accessors
+expose wire cells; the Rust FFI uses these for column BLOB decoding and for the
+row images of the preupdate hook. Incremental BLOB
 access skips the BYTEA tag and preserves it on writes.
 
 To upgrade SQLite, update the pinned upstream sources and crate build/bindings,

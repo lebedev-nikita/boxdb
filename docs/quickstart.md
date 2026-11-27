@@ -73,8 +73,8 @@ Existing contents select the format automatically.
 
 Binary storage is the application default: WAL, durable commits and concurrent
 connections. Readable storage is useful for small Git-tracked datasets; it
-executes in memory and writes a complete YAML snapshot on commit. It supports
-one writer per file and has a 256 MiB limit. See [storage](storage.md).
+executes in memory and appends one YAML line per commit. It supports one writer
+per file and has a 256 MiB limit. See [storage](storage.md).
 
 ## Use BoxDB from your application
 

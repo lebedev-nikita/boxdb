@@ -62,8 +62,8 @@ processing functions are disabled.
 
 The binary database keeps the standard SQLite page and record format. Decimals
 are ordinary BLOB records containing the one-byte tag `d` followed by UTF-8
-decimal text. The database-wide codec version is stored in `__boxdb_codec` and
-readable snapshot headers. The tag survives stored columns, calculated values,
+decimal text. The database-wide codec version is stored in `__boxdb_codec`,
+which readable files log as an ordinary row. The tag survives stored columns, calculated values,
 temporary records, materialized CTEs, and sorting. No extra disk serial type or
 in-memory extension subtype is needed.
 [SQLite's record format](https://www.sqlite.org/fileformat2.html#record_format)

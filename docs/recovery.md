@@ -63,14 +63,12 @@ Recovered content can be missing or altered; virtual-table content and damaged
 schema objects are not guaranteed to survive. See SQLite's
 [recovery limitations](https://sqlite.org/recovery.html).
 
-YAML recovery reads independently delimited documents, requires a valid header,
-and restores the available schema and metadata without inferring missing types.
-It skips malformed or rejected documents and rows; a damaged row does not affect
-other rows of its table. Each intact commit is applied in order; a damaged
-commit is rejected as a whole, and an incomplete final commit is kept as a
-rejected fragment. Application triggers are created after rows. Rejected
-fragments are retained verbatim in `<destination>.rejected`, with document
-numbers and source line numbers; a rejected row keeps its table document header. This file contains source data;
+YAML recovery requires a valid header line and applies the other lines in
+order. A line is one transaction: a malformed line, or one that does not apply
+to the database restored so far, is rejected as a whole and later lines
+continue. An incomplete final line is kept as a rejected fragment. Recovery does
+not run application triggers. Rejected lines are retained verbatim in
+`<destination>.rejected`, with entry and source line numbers. This file contains source data;
 the report only lists locations and reasons. Damage to document boundaries or
 required schema/metadata can prevent recovery. Orphaned rows are retained and
 reported by the final foreign-key check.

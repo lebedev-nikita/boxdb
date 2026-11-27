@@ -209,6 +209,31 @@ where
     feature = "preupdate_hook"
 ))]
 impl ValueRef<'_> {
+    /// A storage cell: native values keep their type tag, as column reads do.
+    #[cfg(feature = "preupdate_hook")]
+    pub(crate) unsafe fn from_storage_value(value: *mut crate::ffi::sqlite3_value) -> Self {
+        use crate::ffi;
+        use std::slice::from_raw_parts;
+        if ffi::sqlite3_value_type(value) != ffi::SQLITE_BLOB {
+            return Self::from_value(value);
+        }
+        let blob = ffi::sqlite3_boxdb_value_blob(value);
+        let len = ffi::sqlite3_boxdb_value_bytes(value);
+        assert!(
+            len >= 0,
+            "unexpected negative return from sqlite3_value_bytes"
+        );
+        if len > 0 {
+            assert!(
+                !blob.is_null(),
+                "unexpected SQLITE_BLOB value type with NULL data"
+            );
+            ValueRef::Blob(from_raw_parts(blob.cast::<u8>(), len as usize))
+        } else {
+            ValueRef::Blob(&[])
+        }
+    }
+
     pub(crate) unsafe fn from_value(value: *mut crate::ffi::sqlite3_value) -> Self {
         use crate::ffi;
         use std::slice::from_raw_parts;

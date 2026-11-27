@@ -70,12 +70,13 @@ impl PreUpdateOldValueAccessor {
         self.old_row_id
     }
 
-    /// Get the value of the row being updated/deleted at the specified index.
+    /// Get the storage value of the row being updated/deleted at the
+    /// specified index. Native values keep their type tag.
     pub fn get_old_column_value(&self, i: i32) -> Result<ValueRef<'_>> {
         let mut p_value: *mut ffi::sqlite3_value = ptr::null_mut();
         unsafe {
             check(ffi::sqlite3_preupdate_old(self.db, i, &mut p_value))?;
-            Ok(ValueRef::from_value(p_value))
+            Ok(ValueRef::from_storage_value(p_value))
         }
     }
 }
@@ -108,12 +109,13 @@ impl PreUpdateNewValueAccessor {
         self.new_row_id
     }
 
-    /// Get the value of the row being updated/deleted at the specified index.
+    /// Get the storage value of the row being inserted/updated at the
+    /// specified index. Native values keep their type tag.
     pub fn get_new_column_value(&self, i: i32) -> Result<ValueRef<'_>> {
         let mut p_value: *mut ffi::sqlite3_value = ptr::null_mut();
         unsafe {
             check(ffi::sqlite3_preupdate_new(self.db, i, &mut p_value))?;
-            Ok(ValueRef::from_value(p_value))
+            Ok(ValueRef::from_storage_value(p_value))
         }
     }
 }

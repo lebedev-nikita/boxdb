@@ -108,7 +108,7 @@ jobs:
               run("convert", readable, compact, "--format", "binary")
               assert json.loads(run(compact, "--json", "-e", "SELECT id,label FROM smoke"))["rows"] == expected
               run("convert", compact, restored, "--format", "readable")
-              # Writes append commits; conversion writes the canonical snapshot.
+              # Writes append transactions; conversion writes the canonical log.
               canonical = Path(directory) / "canonical.yaml"
               run("convert", readable, canonical, "--format", "readable")
               assert canonical.read_bytes() == restored.read_bytes()
@@ -352,7 +352,7 @@ jobs:
           gh release create "v$BOXDB_RELEASE_VERSION" release-assets/* \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "BoxDB $BOXDB_RELEASE_VERSION" \
-            --notes 'Extended SQLite client with typed columns, ordinary SQLite binary files, and Git-friendly YAML stream storage. Use original Litestream for replication. Experimental.'
+            --notes 'Extended SQLite client with typed columns, ordinary SQLite binary files, and Git-friendly YAML log storage. Use original Litestream for replication. Experimental.'
       - name: Publish only the complete verified draft
         run: |
           python3 <<'PY'

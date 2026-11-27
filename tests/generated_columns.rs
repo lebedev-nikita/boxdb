@@ -129,16 +129,14 @@ fn conversion_preserves_typed_generated_columns_from_their_source_values() {
     for format in [Format::Binary, Format::Readable] {
         let bytes = files::converted_bytes(&mut db, format).unwrap();
         if format == Format::Readable {
-            let documents: Vec<serde_json::Value> =
-                serde_saphyr::from_slice_multiple(&bytes).unwrap();
-            let row = &documents
+            let entries: Vec<serde_json::Value> = serde_saphyr::from_slice(&bytes).unwrap();
+            let row = &entries
                 .iter()
-                .find(|doc| doc["kind"] == "rows" && doc["table"] == "derived")
+                .find(|entry| entry["insert"] == "derived")
                 .unwrap()["rows"][0];
             assert_eq!(
                 row,
                 &serde_json::json!({
-                    "rowid": 1,
                     "id": 1,
                     "enabled_source": true,
                     "amount_source": "12.50"

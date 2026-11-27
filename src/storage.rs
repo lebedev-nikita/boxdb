@@ -1,5 +1,6 @@
-//! SQLite owns binary files and their WAL. Readable YAML appends commits,
-//! replaces compacted snapshots and uses a separate single-writer lock.
+//! SQLite owns binary files and their WAL. Readable YAML appends one line per
+//! transaction, replaces the file with a canonical log on VACUUM and uses a
+//! separate single-writer lock.
 use crate::{Error, Result, readable};
 use fs2::FileExt;
 use rusqlite::{
@@ -73,7 +74,7 @@ impl ReadableFile {
     pub fn watch(&self, db: &Connection) -> Result<()> {
         self.journal.watch(db)
     }
-    /// Decode the file, drop an interrupted append and accept further commits.
+    /// Replay the file, drop an interrupted append and accept further lines.
     pub fn load(&self) -> Result<Connection> {
         let (db, extent) = import_file(&fs::read(&self.path)?)?;
         if extent.torn {
@@ -89,7 +90,27 @@ impl ReadableFile {
     pub fn discard(&self) {
         self.journal.discard();
     }
-    /// Rows changed outside preupdate hooks, so the next commit rewrites the file.
+    pub fn before_schema(&self, db: &Connection, types: &crate::schema::Types) -> Result<()> {
+        self.journal.before_schema(db, types)
+    }
+    pub fn after_schema(
+        &self,
+        db: &Connection,
+        types: &crate::schema::Types,
+        alter: Option<&str>,
+    ) -> Result<()> {
+        self.journal.after_schema(db, types, alter)
+    }
+    pub fn savepoint(&self, name: Option<&str>) {
+        self.journal.savepoint(name);
+    }
+    pub fn release(&self, name: Option<&str>) {
+        self.journal.release(name);
+    }
+    pub fn rollback_to(&self, db: &Connection, name: Option<&str>) -> Result<()> {
+        self.journal.rollback_to(db, name)
+    }
+    /// The next commit rewrites the file as a canonical log.
     pub fn reset(&self) {
         self.journal.reset();
     }
@@ -101,23 +122,22 @@ impl ReadableFile {
                 let file = OpenOptions::new().append(true).open(&self.path)?;
                 written = true;
                 append(file, &commit)?;
-                self.journal.appended(db, commit.len())
+                self.journal.appended(db)
             }
             readable::Publication::Rewrite => {
                 let parent = self.path.parent().unwrap();
                 let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-                let size = {
+                {
                     let mut writer = BufWriter::with_capacity(64 * 1024, temp.as_file_mut());
-                    let size = readable::write_snapshot(db, types, &mut writer)?;
+                    readable::write_log(db, types, &mut writer)?;
                     writer.flush()?;
-                    size
-                };
+                }
                 temp.as_file().sync_all()?;
                 temp.persist(&self.path)
                     .map_err(|e| Error::from(e.error).with_context("publish readable database"))?;
                 written = true;
                 File::open(parent)?.sync_all()?;
-                self.journal.rewritten(db, size)
+                self.journal.rewritten(db)
             }
         })();
         if result.is_err() {

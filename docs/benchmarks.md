@@ -129,9 +129,8 @@ statement cache of 512 entries. See SQLite's
 The `--sqlite-*` switches change only the reference client; non-default reports
 must be interpreted using their saved configuration.
 
-YAML mode executes SQL in memory and atomically replaces a complete YAML file
-on each commit, synchronizing the temporary file and its parent directory. Its
-reads do not include file access after opening. These are different storage
+YAML mode executes SQL in memory and appends one line to its log on each commit,
+synchronizing the file. Its reads do not include file access after opening. These are different storage
 architectures, so YAML ratios compare end-to-end behavior rather than client
 overhead alone. The SQLite reference settings are unchanged in YAML runs.
 
@@ -277,6 +276,42 @@ The YAML files remain 177,060 bytes at 1,000 rows and 1,787,072 bytes at 10,000
 rows after insertion. The SQLite reference uses 144,208 and 1,108,288 bytes
 respectively, including WAL. This workload measures integer/text rows, not
 large BLOBs or expensive logical type validators.
+
+## Readable log sizes
+
+[The readable benchmark](../tools/benchmark_readable.py) generates files of
+several sizes through the CLI and can measure an earlier release on the same
+data:
+
+```sh
+cargo build --release --bin boxdb
+python3 tools/benchmark_readable.py --sizes 20,50,100 --previous /path/to/boxdb-0.8.1 --history 20
+```
+
+Each row of the `items` table holds an integer key, two short texts, a
+DECIMAL(12,2), an INSTANT and a nullable note, about 170 bytes of YAML. Each
+operation runs in a new CLI process: `open` is the best of three runs of a
+count query, update times subtract that opening time, and VACUUM includes
+opening the file. Before VACUUM, each log receives 20 MiB of history as
+transactions of 100 random updates; previous files are compacted without it. [Results](../benchmarks/results/readable-log.json) were measured
+on an Apple M1 Pro with macOS 27.2; previous is BoxDB 0.8.1, whose files are
+a snapshot followed by commit documents.
+
+| Rows | File | Open | Peak memory | 1,000 updates | Open with history | VACUUM |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 126,866 | log, 20.3 MiB | 0.31 s | 73 MiB | 48 ms | 1.07 s (40.6 MiB) | 1.26 s |
+| 126,866 | previous, 19.0 MiB | 0.47 s | 93 MiB | 33 ms | | 0.67 s |
+| 317,165 | log, 51.2 MiB | 0.80 s | 129 MiB | 42 ms | 1.52 s (71.5 MiB) | 1.97 s |
+| 317,165 | previous, 48.1 MiB | 1.15 s | 211 MiB | 46 ms | | 1.61 s |
+| 634,330 | log, 102.7 MiB | 1.56 s | 223 MiB | 48 ms | 2.32 s (123.2 MiB) | 3.27 s |
+| 634,330 | previous, 96.6 MiB | 2.28 s | 394 MiB | 77 ms | | 3.22 s |
+
+An autocommit update takes 4.7 to 5.6 ms in both formats at every size: the
+append and the synchronization of the file dominate it. Opening a compacted log
+costs about 15 ms per MiB. History costs about 38 ms per MiB, because each
+update is checked against the row it changes, so opening time follows the
+history rather than the data; VACUUM resets it. Lines are parsed on several
+threads and applied in order on one.
 
 ## Previous storage implementations
 

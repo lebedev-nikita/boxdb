@@ -795,23 +795,36 @@ impl Database {
             }
             self.connection
                 .execute_batch("SAVEPOINT __boxdb_declaration")?;
+            if let Some(file) = &self.readable {
+                file.savepoint(Some(DECLARATION));
+            }
             let result = (|| {
+                if let Some(file) = &self.readable {
+                    file.before_schema(&self.connection, &self.types.borrow())?;
+                }
                 declaration.execute(&self.connection)?;
                 for column in &declaration.readonly {
                     schema::readonly::declare(&self.connection, &declaration.table, column)?;
                 }
                 schema::save(&self.connection, &declaration)?;
                 self.refresh(true)?;
+                if let Some(file) = &self.readable {
+                    file.after_schema(&self.connection, &self.types.borrow(), None)?;
+                }
                 self.connection
                     .execute_batch("RELEASE __boxdb_declaration")?;
+                if let Some(file) = &self.readable {
+                    file.release(Some(DECLARATION));
+                }
                 Ok(empty())
             })();
             let result = result.map_err(|error| {
-                self.cleanup_failure(
+                let error = self.cleanup_failure(
                     error,
                     "ROLLBACK TO __boxdb_declaration; RELEASE __boxdb_declaration",
                     true,
-                )
+                );
+                self.forget_readable_savepoint(DECLARATION, error)
             });
             if result.is_ok() {
                 self.publish_readable()?;
@@ -851,6 +864,22 @@ impl Database {
         let outer_autocommit = self.connection.is_autocommit();
         if guarded {
             self.connection.execute_batch("SAVEPOINT __boxdb_write")?;
+            if let Some(file) = &self.readable {
+                file.savepoint(Some(WRITE));
+            }
+        }
+        if ddl {
+            let before = self.readable.as_ref().map_or(Ok(()), |file| {
+                file.before_schema(&self.connection, &self.types.borrow())
+            });
+            if let Err(error) = before {
+                let error = self.cleanup_failure(
+                    error,
+                    "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
+                    true,
+                );
+                return Err(self.forget_readable_savepoint(WRITE, error));
+            }
         }
         if ddl {
             let _guard = InternalGuard::enter(&self.internal);
@@ -871,16 +900,24 @@ impl Database {
         {
             file.reset();
         }
-        if let Err(error) = result {
-            return Err(if guarded {
-                self.cleanup_failure(
-                    error,
-                    "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
-                    ddl,
-                )
-            } else {
-                error
-            });
+        let result = match result {
+            Err(error) => {
+                return Err(if guarded {
+                    let error = self.cleanup_failure(
+                        error,
+                        "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
+                        ddl,
+                    );
+                    self.forget_readable_savepoint(WRITE, error)
+                } else {
+                    error
+                });
+            }
+            Ok(result) => result,
+        };
+        if control && let Err(error) = self.track_savepoint(&keyword, sql) {
+            self.poisoned.set(true);
+            return Err(error);
         }
         let completion = (|| -> Result<()> {
             if ddl {
@@ -915,6 +952,13 @@ impl Database {
                 if alteration.as_ref().is_some_and(|a| !a.columns.is_empty()) {
                     schema::normalize_arrays(&self.connection, &self.types.borrow())?;
                 }
+                if let Some(file) = &self.readable {
+                    file.after_schema(
+                        &self.connection,
+                        &self.types.borrow(),
+                        (keyword == "ALTER").then_some(sql),
+                    )?;
+                }
             }
             if guarded {
                 // An internal savepoint nested inside a user transaction must
@@ -927,6 +971,9 @@ impl Database {
                     }
                 }
                 self.connection.execute_batch("RELEASE __boxdb_write")?;
+                if let Some(file) = &self.readable {
+                    file.release(Some(WRITE));
+                }
             } else if !readonly || matches!(keyword.as_str(), "COMMIT" | "END" | "RELEASE") {
                 self.publish_readable()?;
             }
@@ -934,7 +981,12 @@ impl Database {
         })();
         if let Err(e) = completion {
             return Err(if guarded {
-                self.cleanup_failure(e, "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write", true)
+                let error = self.cleanup_failure(
+                    e,
+                    "ROLLBACK TO __boxdb_write; RELEASE __boxdb_write",
+                    true,
+                );
+                self.forget_readable_savepoint(WRITE, error)
             } else {
                 e
             });
@@ -945,7 +997,51 @@ impl Database {
         } else if !readonly {
             self.write_transaction_ready = true;
         }
-        result
+        Ok(result)
+    }
+    /// Discard readable steps recorded after an internal savepoint that was
+    /// rolled back.
+    fn forget_readable_savepoint(&mut self, name: &str, mut error: Error) -> Error {
+        if let Some(file) = &self.readable {
+            match file.rollback_to(&self.connection, Some(name)) {
+                Ok(()) => file.release(Some(name)),
+                Err(cleanup) => {
+                    self.poisoned.set(true);
+                    error = error.cleanup(cleanup);
+                }
+            }
+        }
+        error
+    }
+    /// Follow user savepoints, so steps rolled back to one are not written.
+    fn track_savepoint(&self, keyword: &str, sql: &str) -> Result<()> {
+        let Some(file) = &self.readable else {
+            return Ok(());
+        };
+        let words = savepoint_words(sql);
+        let words: Vec<&str> = words.iter().map(String::as_str).collect();
+        let upper: Vec<String> = words.iter().map(|w| w.to_ascii_uppercase()).collect();
+        let upper: Vec<&str> = upper.iter().map(String::as_str).collect();
+        match (keyword, upper.as_slice()) {
+            ("SAVEPOINT", [_, _]) => file.savepoint(Some(words[1])),
+            ("RELEASE", [_, "SAVEPOINT", _]) => file.release(Some(words[2])),
+            ("RELEASE", [_, _]) => file.release(Some(words[1])),
+            ("ROLLBACK", [_, rest @ ..]) => {
+                let rest = match rest {
+                    ["TRANSACTION", rest @ ..] => rest,
+                    rest => rest,
+                };
+                let name = match rest {
+                    ["TO", "SAVEPOINT", _] | ["TO", _] => words.last().copied(),
+                    _ => None,
+                };
+                if let Some(name) = name {
+                    file.rollback_to(&self.connection, Some(name))?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
     fn publish_readable(&mut self) -> Result<()> {
         if self.connection.is_autocommit()
@@ -1074,6 +1170,54 @@ impl Database {
         })
     }
 }
+const DECLARATION: &str = "__boxdb_declaration";
+const WRITE: &str = "__boxdb_write";
+
+/// Words of a transaction control statement, with savepoint names unquoted.
+fn savepoint_words(sql: &str) -> Vec<String> {
+    let sql = sql.trim().trim_end_matches(';').trim();
+    let mut words = vec![];
+    let mut chars = sql.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        let close = match c {
+            '"' => Some('"'),
+            '\'' => Some('\''),
+            '`' => Some('`'),
+            '[' => Some(']'),
+            _ => None,
+        };
+        let mut word = String::new();
+        if let Some(close) = close {
+            chars.next();
+            while let Some(c) = chars.next() {
+                if c == close {
+                    if close != ']' && chars.peek() == Some(&close) {
+                        chars.next();
+                        word.push(c);
+                        continue;
+                    }
+                    break;
+                }
+                word.push(c);
+            }
+        } else {
+            while let Some(&c) = chars.peek() {
+                if c.is_whitespace() {
+                    break;
+                }
+                word.push(c);
+                chars.next();
+            }
+        }
+        words.push(word);
+    }
+    words
+}
+
 fn empty() -> QueryResult {
     QueryResult {
         columns: vec![],
