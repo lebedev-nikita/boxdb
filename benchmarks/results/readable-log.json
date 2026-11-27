@@ -1,0 +1,83 @@
+[
+  {
+    "format": "log",
+    "rows": 126866,
+    "bytes": 21271002,
+    "open_s": 0.31321633300103713,
+    "open_rss_mib": 73.25,
+    "autocommit_update_ms": 4.984419999964302,
+    "tx_1000_updates_ms": 47.95104199729394,
+    "history_bytes": 42564190,
+    "history_open_s": 1.0702811250084778,
+    "history_open_rss_mib": 122.671875,
+    "vacuum_s": 1.255393166007707,
+    "after_vacuum_bytes": 20542318,
+    "target_mib": 20
+  },
+  {
+    "format": "previous",
+    "rows": 126866,
+    "bytes": 19891523,
+    "open_s": 0.470213665990741,
+    "open_rss_mib": 93.09375,
+    "autocommit_update_ms": 5.227893760165898,
+    "tx_1000_updates_ms": 33.21933400002308,
+    "vacuum_s": 0.6693653749971418,
+    "after_vacuum_bytes": 19884409,
+    "target_mib": 20
+  },
+  {
+    "format": "log",
+    "rows": 317165,
+    "bytes": 53686515,
+    "open_s": 0.7979052090086043,
+    "open_rss_mib": 128.515625,
+    "autocommit_update_ms": 4.732297909795307,
+    "tx_1000_updates_ms": 41.7364579916466,
+    "history_bytes": 74931351,
+    "history_open_s": 1.51533362500777,
+    "history_open_rss_mib": 178.8125,
+    "vacuum_s": 1.974851375009166,
+    "after_vacuum_bytes": 52670584,
+    "target_mib": 50
+  },
+  {
+    "format": "previous",
+    "rows": 317165,
+    "bytes": 50404046,
+    "open_s": 1.1536115839990089,
+    "open_rss_mib": 211.25,
+    "autocommit_update_ms": 4.853852490050485,
+    "tx_1000_updates_ms": 45.526207992224954,
+    "vacuum_s": 1.606208750003134,
+    "after_vacuum_bytes": 50395729,
+    "target_mib": 50
+  },
+  {
+    "format": "log",
+    "rows": 634330,
+    "bytes": 107716057,
+    "open_s": 1.5568332499969983,
+    "open_rss_mib": 223.0625,
+    "autocommit_update_ms": 4.80566957994597,
+    "tx_1000_updates_ms": 47.54929200862534,
+    "history_bytes": 129194014,
+    "history_open_s": 2.3160137920058332,
+    "history_open_rss_mib": 272.25,
+    "vacuum_s": 3.2735022499982733,
+    "after_vacuum_bytes": 106579066,
+    "target_mib": 100
+  },
+  {
+    "format": "previous",
+    "rows": 634330,
+    "bytes": 101261938,
+    "open_s": 2.2814816250029253,
+    "open_rss_mib": 393.671875,
+    "autocommit_update_ms": 5.571708749921527,
+    "tx_1000_updates_ms": 76.8651249964023,
+    "vacuum_s": 3.2160210000001825,
+    "after_vacuum_bytes": 101254694,
+    "target_mib": 100
+  }
+]
